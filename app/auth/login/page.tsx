@@ -36,26 +36,30 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
+      <Card className="w-full max-w-md border-slate-800 bg-slate-900">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Accedi</CardTitle>
-          <CardDescription>
-            Inserisci le tue credenziali per accedere all'app
+          <CardTitle className="text-2xl font-semibold text-white">
+            Accedi
+          </CardTitle>
+          <CardDescription className="text-slate-400">
+            Inserisci le tue credenziali per accedere all’app.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             {error && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
+              <div className="rounded-md border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">
                 {error}
               </div>
             )}
-            <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800">
-              <p className="font-semibold mb-1">Account demo:</p>
-              <p>Admin: admin@test.it</p>
+            <div className="rounded-md border border-slate-700 bg-slate-950/60 p-3 text-sm text-slate-300">
+              <p className="font-medium text-slate-100">Account demo</p>
+              <p className="mt-1">Admin: admin@test.it</p>
               <p>User: test@test.it</p>
-              <p className="text-xs mt-1">(Qualsiasi password funziona)</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Qualsiasi password funziona.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -84,11 +88,11 @@ export default function LoginPage() {
               {isLoading ? "Accesso in corso..." : "Accedi"}
             </Button>
           </form>
-          <div className="mt-4 text-center text-sm">
+          <div className="mt-4 text-center text-sm text-slate-400">
             Non hai un account?{" "}
             <Link
               href="/auth/register"
-              className="text-primary hover:underline"
+              className="text-slate-100 underline-offset-4 hover:underline"
             >
               Registrati
             </Link>

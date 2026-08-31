@@ -21,7 +21,7 @@ export default function DashboardPage() {
   const getUserRole = (
     fantaId: string,
     adminId: string,
-    viceAdminIds: string[]
+    viceAdminIds: string[],
   ) => {
     if (!user) return "Giocatore";
     if (adminId === user.id) return "Creatore";
@@ -37,10 +37,10 @@ export default function DashboardPage() {
 
   const getSportTypeLabel = (sportType: string) => {
     const labels: Record<string, string> = {
-      calcio: "⚽ Calcio",
-      lol: "🎮 League of Legends",
-      basket: "🏀 Basket",
-      custom: "🎯 Custom",
+      calcio: "Calcio",
+      lol: "League of Legends",
+      basket: "Basket",
+      custom: "Custom",
     };
     return labels[sportType] || sportType;
   };
@@ -78,7 +78,7 @@ export default function DashboardPage() {
             const role = getUserRole(
               fanta.id,
               fanta.adminId,
-              fanta.viceAdminIds
+              fanta.viceAdminIds,
             );
             const activeAuctions = 0; // TODO: Contare aste attive da Firebase
 

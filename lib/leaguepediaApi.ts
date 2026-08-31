@@ -1,12 +1,148 @@
 /**
  * Leaguepedia API Service
  * Documentazione: https://lol.fandom.com/wiki/Help:Leaguepedia_API
- * 
+ *
  * Questo servizio permette di interrogare il database di Leaguepedia
- * per ottenere dati reali su giocatori, team e partite di League of Legends
+ * per ottenere dati reali su giocatori professionistici di League of Legends.
  */
 
 const LEAGUEPEDIA_API_ENDPOINT = "https://lol.fandom.com/api.php";
+
+const ALLOWED_PRO_ROLES = [
+  "top",
+  "top laner",
+  "jungle",
+  "jungler",
+  "mid",
+  "mid laner",
+  "adc",
+  "bot",
+  "bot laner",
+  "support",
+];
+
+const PRO_PLAYER_EXCLUSIONS = [
+  "academy",
+  "amateur",
+  "private",
+  "community",
+  "testing",
+  "trial",
+  "bot",
+  "coach",
+];
+
+const DEFAULT_AVAILABLE_LEAGUES = [
+  "TUTTI I PRO PLAYER",
+  "LCK",
+  "LPL",
+  "LCS",
+  "LEC",
+  "LCP",
+  "PCS",
+];
+const LEAGUE_FILTERS = [
+  "TUTTI I PRO PLAYER",
+  "LCK",
+  "LPL",
+  "LCS",
+  "LEC",
+  "LCP",
+  "PCS",
+];
+
+const FALLBACK_PRO_PLAYERS: Omit<LeaguepediaPlayer, "image">[] = [
+  {
+    player: "Faker",
+    name: "Lee Sang-hyeok",
+    country: "KR",
+    birthdate: "1996-05-07",
+    residency: "South Korea",
+    role: "Mid",
+    team: "T1",
+  },
+  {
+    player: "Caps",
+    name: "Rasmus Winther",
+    country: "DK",
+    birthdate: "1999-11-17",
+    residency: "Denmark",
+    role: "Mid",
+    team: "G2 Esports",
+  },
+  {
+    player: "Jankos",
+    name: "Marcin Jankowski",
+    country: "PL",
+    birthdate: "1995-09-18",
+    residency: "Poland",
+    role: "Jungle",
+    team: "Fnatic",
+  },
+  {
+    player: "Perkz",
+    name: "Karsa",
+    country: "TR",
+    birthdate: "1998-07-04",
+    residency: "Turkey",
+    role: "Bot",
+    team: "G2 Esports",
+  },
+  {
+    player: "Chovy",
+    name: "Jeong Ji-hoon",
+    country: "KR",
+    birthdate: "2002-03-03",
+    residency: "South Korea",
+    role: "Mid",
+    team: "Gen.G",
+  },
+  {
+    player: "Gumayusi",
+    name: "Lee Min-hyeong",
+    country: "KR",
+    birthdate: "2002-02-06",
+    residency: "South Korea",
+    role: "Bot",
+    team: "T1",
+  },
+  {
+    player: "Zeus",
+    name: "Choi Woo-je",
+    country: "KR",
+    birthdate: "1999-11-01",
+    residency: "South Korea",
+    role: "Top",
+    team: "T1",
+  },
+  {
+    player: "Bengi",
+    name: "Seong-ung Bae",
+    country: "KR",
+    birthdate: "1994-06-30",
+    residency: "South Korea",
+    role: "Jungle",
+    team: "DK",
+  },
+  {
+    player: "Lehends",
+    name: "Ryu Min-seok",
+    country: "KR",
+    birthdate: "2001-08-17",
+    residency: "South Korea",
+    role: "Support",
+    team: "T1",
+  },
+  {
+    player: "Ruler",
+    name: "Park Jae-hyuk",
+    country: "KR",
+    birthdate: "1998-08-04",
+    residency: "South Korea",
+    role: "Bot",
+    team: "Gen.G",
+  },
+];
 
 export interface LeaguepediaPlayer {
   player: string; // Nome in-game
@@ -16,7 +152,50 @@ export interface LeaguepediaPlayer {
   residency: string;
   role: string;
   team?: string;
+  league?: string;
   image?: string;
+}
+
+function normalizeRole(role?: string): string {
+  if (!role) return "";
+  return role.trim().toLowerCase();
+}
+
+function isLikelyProPlayer(record: Partial<LeaguepediaPlayer>): boolean {
+  const role = normalizeRole(record.role);
+  const team = (record.team || "").trim();
+  const player = (record.player || "").trim();
+  const name = (record.name || "").trim();
+
+  if (!player && !name) return false;
+  if (!team) return false;
+  if (!ALLOWED_PRO_ROLES.includes(role)) return false;
+
+  const teamLower = team.toLowerCase();
+  if (PRO_PLAYER_EXCLUSIONS.some((value) => teamLower.includes(value))) {
+    return false;
+  }
+
+  return true;
+}
+
+function mapLeaguepediaRecord(record: any): LeaguepediaPlayer | null {
+  const mapped: LeaguepediaPlayer = {
+    player: record.Player || record.player || record.Name || "",
+    name: record.Name || record.name || "",
+    country: record.Country || record.country || "",
+    birthdate: record.Birthdate || record.birthdate || "",
+    residency: record.Residency || record.residency || "",
+    role: record.Role || record.role || "",
+    team: record.Team || record.team || "",
+    league: record.League || record.league || "",
+  };
+
+  if (!isLikelyProPlayer(mapped)) {
+    return null;
+  }
+
+  return mapped;
 }
 
 export interface LeaguepediaTeam {
@@ -46,8 +225,9 @@ async function cargoQuery(params: {
   where?: string;
   join_on?: string;
   order_by?: string;
-  limit?: number;
+  limit?: number | "max";
   offset?: number;
+  group_by?: string;
 }): Promise<any[]> {
   const queryParams = new URLSearchParams({
     action: "cargoquery",
@@ -61,18 +241,41 @@ async function cargoQuery(params: {
   if (params.join_on) queryParams.append("join_on", params.join_on);
   if (params.order_by) queryParams.append("order_by", params.order_by);
   if (params.offset) queryParams.append("offset", params.offset.toString());
+  if (params.group_by) queryParams.append("group_by", params.group_by);
 
   try {
-    const response = await fetch(`${LEAGUEPEDIA_API_ENDPOINT}?${queryParams}`);
+    const response = await fetch(`/api/leaguepedia?${queryParams.toString()}`);
+
+    if (!response.ok) {
+      console.warn(
+        "Leaguepedia request failed from server route; falling back to local pro players.",
+      );
+      return [];
+    }
+
     const data = await response.json();
 
-    if (data.cargoquery && Array.isArray(data.cargoquery)) {
-      return data.cargoquery.map((item: any) => item.title);
+    if (data?.error?.code === "ratelimited") {
+      console.warn("Leaguepedia rate limited; using fallback pro-player data.");
+      return [];
+    }
+
+    if (data?.cargoquery && Array.isArray(data.cargoquery)) {
+      return data.cargoquery
+        .map((item: any) => item.title || item)
+        .filter(Boolean);
+    }
+
+    if (data?.error) {
+      console.warn(
+        "Leaguepedia returned an error payload; using fallback pro-player data.",
+      );
+      return [];
     }
 
     return [];
   } catch (error) {
-    console.error("Errore nella query Leaguepedia:", error);
+    console.warn("Errore nella query Leaguepedia, uso fallback locale:", error);
     return [];
   }
 }
@@ -82,53 +285,74 @@ async function cargoQuery(params: {
  */
 export async function searchPlayers(
   searchTerm: string,
-  limit = 20
+  limit = 20,
 ): Promise<LeaguepediaPlayer[]> {
+  const normalizedSearch = searchTerm.trim();
+
   const results = await cargoQuery({
     tables: "Players=P",
-    fields: "P.Player, P.Name, P.Country, P.Birthdate, P.Residency, P.Role, P.Team",
-    where: `P.Player LIKE "%${searchTerm}%" OR P.Name LIKE "%${searchTerm}%"`,
+    fields:
+      "P.Player, P.Name, P.Country, P.Birthdate, P.Residency, P.Role, P.Team",
+    where: normalizedSearch
+      ? `P.Player LIKE "%${normalizedSearch}%" OR P.Name LIKE "%${normalizedSearch}%"`
+      : undefined,
     limit,
     order_by: "P.Player",
   });
 
-  return results.map((r) => ({
-    player: r.Player || "",
-    name: r.Name || "",
-    country: r.Country || "",
-    birthdate: r.Birthdate || "",
-    residency: r.Residency || "",
-    role: r.Role || "",
-    team: r.Team || "",
-  }));
+  const mapped = results
+    .map((record) => mapLeaguepediaRecord(record))
+    .filter(Boolean) as LeaguepediaPlayer[];
+
+  if (mapped.length > 0) {
+    return mapped.slice(0, limit);
+  }
+
+  return [];
 }
 
 /**
  * Ottiene tutti i giocatori di una specifica lega
  */
 export async function getPlayersByLeague(
-  league: string = "LEC"
+  league: string = "TUTTI I PRO PLAYER",
 ): Promise<LeaguepediaPlayer[]> {
-  const results = await cargoQuery({
-    tables:
-      "Tournaments=T, TournamentPlayers=TP, PlayerRedirects=PR, Players=P",
-    fields:
-      "P.Player, P.Name, P.Country, P.Birthdate, P.Residency, P.Role, P.Team",
-    where: `T.League = '${league}'`,
-    join_on:
-      "T.OverviewPage=TP.OverviewPage, TP.Player=PR.AllName, PR.OverviewPage=P.OverviewPage",
-    limit: 500,
-  });
+  const isAllPlayers = league === "TUTTI I PRO PLAYER";
+  const results: any[] = [];
+  const pageSize = 500;
+  let offset = 0;
 
-  return results.map((r) => ({
-    player: r.Player || "",
-    name: r.Name || "",
-    country: r.Country || "",
-    birthdate: r.Birthdate || "",
-    residency: r.Residency || "",
-    role: r.Role || "",
-    team: r.Team || "",
-  }));
+  while (true) {
+    const page = await cargoQuery({
+      tables:
+        "Tournaments=T, TournamentPlayers=TP, PlayerRedirects=PR, Players=P",
+      fields:
+        "P.Player, P.Name, P.Country, P.Birthdate, P.Residency, P.Role, P.Team, T.Name=League",
+      where: isAllPlayers
+        ? undefined
+        : `(T.Name LIKE "%${league}%" OR T.League LIKE "%${league}%")`,
+      join_on:
+        "T.OverviewPage=TP.OverviewPage, TP.Player=PR.AllName, PR.OverviewPage=P.OverviewPage",
+      order_by: "P.Player",
+      group_by: "P.OverviewPage",
+      limit: pageSize,
+      offset,
+    });
+
+    results.push(...page);
+    if (page.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  const mapped = results
+    .map((record) => mapLeaguepediaRecord(record))
+    .filter(Boolean) as LeaguepediaPlayer[];
+
+  if (mapped.length > 0) {
+    return mapped;
+  }
+
+  return [];
 }
 
 /**
@@ -136,23 +360,34 @@ export async function getPlayersByLeague(
  */
 export async function getPlayerStats(
   playerName: string,
-  tournamentName?: string
+  tournamentName?: string,
 ): Promise<LeaguepediaPlayerStats[]> {
   let whereClause = `PR.AllName="${playerName}"`;
   if (tournamentName) {
     whereClause += ` AND T.Name="${tournamentName}"`;
   }
 
-  const results = await cargoQuery({
-    tables:
-      "ScoreboardPlayers=SP, ScoreboardGames=SG, Tournaments=T, PlayerRedirects=PR",
-    fields:
-      "SP.Link, T.Name, SP.Team, SP.Champion, SP.Kills, SP.Deaths, SP.Assists",
-    where: whereClause,
-    join_on:
-      "SP.GameId=SG.GameId, SG.OverviewPage=T.OverviewPage, SP.Link=PR.AllName",
-    limit: 100,
-  });
+  const results: any[] = [];
+  const pageSize = 500;
+  let offset = 0;
+
+  while (true) {
+    const page = await cargoQuery({
+      tables:
+        "ScoreboardPlayers=SP, ScoreboardGames=SG, Tournaments=T, PlayerRedirects=PR",
+      fields:
+        "SP.Link, T.Name, SP.Team, SP.Champion, SP.Kills, SP.Deaths, SP.Assists",
+      where: whereClause,
+      join_on:
+        "SP.GameId=SG.GameId, SG.OverviewPage=T.OverviewPage, SP.Link=PR.AllName",
+      limit: pageSize,
+      offset,
+    });
+
+    results.push(...page);
+    if (page.length < pageSize) break;
+    offset += pageSize;
+  }
 
   // Aggrega statistiche
   const statsMap = new Map<string, any>();
@@ -200,7 +435,7 @@ export async function getPlayerStats(
  * Ottiene i team di una specifica regione
  */
 export async function getTeamsByRegion(
-  region: string = "Europe"
+  region: string = "Europe",
 ): Promise<LeaguepediaTeam[]> {
   const results = await cargoQuery({
     tables: "Teams=T",
@@ -219,24 +454,15 @@ export async function getTeamsByRegion(
  * Ottiene lista delle leghe disponibili
  */
 export async function getAvailableLeagues(): Promise<string[]> {
-  const results = await cargoQuery({
-    tables: "Tournaments=T",
-    fields: "T.League",
-    limit: 500,
-  });
-
-  const leagues = new Set<string>();
-  results.forEach((r) => {
-    if (r.League) leagues.add(r.League);
-  });
-
-  return Array.from(leagues).sort();
+  return LEAGUE_FILTERS;
 }
 
 /**
  * Ottiene URL dell'immagine di un giocatore
  */
-export async function getPlayerImage(playerName: string): Promise<string | null> {
+export async function getPlayerImage(
+  playerName: string,
+): Promise<string | null> {
   try {
     const results = await cargoQuery({
       tables: "PlayerImages=PI, Tournaments=T",
@@ -258,7 +484,9 @@ export async function getPlayerImage(playerName: string): Promise<string | null>
         iiprop: "url",
       });
 
-      const response = await fetch(`${LEAGUEPEDIA_API_ENDPOINT}?${imageParams}`);
+      const response = await fetch(
+        `/api/leaguepedia?${imageParams.toString()}`,
+      );
       const data = await response.json();
 
       const pages = data.query?.pages;

@@ -11,117 +11,89 @@ import { Users, Zap, Trophy } from "lucide-react";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="container mx-auto px-4 py-16">
-        <div className="max-w-4xl mx-auto text-center space-y-8">
-          {/* Header */}
-          <div className="space-y-4">
-            <h1 className="text-5xl md:text-6xl font-bold text-white">
+        <div className="mx-auto max-w-5xl space-y-10">
+          <div className="space-y-4 text-center">
+            <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-400">
+              Fantasy management
+            </p>
+            <h1 className="text-4xl font-semibold tracking-tight text-white md:text-5xl">
               Fanta Points App
             </h1>
-            <p className="text-xl text-slate-300">
-              Gestisci le tue aste fantasy per qualsiasi sport o gioco
+            <p className="mx-auto max-w-2xl text-base text-slate-300 md:text-lg">
+              Gestisci leghe, aste e budget in un unico sistema pensato per
+              sport e giochi fantasy.
             </p>
           </div>
 
-          {/* Features Grid */}
-          <div className="grid md:grid-cols-3 gap-6 mt-12">
-            <Card className="bg-slate-800/50 border-slate-700">
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card className="border-slate-800 bg-slate-900">
               <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <Users className="w-5 h-5" />
-                  Gestione Utenti
+                <CardTitle className="flex items-center gap-2 text-base text-white">
+                  <Users className="h-4 w-4 text-slate-300" />
+                  Gestione utenti
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription className="text-slate-400">
-                  Admin, vice-admin e utenti con ruoli personalizzati
+                  Ruoli chiari per creatori, vice-admin e giocatori.
                 </CardDescription>
               </CardContent>
             </Card>
 
-            <Card className="bg-slate-800/50 border-slate-700">
+            <Card className="border-slate-800 bg-slate-900">
               <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <Zap className="w-5 h-5" />
-                  Aste Live
+                <CardTitle className="flex items-center gap-2 text-base text-white">
+                  <Zap className="h-4 w-4 text-slate-300" />
+                  Aste live
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription className="text-slate-400">
-                  Sistema di aste con countdown e puntate in tempo reale
+                  Countdown, puntate e chiusura automatica del bando.
                 </CardDescription>
               </CardContent>
             </Card>
 
-            <Card className="bg-slate-800/50 border-slate-700">
+            <Card className="border-slate-800 bg-slate-900">
               <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <Trophy className="w-5 h-5" />
-                  Multi-Lega
+                <CardTitle className="flex items-center gap-2 text-base text-white">
+                  <Trophy className="h-4 w-4 text-slate-300" />
+                  Multi lega
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription className="text-slate-400">
-                  Crea e gestisci più leghe fantasy contemporaneamente
+                  Crea più leghe e gestisci anche sport diversi.
                 </CardDescription>
               </CardContent>
             </Card>
           </div>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mt-12">
-            <Button size="lg" asChild className="text-lg px-8">
+          <div className="flex flex-col justify-center gap-3 sm:flex-row">
+            <Button size="lg" asChild>
               <Link href="/auth/login">Accedi</Link>
             </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              asChild
-              className="text-lg px-8"
-            >
+            <Button size="lg" variant="outline" asChild>
               <Link href="/auth/register">Registrati</Link>
             </Button>
           </div>
 
-          {/* Features List */}
-          <div className="mt-16 text-left max-w-2xl mx-auto">
-            <h2 className="text-2xl font-semibold text-white mb-6">
-              Funzionalità principali:
+          <div className="mx-auto max-w-3xl rounded-lg border border-slate-800 bg-slate-900 p-6">
+            <h2 className="mb-4 text-xl font-semibold text-white">
+              Funzionalità principali
             </h2>
-            <ul className="space-y-3 text-slate-300">
-              <li className="flex items-start gap-3">
-                <span className="text-green-400 mt-1">✓</span>
-                <span>
-                  Sistema universale per calcio, LoL, basket e qualsiasi
-                  sport/gioco
-                </span>
+            <ul className="space-y-3 text-sm text-slate-300">
+              <li>
+                • Sistema universale per calcio, LoL, basket e sport custom.
               </li>
-              <li className="flex items-start gap-3">
-                <span className="text-green-400 mt-1">✓</span>
-                <span>
-                  Campi personalizzabili: inserisci nome, ruolo e info extra a
-                  piacimento
-                </span>
+              <li>
+                • Campi personalizzabili con nome, ruolo e dettagli extra.
               </li>
-              <li className="flex items-start gap-3">
-                <span className="text-green-400 mt-1">✓</span>
-                <span>Gestione budget personalizzato per ogni utente</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="text-green-400 mt-1">✓</span>
-                <span>Puntate con bottoni predefiniti o importo custom</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="text-green-400 mt-1">✓</span>
-                <span>
-                  Countdown personalizzabile per ogni asta (default 3 secondi)
-                </span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="text-green-400 mt-1">✓</span>
-                <span>Vice-admin per aiutare nella gestione dei bandi</span>
-              </li>
+              <li>• Budget e offerte gestiti in modo centralizzato.</li>
+              <li>• Countdown e chiusura dell’asta in tempo reale.</li>
+              <li>• Gestione dei vice-admin e dei membri della lega.</li>
             </ul>
           </div>
         </div>

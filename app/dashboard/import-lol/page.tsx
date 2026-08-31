@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -29,6 +29,13 @@ import {
 } from "@/components/ui/table";
 import { Search, Download, TrendingUp } from "lucide-react";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   searchPlayers,
   getPlayersByLeague,
   getPlayerStats,
@@ -45,21 +52,48 @@ export default function ImportLoLPlayersPage() {
   const router = useRouter();
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedLeague, setSelectedLeague] = useState("LEC");
+  const [selectedLeague, setSelectedLeague] = useState("TUTTI I PRO PLAYER");
   const [availableLeagues, setAvailableLeagues] = useState<string[]>([]);
   const [players, setPlayers] = useState<LeaguepediaPlayer[]>([]);
-  const [selectedPlayer, setSelectedPlayer] = useState<LeaguepediaPlayer | null>(
-    null
-  );
+  const [selectedPlayer, setSelectedPlayer] =
+    useState<LeaguepediaPlayer | null>(null);
   const [playerStats, setPlayerStats] = useState<LeaguepediaPlayerStats[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [apiError, setApiError] = useState(false);
+  const [selectedPlayerImage, setSelectedPlayerImage] = useState<string | null>(
+    null,
+  );
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const tableWrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const topScroll = topScrollRef.current;
+    const tableContainer = tableWrapperRef.current?.querySelector<HTMLElement>(
+      '[data-slot="table-container"]',
+    );
+    if (!topScroll || !tableContainer) return;
+
+    const syncFromTop = () => {
+      tableContainer.scrollLeft = topScroll.scrollLeft;
+    };
+    const syncFromTable = () => {
+      topScroll.scrollLeft = tableContainer.scrollLeft;
+    };
+
+    topScroll.addEventListener("scroll", syncFromTop);
+    tableContainer.addEventListener("scroll", syncFromTable);
+    return () => {
+      topScroll.removeEventListener("scroll", syncFromTop);
+      tableContainer.removeEventListener("scroll", syncFromTable);
+    };
+  }, [players.length]);
 
   // Carica le leghe disponibili
   useEffect(() => {
     const loadLeagues = async () => {
       const leagues = await getAvailableLeagues();
-      setAvailableLeagues(leagues);
+      setAvailableLeagues(Array.from(new Set(leagues)));
     };
     loadLeagues();
   }, []);
@@ -76,11 +110,14 @@ export default function ImportLoLPlayersPage() {
     if (!searchTerm.trim()) return;
 
     setIsLoading(true);
+    setApiError(false);
     try {
       const results = await searchPlayers(searchTerm);
       setPlayers(results);
+      setApiError(results.length === 0);
     } catch (error) {
       console.error("Errore nella ricerca:", error);
+      setApiError(true);
     } finally {
       setIsLoading(false);
     }
@@ -91,11 +128,14 @@ export default function ImportLoLPlayersPage() {
     if (!selectedLeague) return;
 
     setIsLoading(true);
+    setApiError(false);
     try {
       const results = await getPlayersByLeague(selectedLeague);
       setPlayers(results);
+      setApiError(results.length === 0);
     } catch (error) {
       console.error("Errore nel caricamento lega:", error);
+      setApiError(true);
     } finally {
       setIsLoading(false);
     }
@@ -104,11 +144,16 @@ export default function ImportLoLPlayersPage() {
   // Visualizza statistiche di un giocatore
   const handleViewStats = async (player: LeaguepediaPlayer) => {
     setSelectedPlayer(player);
+    setSelectedPlayerImage(null);
     setIsLoadingStats(true);
 
     try {
-      const stats = await getPlayerStats(player.player);
+      const [stats, image] = await Promise.all([
+        getPlayerStats(player.player),
+        getPlayerImage(player.player),
+      ]);
       setPlayerStats(stats);
+      setSelectedPlayerImage(image);
     } catch (error) {
       console.error("Errore nel caricamento statistiche:", error);
     } finally {
@@ -161,10 +206,11 @@ export default function ImportLoLPlayersPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
-            Importa Giocatori LoL Reali
+            Importa Pro Players LoL
           </CardTitle>
           <CardDescription>
-            Cerca e importa giocatori da Leaguepedia per creare aste con dati reali
+            Cerca e importa solo pro player professionistici da Leaguepedia per
+            creare aste reali.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -173,7 +219,7 @@ export default function ImportLoLPlayersPage() {
             <Label>Cerca per Nome</Label>
             <div className="flex gap-2">
               <Input
-                placeholder="Es: Faker, Caps, Jankos..."
+                placeholder="Es: Faker, Caps, Chovy, Jankos..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -200,11 +246,6 @@ export default function ImportLoLPlayersPage() {
                       {league}
                     </SelectItem>
                   ))}
-                  <SelectItem value="LEC">LEC (Europa)</SelectItem>
-                  <SelectItem value="LCS">LCS (Nord America)</SelectItem>
-                  <SelectItem value="LCK">LCK (Corea)</SelectItem>
-                  <SelectItem value="LPL">LPL (Cina)</SelectItem>
-                  <SelectItem value="PCS">PCS (Taiwan/SEA)</SelectItem>
                 </SelectContent>
               </Select>
               <Button onClick={handleLoadLeague} disabled={isLoading}>
@@ -222,125 +263,254 @@ export default function ImportLoLPlayersPage() {
             <CardTitle>Risultati ({players.length})</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Giocatore</TableHead>
-                  <TableHead>Nome Reale</TableHead>
-                  <TableHead>Ruolo</TableHead>
-                  <TableHead>Team</TableHead>
-                  <TableHead>Paese</TableHead>
-                  <TableHead>Azioni</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {players.map((player, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell className="font-semibold">
-                      {player.player}
-                    </TableCell>
-                    <TableCell>{player.name}</TableCell>
-                    <TableCell>
-                      <Badge className={getRoleBadgeColor(player.role)}>
-                        {player.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{player.team}</TableCell>
-                    <TableCell>{player.country}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleViewStats(player)}
-                        >
-                          <TrendingUp className="h-4 w-4 mr-1" />
-                          Stats
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleImportPlayer(player)}
-                        >
-                          <Download className="h-4 w-4 mr-1" />
-                          Importa
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Statistiche giocatore selezionato */}
-      {selectedPlayer && (
-        <Card className="bg-slate-900 border-slate-700">
-          <CardHeader>
-            <CardTitle>
-              Statistiche: {selectedPlayer.player} ({selectedPlayer.name})
-            </CardTitle>
-            <CardDescription>
-              {selectedPlayer.team} - {selectedPlayer.role}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoadingStats ? (
-              <div className="text-center py-8 text-slate-400">
-                Caricamento statistiche...
-              </div>
-            ) : playerStats.length > 0 ? (
-              <Table>
+            <div
+              ref={topScrollRef}
+              className="w-full overflow-x-auto mb-2"
+              aria-label="Scorrimento tabella"
+            >
+              <div className="h-px min-w-[760px]" />
+            </div>
+            <div ref={tableWrapperRef} className="w-full">
+              <Table className="min-w-[760px]">
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Torneo</TableHead>
+                  <TableRow className="sticky top-0 z-10 bg-slate-900">
+                    <TableHead>Nick</TableHead>
+                    <TableHead>Ruolo</TableHead>
                     <TableHead>Team</TableHead>
-                    <TableHead>Partite</TableHead>
-                    <TableHead>K/D/A</TableHead>
-                    <TableHead>KDA Ratio</TableHead>
-                    <TableHead>Champion Giocati</TableHead>
+                    <TableHead>Lega</TableHead>
+                    <TableHead>Azioni</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {playerStats.map((stat, idx) => (
+                  {players.map((player, idx) => (
                     <TableRow key={idx}>
-                      <TableCell className="font-medium">
-                        {stat.tournament}
-                      </TableCell>
-                      <TableCell>{stat.team}</TableCell>
-                      <TableCell>{stat.gamesPlayed}</TableCell>
-                      <TableCell>
-                        {stat.kills} / {stat.deaths} / {stat.assists}
+                      <TableCell className="font-semibold">
+                        {player.player}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          className={
-                            stat.kda >= 3
-                              ? "bg-green-600"
-                              : stat.kda >= 2
-                              ? "bg-blue-600"
-                              : "bg-slate-600"
-                          }
-                        >
-                          {stat.kda}
+                        <Badge className={getRoleBadgeColor(player.role)}>
+                          {player.role}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-xs">
-                        {stat.champion}
+                      <TableCell>{player.team}</TableCell>
+                      <TableCell>{player.league || "N/D"}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleViewStats(player)}
+                          >
+                            <TrendingUp className="h-4 w-4 mr-1" />
+                            Stats
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleImportPlayer(player)}
+                          >
+                            <Download className="h-4 w-4 mr-1" />
+                            Importa
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            ) : (
-              <div className="text-center py-8 text-slate-400">
-                Nessuna statistica disponibile per questo giocatore
-              </div>
-            )}
+            </div>
           </CardContent>
         </Card>
       )}
+
+      <Dialog
+        open={Boolean(selectedPlayer)}
+        onOpenChange={(open) => !open && setSelectedPlayer(null)}
+      >
+        <DialogContent className="w-[calc(100%-2rem)] max-w-7xl max-h-[92vh] overflow-y-auto bg-slate-900 border-slate-700">
+          {selectedPlayer && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-4">
+                  {selectedPlayerImage ? (
+                    <img
+                      src={selectedPlayerImage}
+                      alt={selectedPlayer.player}
+                      className="h-16 w-16 rounded-md object-cover"
+                    />
+                  ) : (
+                    <div className="h-16 w-16 rounded-md bg-slate-800" />
+                  )}
+                  <span>{selectedPlayer.player}</span>
+                </DialogTitle>
+                <DialogDescription>
+                  Informazioni e statistiche globali da Leaguepedia
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-3 rounded-md border border-slate-700 bg-slate-800/50 p-4 text-sm md:grid-cols-4">
+                <div>
+                  <span className="text-slate-400">Nome</span>
+                  <p>{selectedPlayer.name || "N/D"}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Ruolo</span>
+                  <p>{selectedPlayer.role || "N/D"}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Team</span>
+                  <p>{selectedPlayer.team || "N/D"}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Lega</span>
+                  <p>{selectedPlayer.league || "N/D"}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Paese</span>
+                  <p>{selectedPlayer.country || "N/D"}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Residenza</span>
+                  <p>{selectedPlayer.residency || "N/D"}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Nascita</span>
+                  <p>{selectedPlayer.birthdate || "N/D"}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Partite</span>
+                  <p>
+                    {playerStats.reduce(
+                      (total, stat) => total + stat.gamesPlayed,
+                      0,
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-4">
+                {isLoadingStats ? (
+                  <div className="text-center py-8 text-slate-400">
+                    Caricamento statistiche...
+                  </div>
+                ) : playerStats.length > 0 ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 rounded-md border border-slate-700 p-4 text-sm md:grid-cols-4">
+                      <div>
+                        <span className="text-slate-400">Uccisioni</span>
+                        <p>
+                          {playerStats.reduce(
+                            (total, stat) => total + stat.kills,
+                            0,
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Morti</span>
+                        <p>
+                          {playerStats.reduce(
+                            (total, stat) => total + stat.deaths,
+                            0,
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Assist</span>
+                        <p>
+                          {playerStats.reduce(
+                            (total, stat) => total + stat.assists,
+                            0,
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">KDA globale</span>
+                        <p>
+                          {(() => {
+                            const kills = playerStats.reduce(
+                              (total, stat) => total + stat.kills,
+                              0,
+                            );
+                            const deaths = playerStats.reduce(
+                              (total, stat) => total + stat.deaths,
+                              0,
+                            );
+                            const assists = playerStats.reduce(
+                              (total, stat) => total + stat.assists,
+                              0,
+                            );
+                            return deaths === 0
+                              ? kills + assists
+                              : ((kills + assists) / deaths).toFixed(2);
+                          })()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto rounded-md border border-slate-700">
+                      <Table className="min-w-[900px]">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Torneo</TableHead>
+                            <TableHead>Team</TableHead>
+                            <TableHead>Partite</TableHead>
+                            <TableHead>K/D/A</TableHead>
+                            <TableHead>KDA Ratio</TableHead>
+                            <TableHead>Champion Giocati</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {playerStats.map((stat, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell className="font-medium">
+                                {stat.tournament}
+                              </TableCell>
+                              <TableCell>{stat.team}</TableCell>
+                              <TableCell>{stat.gamesPlayed}</TableCell>
+                              <TableCell>
+                                {stat.kills} / {stat.deaths} / {stat.assists}
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  className={
+                                    stat.kda >= 3
+                                      ? "bg-green-600"
+                                      : stat.kda >= 2
+                                        ? "bg-blue-600"
+                                        : "bg-slate-600"
+                                  }
+                                >
+                                  {stat.kda}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex min-w-[260px] flex-wrap gap-1">
+                                  {stat.champion
+                                    .split(", ")
+                                    .filter(Boolean)
+                                    .map((champion) => (
+                                      <Badge
+                                        key={champion}
+                                        variant="outline"
+                                        className="border-slate-600 bg-slate-800 text-xs font-normal"
+                                      >
+                                        {champion}
+                                      </Badge>
+                                    ))}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-8 text-slate-400">
+                    Nessuna statistica disponibile per questo giocatore
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {isLoading && players.length === 0 && (
         <Card className="bg-slate-900 border-slate-700">
@@ -353,7 +523,9 @@ export default function ImportLoLPlayersPage() {
       {!isLoading && players.length === 0 && (
         <Card className="bg-slate-900 border-slate-700">
           <CardContent className="py-12 text-center text-slate-400">
-            Cerca un giocatore o carica una lega per iniziare
+            {apiError
+              ? "Leaguepedia non ha restituito giocatori. Controlla le Bot Password nel file .env.local."
+              : "Cerca un giocatore o carica una lega per iniziare"}
           </CardContent>
         </Card>
       )}

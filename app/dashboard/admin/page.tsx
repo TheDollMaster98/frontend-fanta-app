@@ -81,7 +81,7 @@ export default function AdminPage() {
 
   const removeViceAdmin = (userId: string) => {
     const newViceAdminIds = currentFanta.viceAdminIds.filter(
-      (id) => id !== userId
+      (id) => id !== userId,
     );
     updateFanta({ ...currentFanta, viceAdminIds: newViceAdminIds });
   };
@@ -93,7 +93,7 @@ export default function AdminPage() {
     }
     const newMemberIds = currentFanta.memberIds.filter((id) => id !== userId);
     const newViceAdminIds = currentFanta.viceAdminIds.filter(
-      (id) => id !== userId
+      (id) => id !== userId,
     );
     updateFanta({
       ...currentFanta,
@@ -259,9 +259,9 @@ export default function AdminPage() {
 
               <Alert className="bg-slate-800 border-slate-700">
                 <AlertDescription className="text-slate-300">
-                  💡 <strong>Link diretto:</strong> Condividi questo link:{" "}
+                  <strong>Link diretto:</strong> Condividi questo link:
                   <br />
-                  <code className="text-sm bg-slate-950 px-2 py-1 rounded mt-2 inline-block">
+                  <code className="mt-2 inline-block rounded bg-slate-950 px-2 py-1 text-sm">
                     {typeof window !== "undefined"
                       ? window.location.origin
                       : ""}

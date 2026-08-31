@@ -69,6 +69,7 @@ export interface Auction {
   playerName: string;
   playerRole?: string;
   playerTeam?: string;
+  auctionFormat?: string;
   description?: string;
   basePrice: number;
   currentPrice: number;

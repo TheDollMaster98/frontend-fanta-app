@@ -97,10 +97,10 @@ export function CreateFantaDialog() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="calcio">⚽ Calcio</SelectItem>
-                <SelectItem value="lol">🎮 League of Legends</SelectItem>
-                <SelectItem value="basket">🏀 Basket</SelectItem>
-                <SelectItem value="custom">✨ Personalizzato</SelectItem>
+                <SelectItem value="calcio">Calcio</SelectItem>
+                <SelectItem value="lol">League of Legends</SelectItem>
+                <SelectItem value="basket">Basket</SelectItem>
+                <SelectItem value="custom">Personalizzato</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-slate-500">

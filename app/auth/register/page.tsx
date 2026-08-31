@@ -38,7 +38,7 @@ export default function RegisterPage() {
       await register(name, email, password);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Errore durante la registrazione"
+        err instanceof Error ? err.message : "Errore durante la registrazione",
       );
     } finally {
       setIsLoading(false);
@@ -46,18 +46,20 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
+      <Card className="w-full max-w-md border-slate-800 bg-slate-900">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Registrati</CardTitle>
-          <CardDescription>
-            Crea un account per iniziare a gestire le tue aste
+          <CardTitle className="text-2xl font-semibold text-white">
+            Registrati
+          </CardTitle>
+          <CardDescription className="text-slate-400">
+            Crea un account per iniziare a gestire le tue aste.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleRegister} className="space-y-4">
             {error && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
+              <div className="rounded-md border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">
                 {error}
               </div>
             )}
@@ -97,7 +99,7 @@ export default function RegisterPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Conferma Password</Label>
+              <Label htmlFor="confirmPassword">Conferma password</Label>
               <Input
                 id="confirmPassword"
                 type="password"
@@ -111,9 +113,12 @@ export default function RegisterPage() {
               {isLoading ? "Registrazione in corso..." : "Registrati"}
             </Button>
           </form>
-          <div className="mt-4 text-center text-sm">
+          <div className="mt-4 text-center text-sm text-slate-400">
             Hai già un account?{" "}
-            <Link href="/auth/login" className="text-primary hover:underline">
+            <Link
+              href="/auth/login"
+              className="text-slate-100 underline-offset-4 hover:underline"
+            >
               Accedi
             </Link>
           </div>

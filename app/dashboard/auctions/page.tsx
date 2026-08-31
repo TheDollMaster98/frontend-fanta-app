@@ -40,6 +40,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { DEFAULT_BID_PRESETS, SPORT_TEMPLATES } from "@/lib/constants";
+import {
+  getPlayersByLeague,
+  type LeaguepediaPlayer,
+} from "@/lib/leaguepediaApi";
 import type { Auction } from "@/types";
 import { Flame, AlertTriangle, Save, RotateCcw, Ban, Lock } from "lucide-react";
 import { useFanta } from "@/contexts/FantaContext";
@@ -55,9 +59,13 @@ export default function AuctionsPage() {
   const [savedAuction, setSavedAuction] = useState<Auction | null>(null);
   const [countdown, setCountdown] = useState<number>(0);
   const [customBid, setCustomBid] = useState("");
+  const [auctionPlayers, setAuctionPlayers] = useState<LeaguepediaPlayer[]>([]);
+  const [isLoadingAuctionPlayers, setIsLoadingAuctionPlayers] = useState(false);
 
   // Dati per creare nuova asta (solo admin/vice-admin)
   const [newAuction, setNewAuction] = useState({
+    auctionFormat: "free",
+    league: "LCK",
     playerName: "",
     playerRole: "",
     playerTeam: "",
@@ -87,6 +95,30 @@ export default function AuctionsPage() {
     ? SPORT_TEMPLATES[currentFanta.sportType]?.roles || []
     : [];
 
+  useEffect(() => {
+    if (currentFanta?.sportType !== "lol") {
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingAuctionPlayers(true);
+    getPlayersByLeague(
+      newAuction.auctionFormat === "free"
+        ? "TUTTI I PRO PLAYER"
+        : newAuction.league,
+    )
+      .then((players) => {
+        if (!cancelled) setAuctionPlayers(players);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingAuctionPlayers(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentFanta?.sportType, newAuction.auctionFormat, newAuction.league]);
+
   // Simulazione countdown
   useEffect(() => {
     if (activeAuction?.status === "active" && countdown > 0) {
@@ -98,7 +130,7 @@ export default function AuctionsPage() {
               assignPlayerToWinner(activeAuction);
             }
             setActiveAuction((auction) =>
-              auction ? { ...auction, status: "closed" } : null
+              auction ? { ...auction, status: "closed" } : null,
             );
             return 0;
           }
@@ -142,6 +174,10 @@ export default function AuctionsPage() {
       playerName: newAuction.playerName,
       playerRole: newAuction.playerRole,
       playerTeam: newAuction.playerTeam,
+      auctionFormat:
+        newAuction.auctionFormat === "free"
+          ? "Formato libero"
+          : newAuction.league,
       description: newAuction.description,
       basePrice: newAuction.basePrice,
       currentPrice: newAuction.basePrice,
@@ -153,6 +189,8 @@ export default function AuctionsPage() {
     };
     setAuctions([auction, ...auctions]);
     setNewAuction({
+      auctionFormat: "free",
+      league: "LCK",
       playerName: "",
       playerRole: "",
       playerTeam: "",
@@ -257,23 +295,134 @@ export default function AuctionsPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="playerName">
-                      Nome Giocatore/Personaggio *
-                    </Label>
-                    <Input
-                      id="playerName"
-                      value={newAuction.playerName}
-                      onChange={(e) =>
-                        setNewAuction({
-                          ...newAuction,
-                          playerName: e.target.value,
-                        })
-                      }
-                      placeholder="Es: Faker, Ronaldo, LeBron..."
-                    />
+                {currentFanta?.sportType === "lol" && (
+                  <div className="space-y-3 rounded-md border border-slate-700 p-4">
+                    <div className="space-y-2">
+                      <Label>Formato asta</Label>
+                      <Select
+                        value={newAuction.auctionFormat}
+                        onValueChange={(value) =>
+                          setNewAuction({
+                            ...newAuction,
+                            auctionFormat: value,
+                            playerName: "",
+                            playerRole: "",
+                            playerTeam: "",
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="free">Formato libero</SelectItem>
+                          <SelectItem value="league">Per torneo</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {newAuction.auctionFormat === "league" && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Torneo</Label>
+                          <Select
+                            value={newAuction.league}
+                            onValueChange={(value) =>
+                              setNewAuction({
+                                ...newAuction,
+                                league: value,
+                                playerName: "",
+                                playerRole: "",
+                                playerTeam: "",
+                              })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="LCK">LCK</SelectItem>
+                              <SelectItem value="LPL">LPL</SelectItem>
+                              <SelectItem value="LCS">LCS</SelectItem>
+                              <SelectItem value="LEC">LEC</SelectItem>
+                              <SelectItem value="LCP">LCP</SelectItem>
+                              <SelectItem value="PCS">PCS</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </>
+                    )}
+
+                    {newAuction.auctionFormat === "free" && (
+                      <div className="text-sm text-slate-400">
+                        Sono disponibili tutti i player presenti in Leaguepedia.
+                      </div>
+                    )}
+
+                    {currentFanta?.sportType === "lol" && (
+                      <div className="space-y-2">
+                        <Label>Player Leaguepedia</Label>
+                        <Select
+                          value={newAuction.playerName}
+                          onValueChange={(value) => {
+                            const player = auctionPlayers.find(
+                              (item) => item.player === value,
+                            );
+                            if (!player) return;
+                            setNewAuction({
+                              ...newAuction,
+                              playerName: player.player,
+                              playerRole: player.role,
+                              playerTeam: player.team || "",
+                              description: `${player.name || "Nome non disponibile"} (${player.country || "Paese non disponibile"}) - ${player.residency || "Residenza non disponibile"}`,
+                            });
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={
+                                isLoadingAuctionPlayers
+                                  ? "Caricamento player..."
+                                  : "Seleziona player"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-80">
+                            {auctionPlayers.map((player) => (
+                              <SelectItem
+                                key={player.player}
+                                value={player.player}
+                              >
+                                {player.player}{" "}
+                                {player.team ? `- ${player.team}` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
+                )}
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  {currentFanta?.sportType !== "lol" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="playerName">
+                        Nome Giocatore/Personaggio *
+                      </Label>
+                      <Input
+                        id="playerName"
+                        value={newAuction.playerName}
+                        onChange={(e) =>
+                          setNewAuction({
+                            ...newAuction,
+                            playerName: e.target.value,
+                          })
+                        }
+                        placeholder="Es: Faker, Ronaldo, LeBron..."
+                      />
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <Label htmlFor="playerRole">Ruolo</Label>
@@ -612,8 +761,8 @@ export default function AuctionsPage() {
                         auction.status === "active"
                           ? "default"
                           : auction.status === "pending"
-                          ? "secondary"
-                          : "outline"
+                            ? "secondary"
+                            : "outline"
                       }
                     >
                       {auction.status === "active" && "Attiva"}
