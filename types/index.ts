@@ -1,11 +1,11 @@
-// User roles and types
-export type UserRole = "admin" | "vice-admin" | "user";
-
+// Il ruolo (admin/vice-admin/giocatore) è per-lega: vedi Fanta.adminId e
+// Fanta.viceAdminIds. L'unico attributo globale sull'account è isDeveloper,
+// un flag per chi sviluppa/testa l'app (accesso universale, zero blocchi).
 export interface User {
   id: string;
   email: string;
   name: string;
-  role: UserRole;
+  isDeveloper?: boolean;
   fantaId?: string; // ID del fanta a cui appartiene
   teamName?: string;
   budget: number;
@@ -97,6 +97,20 @@ export interface Bid {
 export interface BidPreset {
   label: string;
   value: number;
+}
+
+// Richieste di ingresso in un fanta
+export type JoinRequestStatus = "pending" | "approved" | "rejected";
+
+export interface JoinRequest {
+  id: string;
+  fantaId: string;
+  fantaName: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  status: JoinRequestStatus;
+  createdAt: Date;
 }
 
 // Context types for state management

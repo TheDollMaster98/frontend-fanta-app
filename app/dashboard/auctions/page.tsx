@@ -14,6 +14,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -42,7 +50,10 @@ import {
 import { DEFAULT_BID_PRESETS, SPORT_TEMPLATES } from "@/lib/constants";
 import {
   getPlayersByLeague,
+  getPlayerImage,
+  getPlayerStats,
   type LeaguepediaPlayer,
+  type LeaguepediaPlayerStats,
 } from "@/lib/leaguepediaApi";
 import type { Auction } from "@/types";
 import { Flame, AlertTriangle, Save, RotateCcw, Ban, Lock } from "lucide-react";
@@ -60,11 +71,27 @@ export default function AuctionsPage() {
   const [countdown, setCountdown] = useState<number>(0);
   const [customBid, setCustomBid] = useState("");
   const [auctionPlayers, setAuctionPlayers] = useState<LeaguepediaPlayer[]>([]);
+  const [auctionPlayerSearch, setAuctionPlayerSearch] = useState("");
+  const [selectedAuctionPlayer, setSelectedAuctionPlayer] =
+    useState<LeaguepediaPlayer | null>(null);
+  const [selectedAuctionPlayerImage, setSelectedAuctionPlayerImage] = useState<
+    string | null
+  >(null);
+  const [selectedAuctionPlayerStats, setSelectedAuctionPlayerStats] = useState<
+    LeaguepediaPlayerStats[]
+  >([]);
+  const [isLoadingAuctionPlayerStats, setIsLoadingAuctionPlayerStats] =
+    useState(false);
   const [auctionPlayersLeague, setAuctionPlayersLeague] = useState<string | null>(
     null,
   );
 
-  const isAdmin = user?.role === "admin" || user?.role === "vice-admin";
+  const isAdmin =
+    !!user &&
+    !!currentFanta &&
+    (currentFanta.adminId === user.id ||
+      currentFanta.viceAdminIds.includes(user.id) ||
+      !!user.isDeveloper);
 
   // Carica dati precompilati da localStorage (da pagina import), una sola volta al mount
   const [prefilledAuction] = useState(() => {
@@ -102,6 +129,14 @@ export default function AuctionsPage() {
   const isLoadingAuctionPlayers =
     currentFanta?.sportType === "lol" &&
     auctionPlayersLeague !== selectedAuctionLeague;
+
+  const filteredAuctionPlayers = auctionPlayerSearch.trim()
+    ? auctionPlayers.filter((player) =>
+        `${player.player} ${player.team || ""}`
+          .toLowerCase()
+          .includes(auctionPlayerSearch.trim().toLowerCase()),
+      )
+    : auctionPlayers;
 
   useEffect(() => {
     if (currentFanta?.sportType !== "lol") {
@@ -190,6 +225,10 @@ export default function AuctionsPage() {
       updatedAt: new Date(),
     };
     setAuctions([auction, ...auctions]);
+    setSelectedAuctionPlayer(null);
+    setSelectedAuctionPlayerImage(null);
+    setSelectedAuctionPlayerStats([]);
+    setAuctionPlayerSearch("");
     setNewAuction({
       auctionFormat: "free",
       league: "LCK",
@@ -289,7 +328,7 @@ export default function AuctionsPage() {
             <DialogTrigger asChild>
               <Button>Crea Nuova Asta</Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="w-[calc(100%-2rem)] max-w-3xl sm:max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Crea Nuova Asta</DialogTitle>
                 <DialogDescription>
@@ -303,15 +342,19 @@ export default function AuctionsPage() {
                       <Label>Formato asta</Label>
                       <Select
                         value={newAuction.auctionFormat}
-                        onValueChange={(value) =>
+                        onValueChange={(value) => {
+                          setSelectedAuctionPlayer(null);
+                          setSelectedAuctionPlayerImage(null);
+                          setSelectedAuctionPlayerStats([]);
+                          setAuctionPlayerSearch("");
                           setNewAuction({
                             ...newAuction,
                             auctionFormat: value,
                             playerName: "",
                             playerRole: "",
                             playerTeam: "",
-                          })
-                        }
+                          });
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -329,15 +372,19 @@ export default function AuctionsPage() {
                           <Label>Torneo</Label>
                           <Select
                             value={newAuction.league}
-                            onValueChange={(value) =>
+                            onValueChange={(value) => {
+                              setSelectedAuctionPlayer(null);
+                              setSelectedAuctionPlayerImage(null);
+                              setSelectedAuctionPlayerStats([]);
+                              setAuctionPlayerSearch("");
                               setNewAuction({
                                 ...newAuction,
                                 league: value,
                                 playerName: "",
                                 playerRole: "",
                                 playerTeam: "",
-                              })
-                            }
+                              });
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue />
@@ -364,6 +411,14 @@ export default function AuctionsPage() {
                     {currentFanta?.sportType === "lol" && (
                       <div className="space-y-2">
                         <Label>Player Leaguepedia</Label>
+                        <Input
+                          value={auctionPlayerSearch}
+                          onChange={(e) =>
+                            setAuctionPlayerSearch(e.target.value)
+                          }
+                          placeholder="Cerca per nome o team..."
+                          className="mb-2"
+                        />
                         <Select
                           value={newAuction.playerName}
                           onValueChange={(value) => {
@@ -371,6 +426,18 @@ export default function AuctionsPage() {
                               (item) => item.player === value,
                             );
                             if (!player) return;
+                            setSelectedAuctionPlayer(player);
+                            setSelectedAuctionPlayerImage(null);
+                            setSelectedAuctionPlayerStats([]);
+                            getPlayerImage(player.player).then(
+                              setSelectedAuctionPlayerImage,
+                            );
+                            setIsLoadingAuctionPlayerStats(true);
+                            getPlayerStats(player.player)
+                              .then(setSelectedAuctionPlayerStats)
+                              .finally(() =>
+                                setIsLoadingAuctionPlayerStats(false),
+                              );
                             setNewAuction({
                               ...newAuction,
                               playerName: player.player,
@@ -390,17 +457,167 @@ export default function AuctionsPage() {
                             />
                           </SelectTrigger>
                           <SelectContent className="max-h-80">
-                            {auctionPlayers.map((player) => (
-                              <SelectItem
-                                key={player.player}
-                                value={player.player}
-                              >
-                                {player.player}{" "}
-                                {player.team ? `- ${player.team}` : ""}
-                              </SelectItem>
-                            ))}
+                            {filteredAuctionPlayers.length === 0 ? (
+                              <div className="px-2 py-4 text-sm text-slate-500">
+                                Nessun player trovato
+                              </div>
+                            ) : (
+                              filteredAuctionPlayers.map((player) => (
+                                <SelectItem
+                                  key={player.player}
+                                  value={player.player}
+                                >
+                                  {player.player}{" "}
+                                  {player.team ? `- ${player.team}` : ""}
+                                </SelectItem>
+                              ))
+                            )}
                           </SelectContent>
                         </Select>
+                      </div>
+                    )}
+
+                    {selectedAuctionPlayer && (
+                      <div className="space-y-3 rounded-md border border-slate-700 bg-slate-800/50 p-3">
+                        <div className="flex items-center gap-4">
+                          {selectedAuctionPlayerImage ? (
+                            <img
+                              src={selectedAuctionPlayerImage}
+                              alt={selectedAuctionPlayer.player}
+                              className="h-14 w-14 rounded-md object-cover"
+                            />
+                          ) : (
+                            <div className="h-14 w-14 rounded-md bg-slate-800" />
+                          )}
+                          <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-1 text-sm md:grid-cols-3">
+                            <div>
+                              <span className="text-slate-400">Nickname</span>
+                              <p>{selectedAuctionPlayer.player || "N/D"}</p>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Nome reale</span>
+                              <p>{selectedAuctionPlayer.name || "N/D"}</p>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Ruolo</span>
+                              <p>{selectedAuctionPlayer.role || "N/D"}</p>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Team</span>
+                              <p>{selectedAuctionPlayer.team || "N/D"}</p>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Lega</span>
+                              <p>{selectedAuctionPlayer.league || "N/D"}</p>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Paese</span>
+                              <p>{selectedAuctionPlayer.country || "N/D"}</p>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Residenza</span>
+                              <p>{selectedAuctionPlayer.residency || "N/D"}</p>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Nascita</span>
+                              <p>{selectedAuctionPlayer.birthdate || "N/D"}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-slate-700 pt-3">
+                          {isLoadingAuctionPlayerStats ? (
+                            <p className="text-sm text-slate-400">
+                              Caricamento statistiche...
+                            </p>
+                          ) : selectedAuctionPlayerStats.length > 0 ? (
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                                <div>
+                                  <span className="text-slate-400">Partite</span>
+                                  <p>
+                                    {selectedAuctionPlayerStats.reduce(
+                                      (t, s) => t + s.gamesPlayed,
+                                      0,
+                                    )}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400">K/D/A</span>
+                                  <p>
+                                    {selectedAuctionPlayerStats.reduce(
+                                      (t, s) => t + s.kills,
+                                      0,
+                                    )}{" "}
+                                    /{" "}
+                                    {selectedAuctionPlayerStats.reduce(
+                                      (t, s) => t + s.deaths,
+                                      0,
+                                    )}{" "}
+                                    /{" "}
+                                    {selectedAuctionPlayerStats.reduce(
+                                      (t, s) => t + s.assists,
+                                      0,
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
+                              {(() => {
+                                const champions = Array.from(
+                                  new Set(
+                                    selectedAuctionPlayerStats.flatMap((s) =>
+                                      s.champion.split(", ").filter(Boolean),
+                                    ),
+                                  ),
+                                );
+                                return (
+                                  <div>
+                                    <span className="text-slate-400 text-sm">
+                                      Champion giocati ({champions.length})
+                                    </span>
+                                    <p className="mt-1 max-h-24 overflow-y-auto whitespace-normal wrap-break-word text-sm leading-relaxed">
+                                      {champions.length > 0
+                                        ? champions.join(", ")
+                                        : "N/D"}
+                                    </p>
+                                  </div>
+                                );
+                              })()}
+                              <div className="max-h-40 overflow-y-auto rounded-md border border-slate-700">
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead>Torneo</TableHead>
+                                      <TableHead>Team</TableHead>
+                                      <TableHead>Partite</TableHead>
+                                      <TableHead>KDA</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {selectedAuctionPlayerStats.map(
+                                      (stat, idx) => (
+                                        <TableRow key={idx}>
+                                          <TableCell className="font-medium">
+                                            {stat.tournament}
+                                          </TableCell>
+                                          <TableCell>{stat.team}</TableCell>
+                                          <TableCell>
+                                            {stat.gamesPlayed}
+                                          </TableCell>
+                                          <TableCell>{stat.kda}</TableCell>
+                                        </TableRow>
+                                      ),
+                                    )}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-500">
+                              Nessuna statistica disponibile
+                            </p>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -428,7 +645,14 @@ export default function AuctionsPage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="playerRole">Ruolo</Label>
-                    {availableRoles.length > 0 ? (
+                    {currentFanta?.sportType === "lol" ? (
+                      <Input
+                        id="playerRole"
+                        value={newAuction.playerRole}
+                        disabled
+                        placeholder="Seleziona un player Leaguepedia sopra"
+                      />
+                    ) : availableRoles.length > 0 ? (
                       <Select
                         value={newAuction.playerRole}
                         onValueChange={(value) =>
@@ -463,18 +687,21 @@ export default function AuctionsPage() {
                       />
                     )}
                     <p className="text-sm text-slate-500">
-                      {availableRoles.length > 0
-                        ? `Ruoli disponibili per ${currentFanta?.sportType}`
-                        : "Inserisci un ruolo personalizzato"}
+                      {currentFanta?.sportType === "lol"
+                        ? "Popolato automaticamente da Leaguepedia"
+                        : availableRoles.length > 0
+                          ? `Ruoli disponibili per ${currentFanta?.sportType}`
+                          : "Inserisci un ruolo personalizzato"}
                     </p>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="playerTeam">Squadra/Team (opzionale)</Label>
+                  <Label htmlFor="playerTeam">Squadra/Team</Label>
                   <Input
                     id="playerTeam"
                     value={newAuction.playerTeam}
+                    disabled={currentFanta?.sportType === "lol"}
                     onChange={(e) =>
                       setNewAuction({
                         ...newAuction,

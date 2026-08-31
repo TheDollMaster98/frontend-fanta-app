@@ -381,7 +381,7 @@ export default function ImportLoLPlayersPage() {
         open={Boolean(selectedPlayer)}
         onOpenChange={(open) => !open && setSelectedPlayer(null)}
       >
-        <DialogContent className="w-[calc(100%-2rem)] max-w-400 max-h-[92vh] overflow-y-auto bg-slate-900 border-slate-700">
+        <DialogContent className="w-[calc(100%-2rem)] max-w-400 sm:max-w-400 max-h-[92vh] overflow-y-auto bg-slate-900 border-slate-700">
           {selectedPlayer && (
             <>
               <DialogHeader>

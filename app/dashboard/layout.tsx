@@ -71,11 +71,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   // Mostra "Gestione" se l'utente è il creatore del fanta corrente
-  // oppure un admin universale (role globale "admin")
+  // oppure un developer (accesso universale)
   if (
     currentFanta &&
     user &&
-    (currentFanta.adminId === user.id || user.role === "admin")
+    (currentFanta.adminId === user.id || user.isDeveloper)
   ) {
     navigation.splice(1, 0, {
       name: "Gestione",

@@ -22,10 +22,16 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { useFanta } from "@/contexts/FantaContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
 
 export default function SettingsPage() {
   const { fantas, currentFanta, setCurrentFanta } = useFanta();
+  const { user, setIsDeveloper } = useAuth();
+  // Una volta visto come developer in questa sessione, il controllo resta
+  // visibile anche se lo disattivi: così puoi riattivarlo senza dover
+  // passare da Firestore Console. Un reload rivaluta lo stato vero.
+  const [canToggleDeveloper] = useState(() => !!user?.isDeveloper);
 
   const [profile, setProfile] = useState({
     name: "Mario Rossi",
@@ -126,7 +132,35 @@ export default function SettingsPage() {
                   Crea una nuova lega per un diverso sport o competizione
                 </p>
                 <CreateFantaDialog />
-              </div>{" "}
+              </div>
+
+              {canToggleDeveloper && (
+                <>
+                  <Separator className="my-6" />
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold">
+                      Modalità Developer
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                      Accesso universale a tutte le leghe, senza bisogno di
+                      farne parte o di essere admin. Puoi attivarla e
+                      disattivarla liberamente
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="isDeveloper"
+                        className="w-4 h-4"
+                        checked={!!user?.isDeveloper}
+                        onChange={(e) => setIsDeveloper(e.target.checked)}
+                      />
+                      <Label htmlFor="isDeveloper" className="cursor-pointer">
+                        Modalità developer attiva
+                      </Label>
+                    </div>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -202,17 +236,21 @@ export default function SettingsPage() {
                   <CreateFantaDialog />
                 </div>
 
-                <div className="border rounded-lg p-4 space-y-2">
-                  <h4 className="font-medium">Leghe Disponibili</h4>
+                <div className="border border-slate-700 rounded-lg p-4 space-y-2">
+                  <h4 className="font-medium text-slate-100">
+                    Leghe Disponibili
+                  </h4>
                   <div className="space-y-2">
                     {fantas.map((fanta) => (
                       <div
                         key={fanta.id}
-                        className="flex items-center justify-between p-3 border rounded hover:bg-slate-50"
+                        className="flex items-center justify-between p-3 border border-slate-700 rounded hover:bg-slate-800 transition-colors"
                       >
                         <div>
-                          <p className="font-medium">{fanta.name}</p>
-                          <p className="text-sm text-slate-500">
+                          <p className="font-medium text-slate-100">
+                            {fanta.name}
+                          </p>
+                          <p className="text-sm text-slate-400">
                             {fanta.sportType} • {fanta.memberIds.length} membri
                           </p>
                         </div>

@@ -18,13 +18,14 @@ import {
   onSnapshot,
   query,
   where,
-  documentId,
   increment,
+  arrayUnion,
+  runTransaction,
   Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Fanta, Player } from "@/types";
+import type { Fanta, Player, JoinRequest } from "@/types";
 
 export interface TeamPlayer extends Player {
   userId: string; // ID dell'utente proprietario
@@ -44,6 +45,13 @@ interface FantaContextType {
   removePlayerFromTeam: (playerId: string, userId: string) => void;
   updateUserBudget: (userId: string, amount: number) => void;
   getUserBudget: (userId: string) => number;
+  // Scoperta leghe e richieste di ingresso
+  discoverableFantas: Fanta[];
+  myJoinRequests: JoinRequest[];
+  pendingJoinRequests: JoinRequest[];
+  sendJoinRequest: (fanta: Fanta) => void;
+  approveJoinRequest: (request: JoinRequest) => void;
+  rejectJoinRequest: (requestId: string) => void;
 }
 
 const FantaContext = createContext<FantaContextType | undefined>(undefined);
@@ -53,9 +61,41 @@ function toDate(value: Timestamp | Date | undefined): Date {
   return value instanceof Timestamp ? value.toDate() : value;
 }
 
+function mapFantaDoc(id: string, data: Record<string, unknown>): Fanta {
+  return {
+    id,
+    name: data.name,
+    description: data.description,
+    sportType: data.sportType,
+    adminId: data.adminId,
+    viceAdminIds: data.viceAdminIds || [],
+    settings: data.settings,
+    memberIds: data.memberIds || [],
+    createdAt: toDate(data.createdAt as Timestamp | Date | undefined),
+    updatedAt: toDate(data.updatedAt as Timestamp | Date | undefined),
+  } as Fanta;
+}
+
+function mapJoinRequestDoc(
+  id: string,
+  data: Record<string, unknown>,
+): JoinRequest {
+  return {
+    id,
+    fantaId: data.fantaId,
+    fantaName: data.fantaName,
+    userId: data.userId,
+    userName: data.userName,
+    userEmail: data.userEmail,
+    status: data.status,
+    createdAt: toDate(data.createdAt as Timestamp | Date | undefined),
+  } as JoinRequest;
+}
+
 export function FantaProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [rawFantas, setRawFantas] = useState<Fanta[]>([]);
+  const [allFantas, setAllFantas] = useState<Fanta[]>([]);
   const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null);
   const [currentFantaId, setCurrentFantaId] = useState<string | null>(() =>
     typeof window !== "undefined"
@@ -64,6 +104,12 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   );
   const [players, setPlayers] = useState<TeamPlayer[]>([]);
   const [userBudgets, setUserBudgets] = useState<Record<string, number>>({});
+  const [rawMyJoinRequests, setRawMyJoinRequests] = useState<JoinRequest[]>(
+    [],
+  );
+  const [pendingJoinRequests, setPendingJoinRequests] = useState<
+    JoinRequest[]
+  >([]);
 
   // Ascolta in tempo reale i fanta di cui l'utente è membro
   useEffect(() => {
@@ -75,31 +121,65 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     );
 
     const unsubscribe = onSnapshot(fantasQuery, (snapshot) => {
-      const loaded = snapshot.docs.map((docSnap) => {
-        const data = docSnap.data();
-        return {
-          id: docSnap.id,
-          name: data.name,
-          description: data.description,
-          sportType: data.sportType,
-          adminId: data.adminId,
-          viceAdminIds: data.viceAdminIds || [],
-          settings: data.settings,
-          memberIds: data.memberIds || [],
-          createdAt: toDate(data.createdAt),
-          updatedAt: toDate(data.updatedAt),
-        } as Fanta;
-      });
-      setRawFantas(loaded);
+      setRawFantas(
+        snapshot.docs.map((docSnap) => mapFantaDoc(docSnap.id, docSnap.data())),
+      );
       setLoadedForUserId(user.id);
     });
 
     return unsubscribe;
   }, [user]);
 
-  // I fanta caricati restano validi solo finché sono dell'utente loggato attuale
-  const fantas = useMemo(() => (user ? rawFantas : []), [user, rawFantas]);
-  const isLoading = !!user && loadedForUserId !== user.id;
+  // Ascolta in tempo reale TUTTI i fanta esistenti, per la "scoperta" di leghe altrui
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubscribe = onSnapshot(collection(db, "fantas"), (snapshot) => {
+      setAllFantas(
+        snapshot.docs.map((docSnap) => mapFantaDoc(docSnap.id, docSnap.data())),
+      );
+    });
+
+    return unsubscribe;
+  }, [user]);
+
+  // Ascolta le richieste di ingresso inviate dall'utente corrente
+  useEffect(() => {
+    if (!user) return;
+
+    const requestsQuery = query(
+      collection(db, "joinRequests"),
+      where("userId", "==", user.id),
+    );
+
+    const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
+      setRawMyJoinRequests(
+        snapshot.docs.map((docSnap) =>
+          mapJoinRequestDoc(docSnap.id, docSnap.data()),
+        ),
+      );
+    });
+
+    return unsubscribe;
+  }, [user]);
+
+  // I fanta caricati restano validi solo finché sono dell'utente loggato attuale.
+  // Un "developer" ha accesso universale: vede/gestisce tutte le leghe, zero blocchi.
+  const isDeveloper = !!user?.isDeveloper;
+  const fantas = useMemo(() => {
+    if (!user) return [];
+    return isDeveloper ? allFantas : rawFantas;
+  }, [user, isDeveloper, allFantas, rawFantas]);
+  const myJoinRequests = useMemo(
+    () => (user ? rawMyJoinRequests : []),
+    [user, rawMyJoinRequests],
+  );
+  const isLoading = !!user && !isDeveloper && loadedForUserId !== user.id;
+
+  const discoverableFantas = useMemo(() => {
+    if (!user || isDeveloper) return [];
+    return allFantas.filter((fanta) => !fanta.memberIds.includes(user.id));
+  }, [allFantas, user, isDeveloper]);
 
   const currentFanta = useMemo(() => {
     if (fantas.length === 0) return null;
@@ -150,21 +230,45 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, [currentFanta]);
 
-  // Ascolta in tempo reale il budget dei membri del fanta attualmente selezionato
+  // Ascolta in tempo reale i budget del fanta attualmente selezionato
+  // (il budget è per-lega, non per account: ogni utente può avere budget
+  // diversi in leghe diverse, tutti a partire dallo stesso generalBudget)
   useEffect(() => {
-    if (!currentFanta || currentFanta.memberIds.length === 0) return;
+    if (!currentFanta) return;
 
-    const usersQuery = query(
-      collection(db, "users"),
-      where(documentId(), "in", currentFanta.memberIds.slice(0, 30)),
+    const budgetsQuery = query(
+      collection(db, "teamBudgets"),
+      where("fantaId", "==", currentFanta.id),
     );
 
-    const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
+    const unsubscribe = onSnapshot(budgetsQuery, (snapshot) => {
       const budgets: Record<string, number> = {};
       snapshot.docs.forEach((docSnap) => {
-        budgets[docSnap.id] = docSnap.data().budget ?? 0;
+        const data = docSnap.data();
+        budgets[data.userId] = data.budget;
       });
       setUserBudgets(budgets);
+    });
+
+    return unsubscribe;
+  }, [currentFanta]);
+
+  // Ascolta le richieste di ingresso pendenti per il fanta attualmente selezionato
+  useEffect(() => {
+    if (!currentFanta) return;
+
+    const requestsQuery = query(
+      collection(db, "joinRequests"),
+      where("fantaId", "==", currentFanta.id),
+      where("status", "==", "pending"),
+    );
+
+    const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
+      setPendingJoinRequests(
+        snapshot.docs.map((docSnap) =>
+          mapJoinRequestDoc(docSnap.id, docSnap.data()),
+        ),
+      );
     });
 
     return unsubscribe;
@@ -194,11 +298,52 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   };
 
   const updateUserBudget = (userId: string, amount: number): void => {
-    updateDoc(doc(db, "users", userId), { budget: increment(amount) });
+    if (!currentFanta) return;
+    const budgetId = `${currentFanta.id}_${userId}`;
+    const ref = doc(db, "teamBudgets", budgetId);
+    const generalBudget = currentFanta.settings.generalBudget;
+
+    runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (snap.exists()) {
+        tx.update(ref, { budget: increment(amount) });
+      } else {
+        tx.set(ref, {
+          fantaId: currentFanta.id,
+          userId,
+          budget: generalBudget + amount,
+        });
+      }
+    });
   };
 
   const getUserBudget = (userId: string): number => {
-    return userBudgets[userId] ?? 0;
+    if (userId in userBudgets) return userBudgets[userId];
+    return currentFanta?.settings.generalBudget ?? 0;
+  };
+
+  const sendJoinRequest = (fanta: Fanta): void => {
+    if (!user) return;
+    addDoc(collection(db, "joinRequests"), {
+      fantaId: fanta.id,
+      fantaName: fanta.name,
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      status: "pending",
+      createdAt: new Date(),
+    });
+  };
+
+  const approveJoinRequest = (request: JoinRequest): void => {
+    updateDoc(doc(db, "fantas", request.fantaId), {
+      memberIds: arrayUnion(request.userId),
+    });
+    updateDoc(doc(db, "joinRequests", request.id), { status: "approved" });
+  };
+
+  const rejectJoinRequest = (requestId: string): void => {
+    updateDoc(doc(db, "joinRequests", requestId), { status: "rejected" });
   };
 
   return (
@@ -215,6 +360,12 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         removePlayerFromTeam,
         updateUserBudget,
         getUserBudget,
+        discoverableFantas,
+        myJoinRequests,
+        pendingJoinRequests,
+        sendJoinRequest,
+        approveJoinRequest,
+        rejectJoinRequest,
       }}
     >
       {children}

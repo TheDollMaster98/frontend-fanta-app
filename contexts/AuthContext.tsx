@@ -19,7 +19,14 @@ import {
   type User as FirebaseUser,
   type AuthError,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+  Timestamp,
+} from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import type { User } from "@/types";
 
@@ -29,6 +36,7 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  setIsDeveloper: (value: boolean) => Promise<void>;
   isLoading: boolean;
 }
 
@@ -70,7 +78,7 @@ async function loadOrCreateUserProfile(
       id: firebaseUser.uid,
       email: data.email,
       name: data.name,
-      role: data.role,
+      isDeveloper: data.isDeveloper ?? false,
       fantaId: data.fantaId,
       teamName: data.teamName,
       budget: data.budget,
@@ -82,7 +90,7 @@ async function loadOrCreateUserProfile(
   const profile = {
     email: firebaseUser.email || "",
     name: nameOverride || firebaseUser.displayName || firebaseUser.email || "Utente",
-    role: "user" as const,
+    isDeveloper: false,
     budget: DEFAULT_BUDGET,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -93,7 +101,7 @@ async function loadOrCreateUserProfile(
     id: firebaseUser.uid,
     email: profile.email,
     name: profile.name,
-    role: profile.role,
+    isDeveloper: profile.isDeveloper,
     budget: profile.budget,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -156,9 +164,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push("/");
   };
 
+  // La UI che espone questo toggle (Impostazioni) decide chi può vederlo;
+  // qui non serve un guard aggiuntivo, altrimenti disattivarlo blocca anche
+  // il poterlo riattivare nella stessa sessione.
+  const setIsDeveloper = async (value: boolean) => {
+    if (!auth.currentUser) return;
+    await updateDoc(doc(db, "users", auth.currentUser.uid), {
+      isDeveloper: value,
+      updatedAt: serverTimestamp(),
+    });
+    setUser((prev) => (prev ? { ...prev, isDeveloper: value } : prev));
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, login, loginWithGoogle, register, logout, isLoading }}
+      value={{
+        user,
+        login,
+        loginWithGoogle,
+        register,
+        logout,
+        setIsDeveloper,
+        isLoading,
+      }}
     >
       {children}
     </AuthContext.Provider>
