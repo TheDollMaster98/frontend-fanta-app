@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
+import type { Fanta } from "@/types";
 import {
   Copy,
   UserPlus,
@@ -28,19 +29,40 @@ import {
 
 export default function AdminPage() {
   const router = useRouter();
-  const { currentFanta, updateFanta } = useFanta();
-  const { user } = useAuth();
+  const { currentFanta, updateFanta, isLoading: fantaLoading } = useFanta();
+  const { user, isLoading: authLoading } = useAuth();
 
-  // Redirect se non è il creatore
-  if (!currentFanta || !user || currentFanta.adminId !== user.id) {
-    router.push("/dashboard");
+  const loading = authLoading || fantaLoading;
+  const isAuthorized =
+    !!currentFanta &&
+    !!user &&
+    (currentFanta.adminId === user.id || user.role === "admin");
+
+  // Redirect se non è il creatore né un admin universale (solo dopo che i dati sono stati caricati)
+  useEffect(() => {
+    if (!loading && !isAuthorized) {
+      router.push("/dashboard");
+    }
+  }, [loading, isAuthorized, router]);
+
+  if (loading || !currentFanta || !user || !isAuthorized) {
     return null;
   }
 
+  return <AdminPageContent currentFanta={currentFanta} updateFanta={updateFanta} />;
+}
+
+function AdminPageContent({
+  currentFanta,
+  updateFanta,
+}: {
+  currentFanta: Fanta;
+  updateFanta: (fanta: Fanta) => void;
+}) {
   const [settings, setSettings] = useState(currentFanta.settings);
-  const [inviteCode] = useState(currentFanta.id.slice(0, 8).toUpperCase());
   const [copiedCode, setCopiedCode] = useState(false);
   const [newViceEmail, setNewViceEmail] = useState("");
+  const inviteCode = currentFanta.id.slice(0, 8).toUpperCase();
 
   // Mock users - TODO: caricare da Firebase
   const mockUsers = [

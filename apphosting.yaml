@@ -8,14 +8,53 @@ runConfig:
   # memoryMiB: 512
 
 # Environment variables and secrets.
-# env:
-  # Configure environment variables.
-  # See https://firebase.google.com/docs/app-hosting/configure#user-defined-environment
-  # - variable: MESSAGE
-  #   value: Hello world!
-  #   availability:
-  #     - BUILD
-  #     - RUNTIME
+env:
+  # Leaguepedia bot credentials (usate solo lato server in app/api/leaguepedia).
+  - variable: LEAGUEPEDIA_USERNAME
+    value: "PureSnake065@fanta-fam"
+    availability:
+      - RUNTIME
+  - variable: LEAGUEPEDIA_BOT_PASSWORD
+    secret: LEAGUEPEDIA_BOT_PASSWORD
+    availability:
+      - RUNTIME
+
+  # Config Firebase client-side (pubblica, inlineata nel bundle al build).
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyA1PBLdsSE8e_hSWhUkFPsgrO4liwzBKgQ"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "fam-fanta-app.firebaseapp.com"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "fam-fanta-app"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "fam-fanta-app.firebasestorage.app"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "417191154554"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:417191154554:web:663df1768ff195c9433cc3"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    value: "G-CFDD5R08VY"
+    availability:
+      - BUILD
+      - RUNTIME
 
   # Grant access to secrets in Cloud Secret Manager.
   # You can create secrets with the CLI command `firebase apphosting:secrets:set <secretName>`.

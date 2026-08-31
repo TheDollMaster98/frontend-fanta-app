@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function RegisterPage() {
@@ -21,7 +22,8 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { register } = useAuth();
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const { register, loginWithGoogle } = useAuth();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,6 +44,21 @@ export default function RegisterPage() {
       );
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleRegister = async () => {
+    setError("");
+    setIsGoogleLoading(true);
+
+    try {
+      await loginWithGoogle();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Errore durante la registrazione",
+      );
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -113,6 +130,20 @@ export default function RegisterPage() {
               {isLoading ? "Registrazione in corso..." : "Registrati"}
             </Button>
           </form>
+          <div className="my-4 flex items-center gap-3">
+            <Separator className="flex-1 bg-slate-800" />
+            <span className="text-xs text-slate-500">oppure</span>
+            <Separator className="flex-1 bg-slate-800" />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleGoogleRegister}
+            disabled={isGoogleLoading}
+          >
+            {isGoogleLoading ? "Registrazione in corso..." : "Registrati con Google"}
+          </Button>
           <div className="mt-4 text-center text-sm text-slate-400">
             Hai già un account?{" "}
             <Link

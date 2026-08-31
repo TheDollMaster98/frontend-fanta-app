@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function LoginPage() {
@@ -19,7 +20,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const { login, loginWithGoogle } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,6 +34,19 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : "Errore durante il login");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setError("");
+    setIsGoogleLoading(true);
+
+    try {
+      await loginWithGoogle();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Errore durante il login");
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -53,14 +68,6 @@ export default function LoginPage() {
                 {error}
               </div>
             )}
-            <div className="rounded-md border border-slate-700 bg-slate-950/60 p-3 text-sm text-slate-300">
-              <p className="font-medium text-slate-100">Account demo</p>
-              <p className="mt-1">Admin: admin@test.it</p>
-              <p>User: test@test.it</p>
-              <p className="mt-1 text-xs text-slate-400">
-                Qualsiasi password funziona.
-              </p>
-            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -88,6 +95,20 @@ export default function LoginPage() {
               {isLoading ? "Accesso in corso..." : "Accedi"}
             </Button>
           </form>
+          <div className="my-4 flex items-center gap-3">
+            <Separator className="flex-1 bg-slate-800" />
+            <span className="text-xs text-slate-500">oppure</span>
+            <Separator className="flex-1 bg-slate-800" />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleGoogleLogin}
+            disabled={isGoogleLoading}
+          >
+            {isGoogleLoading ? "Accesso in corso..." : "Accedi con Google"}
+          </Button>
           <div className="mt-4 text-center text-sm text-slate-400">
             Non hai un account?{" "}
             <Link

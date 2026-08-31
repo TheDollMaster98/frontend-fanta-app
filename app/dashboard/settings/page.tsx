@@ -251,7 +251,7 @@ export default function SettingsPage() {
                 <div>
                   <p className="font-medium">Aste Vinte</p>
                   <p className="text-sm text-slate-600">
-                    Notifica quando vinci un'asta
+                    Notifica quando vinci un&apos;asta
                   </p>
                 </div>
                 <input type="checkbox" className="w-4 h-4" defaultChecked />
@@ -263,7 +263,7 @@ export default function SettingsPage() {
                 <div>
                   <p className="font-medium">Modifiche Impostazioni</p>
                   <p className="text-sm text-slate-600">
-                    Notifica quando l'admin modifica le impostazioni
+                    Notifica quando l&apos;admin modifica le impostazioni
                   </p>
                 </div>
                 <input type="checkbox" className="w-4 h-4" defaultChecked />

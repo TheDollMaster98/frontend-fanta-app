@@ -60,9 +60,26 @@ export default function AuctionsPage() {
   const [countdown, setCountdown] = useState<number>(0);
   const [customBid, setCustomBid] = useState("");
   const [auctionPlayers, setAuctionPlayers] = useState<LeaguepediaPlayer[]>([]);
-  const [isLoadingAuctionPlayers, setIsLoadingAuctionPlayers] = useState(false);
+  const [auctionPlayersLeague, setAuctionPlayersLeague] = useState<string | null>(
+    null,
+  );
 
-  // Dati per creare nuova asta (solo admin/vice-admin)
+  const isAdmin = user?.role === "admin" || user?.role === "vice-admin";
+
+  // Carica dati precompilati da localStorage (da pagina import), una sola volta al mount
+  const [prefilledAuction] = useState(() => {
+    if (typeof window === "undefined") return null;
+    const prefilledData = localStorage.getItem("prefilledAuctionData");
+    if (!prefilledData) return null;
+    try {
+      localStorage.removeItem("prefilledAuctionData");
+      return JSON.parse(prefilledData);
+    } catch (error) {
+      console.error("Errore nel parsing dati precompilati:", error);
+      return null;
+    }
+  });
+
   const [newAuction, setNewAuction] = useState({
     auctionFormat: "free",
     league: "LCK",
@@ -72,28 +89,19 @@ export default function AuctionsPage() {
     description: "",
     basePrice: 1,
     countdownSeconds: currentFanta?.settings.defaultCountdown || 3,
+    ...prefilledAuction,
   });
-
-  const isAdmin = user?.role === "admin" || user?.role === "vice-admin";
-
-  // Carica dati precompilati da localStorage (da pagina import)
-  useEffect(() => {
-    const prefilledData = localStorage.getItem("prefilledAuctionData");
-    if (prefilledData) {
-      try {
-        const data = JSON.parse(prefilledData);
-        setNewAuction((prev) => ({ ...prev, ...data }));
-        localStorage.removeItem("prefilledAuctionData");
-      } catch (error) {
-        console.error("Errore nel parsing dati precompilati:", error);
-      }
-    }
-  }, []);
 
   // Ruoli disponibili in base al tipo di sport della lega corrente
   const availableRoles = currentFanta
     ? SPORT_TEMPLATES[currentFanta.sportType]?.roles || []
     : [];
+
+  const selectedAuctionLeague =
+    newAuction.auctionFormat === "free" ? "TUTTI I PRO PLAYER" : newAuction.league;
+  const isLoadingAuctionPlayers =
+    currentFanta?.sportType === "lol" &&
+    auctionPlayersLeague !== selectedAuctionLeague;
 
   useEffect(() => {
     if (currentFanta?.sportType !== "lol") {
@@ -101,45 +109,17 @@ export default function AuctionsPage() {
     }
 
     let cancelled = false;
-    setIsLoadingAuctionPlayers(true);
-    getPlayersByLeague(
-      newAuction.auctionFormat === "free"
-        ? "TUTTI I PRO PLAYER"
-        : newAuction.league,
-    )
-      .then((players) => {
-        if (!cancelled) setAuctionPlayers(players);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingAuctionPlayers(false);
-      });
+    getPlayersByLeague(selectedAuctionLeague).then((players) => {
+      if (!cancelled) {
+        setAuctionPlayers(players);
+        setAuctionPlayersLeague(selectedAuctionLeague);
+      }
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [currentFanta?.sportType, newAuction.auctionFormat, newAuction.league]);
-
-  // Simulazione countdown
-  useEffect(() => {
-    if (activeAuction?.status === "active" && countdown > 0) {
-      const timer = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            // Asta conclusa - assegna al vincitore
-            if (activeAuction.highestBidderId) {
-              assignPlayerToWinner(activeAuction);
-            }
-            setActiveAuction((auction) =>
-              auction ? { ...auction, status: "closed" } : null,
-            );
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [activeAuction, countdown]);
+  }, [currentFanta?.sportType, selectedAuctionLeague]);
 
   const assignPlayerToWinner = (auction: Auction) => {
     if (!auction.highestBidderId || !currentFanta) return;
@@ -164,6 +144,28 @@ export default function AuctionsPage() {
       price: auction.currentPrice,
     });
   };
+
+  // Simulazione countdown
+  useEffect(() => {
+    if (activeAuction?.status === "active" && countdown > 0) {
+      const timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            // Asta conclusa - assegna al vincitore
+            if (activeAuction.highestBidderId) {
+              assignPlayerToWinner(activeAuction);
+            }
+            setActiveAuction((auction) =>
+              auction ? { ...auction, status: "closed" } : null,
+            );
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [activeAuction, countdown]);
 
   const createAuction = () => {
     if (!currentFanta || !user) return;
@@ -648,9 +650,9 @@ export default function AuctionsPage() {
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Annullare l'asta?</AlertDialogTitle>
+                        <AlertDialogTitle>Annullare l&apos;asta?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          L'asta verrà annullata senza assegnare il giocatore.
+                          L&apos;asta verrà annullata senza assegnare il giocatore.
                           Questa azione non può essere annullata.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
@@ -697,7 +699,7 @@ export default function AuctionsPage() {
               Asta Salvata
             </CardTitle>
             <CardDescription>
-              Hai un'asta salvata che puoi ripristinare
+              Hai un&apos;asta salvata che puoi ripristinare
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

@@ -156,6 +156,9 @@ export interface LeaguepediaPlayer {
   image?: string;
 }
 
+// Riga grezza restituita dalle Cargo query di Leaguepedia (campi dinamici, sempre stringhe).
+type CargoRecord = Record<string, string>;
+
 function normalizeRole(role?: string): string {
   if (!role) return "";
   return role.trim().toLowerCase();
@@ -179,7 +182,7 @@ function isLikelyProPlayer(record: Partial<LeaguepediaPlayer>): boolean {
   return true;
 }
 
-function mapLeaguepediaRecord(record: any): LeaguepediaPlayer | null {
+function mapLeaguepediaRecord(record: CargoRecord): LeaguepediaPlayer | null {
   const mapped: LeaguepediaPlayer = {
     player: record.Player || record.player || record.Name || "",
     name: record.Name || record.name || "",
@@ -228,7 +231,7 @@ async function cargoQuery(params: {
   limit?: number | "max";
   offset?: number;
   group_by?: string;
-}): Promise<any[]> {
+}): Promise<CargoRecord[]> {
   const queryParams = new URLSearchParams({
     action: "cargoquery",
     format: "json",
@@ -262,7 +265,7 @@ async function cargoQuery(params: {
 
     if (data?.cargoquery && Array.isArray(data.cargoquery)) {
       return data.cargoquery
-        .map((item: any) => item.title || item)
+        .map((item: { title?: CargoRecord } & Partial<CargoRecord>) => item.title || item)
         .filter(Boolean);
     }
 
@@ -318,7 +321,7 @@ export async function getPlayersByLeague(
   league: string = "TUTTI I PRO PLAYER",
 ): Promise<LeaguepediaPlayer[]> {
   const isAllPlayers = league === "TUTTI I PRO PLAYER";
-  const results: any[] = [];
+  const results: CargoRecord[] = [];
   const pageSize = 500;
   let offset = 0;
 
@@ -367,7 +370,7 @@ export async function getPlayerStats(
     whereClause += ` AND T.Name="${tournamentName}"`;
   }
 
-  const results: any[] = [];
+  const results: CargoRecord[] = [];
   const pageSize = 500;
   let offset = 0;
 
@@ -390,7 +393,17 @@ export async function getPlayerStats(
   }
 
   // Aggrega statistiche
-  const statsMap = new Map<string, any>();
+  interface StatsAccumulator {
+    player: string;
+    tournament: string;
+    team: string;
+    kills: number;
+    deaths: number;
+    assists: number;
+    gamesPlayed: number;
+    champions: Set<string>;
+  }
+  const statsMap = new Map<string, StatsAccumulator>();
 
   results.forEach((r) => {
     const key = `${r.Link}-${r["T.Name"]}`;
@@ -407,7 +420,7 @@ export async function getPlayerStats(
       });
     }
 
-    const stat = statsMap.get(key);
+    const stat = statsMap.get(key)!;
     stat.kills += parseInt(r.Kills || "0");
     stat.deaths += parseInt(r.Deaths || "0");
     stat.assists += parseInt(r.Assists || "0");
@@ -491,7 +504,9 @@ export async function getPlayerImage(
 
       const pages = data.query?.pages;
       if (pages) {
-        const page = Object.values(pages)[0] as any;
+        const page = Object.values(pages)[0] as {
+          imageinfo?: { url?: string }[];
+        };
         return page.imageinfo?.[0]?.url || null;
       }
     }

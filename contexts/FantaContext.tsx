@@ -5,8 +5,25 @@ import {
   useContext,
   useState,
   useEffect,
+  useMemo,
   ReactNode,
 } from "react";
+import {
+  collection,
+  doc,
+  addDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  where,
+  documentId,
+  increment,
+  Timestamp,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Fanta, Player } from "@/types";
 
 export interface TeamPlayer extends Player {
@@ -31,136 +48,157 @@ interface FantaContextType {
 
 const FantaContext = createContext<FantaContextType | undefined>(undefined);
 
-// Mock fantas database
-const MOCK_FANTAS: Fanta[] = [
-  {
-    id: "fanta-1",
-    name: "Lega Serie A 2026",
-    sportType: "calcio",
-    description: "La lega principale per il campionato italiano",
-    adminId: "admin-1",
-    viceAdminIds: [],
-    settings: {
-      generalBudget: 500,
-      minBid: 1,
-      maxBid: 1000,
-      defaultCountdown: 3,
-      allowCustomBids: true,
-    },
-    memberIds: ["admin-1", "user-1"],
-    createdAt: new Date("2026-01-01"),
-    updatedAt: new Date("2026-01-01"),
-  },
-  {
-    id: "fanta-2",
-    name: "League of Legends Pro",
-    sportType: "lol",
-    description: "Fantasy league per LoL Esports",
-    adminId: "admin-1",
-    viceAdminIds: [],
-    settings: {
-      generalBudget: 1000,
-      minBid: 5,
-      maxBid: 500,
-      defaultCountdown: 5,
-      allowCustomBids: true,
-    },
-    memberIds: ["admin-1", "user-1"],
-    createdAt: new Date("2026-01-05"),
-    updatedAt: new Date("2026-01-05"),
-  },
-];
-
-// Mock players database (in memoria)
-const MOCK_PLAYERS: TeamPlayer[] = [];
-
-// Mock users budget (in memoria)
-const MOCK_USER_BUDGETS: Record<string, number> = {
-  "admin-1": 500,
-  "user-1": 500,
-};
+function toDate(value: Timestamp | Date | undefined): Date {
+  if (!value) return new Date();
+  return value instanceof Timestamp ? value.toDate() : value;
+}
 
 export function FantaProvider({ children }: { children: ReactNode }) {
-  const [currentFanta, setCurrentFantaState] = useState<Fanta | null>(null);
-  const [fantas, setFantas] = useState<Fanta[]>(MOCK_FANTAS);
-  const [players, setPlayers] = useState<TeamPlayer[]>(MOCK_PLAYERS);
-  const [userBudgets, setUserBudgets] =
-    useState<Record<string, number>>(MOCK_USER_BUDGETS);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user } = useAuth();
+  const [rawFantas, setRawFantas] = useState<Fanta[]>([]);
+  const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null);
+  const [currentFantaId, setCurrentFantaId] = useState<string | null>(() =>
+    typeof window !== "undefined"
+      ? localStorage.getItem("fanta-current-id")
+      : null,
+  );
+  const [players, setPlayers] = useState<TeamPlayer[]>([]);
+  const [userBudgets, setUserBudgets] = useState<Record<string, number>>({});
 
-  // Load current fanta from localStorage on mount
+  // Ascolta in tempo reale i fanta di cui l'utente è membro
   useEffect(() => {
-    const savedFantaId = localStorage.getItem("fanta-current-id");
-    if (savedFantaId) {
-      const fanta = fantas.find((f) => f.id === savedFantaId);
-      if (fanta) {
-        setCurrentFantaState(fanta);
-      } else {
-        setCurrentFantaState(fantas[0]);
-      }
-    } else {
-      setCurrentFantaState(fantas[0]);
-    }
-    setIsLoading(false);
-  }, []);
+    if (!user) return;
+
+    const fantasQuery = query(
+      collection(db, "fantas"),
+      where("memberIds", "array-contains", user.id),
+    );
+
+    const unsubscribe = onSnapshot(fantasQuery, (snapshot) => {
+      const loaded = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          name: data.name,
+          description: data.description,
+          sportType: data.sportType,
+          adminId: data.adminId,
+          viceAdminIds: data.viceAdminIds || [],
+          settings: data.settings,
+          memberIds: data.memberIds || [],
+          createdAt: toDate(data.createdAt),
+          updatedAt: toDate(data.updatedAt),
+        } as Fanta;
+      });
+      setRawFantas(loaded);
+      setLoadedForUserId(user.id);
+    });
+
+    return unsubscribe;
+  }, [user]);
+
+  // I fanta caricati restano validi solo finché sono dell'utente loggato attuale
+  const fantas = useMemo(() => (user ? rawFantas : []), [user, rawFantas]);
+  const isLoading = !!user && loadedForUserId !== user.id;
+
+  const currentFanta = useMemo(() => {
+    if (fantas.length === 0) return null;
+    return fantas.find((f) => f.id === currentFantaId) || fantas[0];
+  }, [fantas, currentFantaId]);
 
   const setCurrentFanta = (fanta: Fanta) => {
-    setCurrentFantaState(fanta);
+    setCurrentFantaId(fanta.id);
     localStorage.setItem("fanta-current-id", fanta.id);
   };
 
   const addFanta = (fanta: Fanta) => {
-    const newFantas = [...fantas, fanta];
-    setFantas(newFantas);
+    setDoc(doc(db, "fantas", fanta.id), fanta);
     setCurrentFanta(fanta);
   };
 
   const updateFanta = (fanta: Fanta) => {
-    const newFantas = fantas.map((f) => (f.id === fanta.id ? fanta : f));
-    setFantas(newFantas);
-    if (currentFanta?.id === fanta.id) {
-      setCurrentFantaState(fanta);
-    }
+    setDoc(doc(db, "fantas", fanta.id), fanta);
   };
+
+  // Ascolta in tempo reale i giocatori del fanta attualmente selezionato
+  useEffect(() => {
+    if (!currentFanta) return;
+
+    const playersQuery = query(
+      collection(db, "players"),
+      where("fantaId", "==", currentFanta.id),
+    );
+
+    const unsubscribe = onSnapshot(playersQuery, (snapshot) => {
+      const loaded = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          name: data.name,
+          role: data.role,
+          team: data.team,
+          purchasePrice: data.purchasePrice,
+          customFields: data.customFields,
+          acquiredAt: toDate(data.acquiredAt),
+          userId: data.userId,
+          fantaId: data.fantaId,
+        } as TeamPlayer;
+      });
+      setPlayers(loaded);
+    });
+
+    return unsubscribe;
+  }, [currentFanta]);
+
+  // Ascolta in tempo reale il budget dei membri del fanta attualmente selezionato
+  useEffect(() => {
+    if (!currentFanta || currentFanta.memberIds.length === 0) return;
+
+    const usersQuery = query(
+      collection(db, "users"),
+      where(documentId(), "in", currentFanta.memberIds.slice(0, 30)),
+    );
+
+    const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
+      const budgets: Record<string, number> = {};
+      snapshot.docs.forEach((docSnap) => {
+        budgets[docSnap.id] = docSnap.data().budget ?? 0;
+      });
+      setUserBudgets(budgets);
+    });
+
+    return unsubscribe;
+  }, [currentFanta]);
 
   const getPlayersByUser = (userId: string, fantaId: string): TeamPlayer[] => {
     return players.filter((p) => p.userId === userId && p.fantaId === fantaId);
   };
 
   const addPlayerToTeam = (
-    player: Omit<TeamPlayer, "id" | "acquiredAt">
+    player: Omit<TeamPlayer, "id" | "acquiredAt">,
   ): void => {
-    const newPlayer: TeamPlayer = {
+    addDoc(collection(db, "players"), {
       ...player,
-      id: `player-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       acquiredAt: new Date(),
-    };
-    setPlayers([...players, newPlayer]);
-    // TODO: Salvare su Firebase/backend
+    });
   };
 
   const removePlayerFromTeam = (playerId: string, userId: string): void => {
     const player = players.find(
-      (p) => p.id === playerId && p.userId === userId
+      (p) => p.id === playerId && p.userId === userId,
     );
     if (player) {
-      setPlayers(players.filter((p) => p.id !== playerId));
-      // Restituisci il budget all'utente
+      deleteDoc(doc(db, "players", playerId));
       updateUserBudget(userId, player.purchasePrice);
-      // TODO: Salvare su Firebase/backend
     }
   };
 
   const updateUserBudget = (userId: string, amount: number): void => {
-    setUserBudgets((prev) => ({
-      ...prev,
-      [userId]: (prev[userId] || 0) + amount,
-    }));
-    // TODO: Salvare su Firebase/backend
+    updateDoc(doc(db, "users", userId), { budget: increment(amount) });
   };
 
   const getUserBudget = (userId: string): number => {
-    return userBudgets[userId] || 0;
+    return userBudgets[userId] ?? 0;
   };
 
   return (

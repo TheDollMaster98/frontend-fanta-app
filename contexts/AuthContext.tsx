@@ -8,113 +8,158 @@ import {
   ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import {
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  updateProfile,
+  type User as FirebaseUser,
+  type AuthError,
+} from "firebase/auth";
+import { doc, getDoc, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 import type { User } from "@/types";
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users database
-const MOCK_USERS: User[] = [
-  {
-    id: "admin-1",
-    email: "admin@test.it",
-    name: "Admin User",
-    role: "admin",
-    budget: 500,
-    teamName: "Admin Team",
-    fantaId: "fanta-1",
+const DEFAULT_BUDGET = 500;
+
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  "auth/invalid-credential": "Email o password non corretti",
+  "auth/user-not-found": "Email o password non corretti",
+  "auth/wrong-password": "Email o password non corretti",
+  "auth/email-already-in-use": "Email già registrata",
+  "auth/weak-password": "La password deve avere almeno 6 caratteri",
+  "auth/invalid-email": "Email non valida",
+  "auth/popup-closed-by-user": "Accesso con Google annullato",
+  "auth/network-request-failed": "Errore di rete, riprova",
+};
+
+function mapAuthError(error: unknown): string {
+  const code = (error as AuthError)?.code;
+  return (code && AUTH_ERROR_MESSAGES[code]) || "Si è verificato un errore, riprova";
+}
+
+function toDate(value: Timestamp | Date | undefined): Date {
+  if (!value) return new Date();
+  return value instanceof Timestamp ? value.toDate() : value;
+}
+
+async function loadOrCreateUserProfile(
+  firebaseUser: FirebaseUser,
+  nameOverride?: string,
+): Promise<User> {
+  const ref = doc(db, "users", firebaseUser.uid);
+  const snap = await getDoc(ref);
+
+  if (snap.exists()) {
+    const data = snap.data();
+    return {
+      id: firebaseUser.uid,
+      email: data.email,
+      name: data.name,
+      role: data.role,
+      fantaId: data.fantaId,
+      teamName: data.teamName,
+      budget: data.budget,
+      createdAt: toDate(data.createdAt),
+      updatedAt: toDate(data.updatedAt),
+    };
+  }
+
+  const profile = {
+    email: firebaseUser.email || "",
+    name: nameOverride || firebaseUser.displayName || firebaseUser.email || "Utente",
+    role: "user" as const,
+    budget: DEFAULT_BUDGET,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+  await setDoc(ref, profile);
+
+  return {
+    id: firebaseUser.uid,
+    email: profile.email,
+    name: profile.name,
+    role: profile.role,
+    budget: profile.budget,
     createdAt: new Date(),
     updatedAt: new Date(),
-  },
-  {
-    id: "user-1",
-    email: "test@test.it",
-    name: "Test User",
-    role: "user",
-    budget: 500,
-    teamName: "Test Team",
-    fantaId: "fanta-1",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-];
+  };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
-  // Check for saved user in localStorage on mount
   useEffect(() => {
-    const savedUser = localStorage.getItem("fanta-user");
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setIsLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const profile = await loadOrCreateUserProfile(firebaseUser);
+        setUser(profile);
+      } else {
+        setUser(null);
+      }
+      setIsLoading(false);
+    });
+
+    return unsubscribe;
   }, []);
 
   const login = async (email: string, password: string) => {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Mock authentication - in production use Firebase
-    const foundUser = MOCK_USERS.find((u) => u.email === email);
-
-    if (!foundUser) {
-      throw new Error("Email o password non corretti");
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+      throw new Error(mapAuthError(error));
     }
+    router.push("/dashboard");
+  };
 
-    // In a real app, verify password here
-    // For mock, we accept any password for registered emails
-
-    setUser(foundUser);
-    localStorage.setItem("fanta-user", JSON.stringify(foundUser));
+  const loginWithGoogle = async () => {
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (error) {
+      throw new Error(mapAuthError(error));
+    }
     router.push("/dashboard");
   };
 
   const register = async (name: string, email: string, password: string) => {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Check if user already exists
-    const existingUser = MOCK_USERS.find((u) => u.email === email);
-    if (existingUser) {
-      throw new Error("Email già registrata");
+    let firebaseUser: FirebaseUser;
+    try {
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      firebaseUser = credential.user;
+    } catch (error) {
+      throw new Error(mapAuthError(error));
     }
 
-    // Create new mock user
-    const newUser: User = {
-      id: `user-${Date.now()}`,
-      email,
-      name,
-      role: "user",
-      budget: 500,
-      fantaId: "fanta-1",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    MOCK_USERS.push(newUser);
-    setUser(newUser);
-    localStorage.setItem("fanta-user", JSON.stringify(newUser));
+    await updateProfile(firebaseUser, { displayName: name });
+    await loadOrCreateUserProfile(firebaseUser, name);
     router.push("/dashboard");
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem("fanta-user");
+  const logout = async () => {
+    await signOut(auth);
     router.push("/");
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isLoading }}>
+    <AuthContext.Provider
+      value={{ user, login, loginWithGoogle, register, logout, isLoading }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -70,8 +70,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     });
   }
 
-  // Mostra "Gestione" solo se l'utente è il creatore del fanta corrente
-  if (currentFanta && user && currentFanta.adminId === user.id) {
+  // Mostra "Gestione" se l'utente è il creatore del fanta corrente
+  // oppure un admin universale (role globale "admin")
+  if (
+    currentFanta &&
+    user &&
+    (currentFanta.adminId === user.id || user.role === "admin")
+  ) {
     navigation.splice(1, 0, {
       name: "Gestione",
       href: "/dashboard/admin",
