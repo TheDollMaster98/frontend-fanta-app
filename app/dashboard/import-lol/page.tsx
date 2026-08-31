@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -47,6 +47,18 @@ import {
 import { useFanta } from "@/contexts/FantaContext";
 import { useRouter } from "next/navigation";
 
+const KNOWN_LEAGUES = ["LCK", "LPL", "LCS", "LEC", "LCP", "PCS", "MSI", "WORLDS"];
+
+function detectLeagueFromTournament(tournament: string): string {
+  const upper = tournament.toUpperCase();
+  return KNOWN_LEAGUES.find((league) => upper.includes(league)) || "Altro";
+}
+
+function detectYearFromTournament(tournament: string): string | null {
+  const match = tournament.match(/\b(19|20)\d{2}\b/);
+  return match ? match[0] : null;
+}
+
 export default function ImportLoLPlayersPage() {
   const { currentFanta } = useFanta();
   const router = useRouter();
@@ -64,6 +76,9 @@ export default function ImportLoLPlayersPage() {
   const [selectedPlayerImage, setSelectedPlayerImage] = useState<string | null>(
     null,
   );
+  const [statsLeagueFilter, setStatsLeagueFilter] = useState("TUTTE");
+  const [statsYearFilter, setStatsYearFilter] = useState("TUTTI");
+  const [statsTeamFilter, setStatsTeamFilter] = useState("TUTTI");
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableWrapperRef = useRef<HTMLDivElement>(null);
 
@@ -145,6 +160,9 @@ export default function ImportLoLPlayersPage() {
   const handleViewStats = async (player: LeaguepediaPlayer) => {
     setSelectedPlayer(player);
     setSelectedPlayerImage(null);
+    setStatsLeagueFilter("TUTTE");
+    setStatsYearFilter("TUTTI");
+    setStatsTeamFilter("TUTTI");
     setIsLoadingStats(true);
 
     try {
@@ -195,6 +213,43 @@ export default function ImportLoLPlayersPage() {
         return "bg-slate-600";
     }
   };
+
+  const statsLeagueOptions = useMemo(() => {
+    const leagues = new Set(
+      playerStats.map((stat) => detectLeagueFromTournament(stat.tournament)),
+    );
+    return Array.from(leagues).sort();
+  }, [playerStats]);
+
+  const statsYearOptions = useMemo(() => {
+    const years = new Set(
+      playerStats
+        .map((stat) => detectYearFromTournament(stat.tournament))
+        .filter((year): year is string => Boolean(year)),
+    );
+    return Array.from(years).sort((a, b) => Number(b) - Number(a));
+  }, [playerStats]);
+
+  const statsTeamOptions = useMemo(() => {
+    const teams = new Set(
+      playerStats.map((stat) => stat.team).filter(Boolean),
+    );
+    return Array.from(teams).sort();
+  }, [playerStats]);
+
+  const filteredPlayerStats = useMemo(() => {
+    return playerStats.filter((stat) => {
+      const leagueMatch =
+        statsLeagueFilter === "TUTTE" ||
+        detectLeagueFromTournament(stat.tournament) === statsLeagueFilter;
+      const yearMatch =
+        statsYearFilter === "TUTTI" ||
+        detectYearFromTournament(stat.tournament) === statsYearFilter;
+      const teamMatch =
+        statsTeamFilter === "TUTTI" || stat.team === statsTeamFilter;
+      return leagueMatch && yearMatch && teamMatch;
+    });
+  }, [playerStats, statsLeagueFilter, statsYearFilter, statsTeamFilter]);
 
   if (!currentFanta) {
     return <div>Caricamento...</div>;
@@ -326,7 +381,7 @@ export default function ImportLoLPlayersPage() {
         open={Boolean(selectedPlayer)}
         onOpenChange={(open) => !open && setSelectedPlayer(null)}
       >
-        <DialogContent className="w-[calc(100%-2rem)] max-w-7xl max-h-[92vh] overflow-y-auto bg-slate-900 border-slate-700">
+        <DialogContent className="w-[calc(100%-2rem)] max-w-400 max-h-[92vh] overflow-y-auto bg-slate-900 border-slate-700">
           {selectedPlayer && (
             <>
               <DialogHeader>
@@ -378,7 +433,7 @@ export default function ImportLoLPlayersPage() {
                 <div>
                   <span className="text-slate-400">Partite</span>
                   <p>
-                    {playerStats.reduce(
+                    {filteredPlayerStats.reduce(
                       (total, stat) => total + stat.gamesPlayed,
                       0,
                     )}
@@ -392,11 +447,70 @@ export default function ImportLoLPlayersPage() {
                   </div>
                 ) : playerStats.length > 0 ? (
                   <>
+                    <div className="flex flex-wrap gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-slate-400 text-xs">Lega</Label>
+                        <Select
+                          value={statsLeagueFilter}
+                          onValueChange={setStatsLeagueFilter}
+                        >
+                          <SelectTrigger className="w-40 bg-slate-800 border-slate-600">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="TUTTE">Tutte le leghe</SelectItem>
+                            {statsLeagueOptions.map((league) => (
+                              <SelectItem key={league} value={league}>
+                                {league}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-slate-400 text-xs">Anno</Label>
+                        <Select
+                          value={statsYearFilter}
+                          onValueChange={setStatsYearFilter}
+                        >
+                          <SelectTrigger className="w-32 bg-slate-800 border-slate-600">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="TUTTI">Tutti gli anni</SelectItem>
+                            {statsYearOptions.map((year) => (
+                              <SelectItem key={year} value={year}>
+                                {year}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-slate-400 text-xs">Team</Label>
+                        <Select
+                          value={statsTeamFilter}
+                          onValueChange={setStatsTeamFilter}
+                        >
+                          <SelectTrigger className="w-48 bg-slate-800 border-slate-600">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="TUTTI">Tutti i team</SelectItem>
+                            {statsTeamOptions.map((team) => (
+                              <SelectItem key={team} value={team}>
+                                {team}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-2 gap-3 rounded-md border border-slate-700 p-4 text-sm md:grid-cols-4">
                       <div>
                         <span className="text-slate-400">Uccisioni</span>
                         <p>
-                          {playerStats.reduce(
+                          {filteredPlayerStats.reduce(
                             (total, stat) => total + stat.kills,
                             0,
                           )}
@@ -405,7 +519,7 @@ export default function ImportLoLPlayersPage() {
                       <div>
                         <span className="text-slate-400">Morti</span>
                         <p>
-                          {playerStats.reduce(
+                          {filteredPlayerStats.reduce(
                             (total, stat) => total + stat.deaths,
                             0,
                           )}
@@ -414,7 +528,7 @@ export default function ImportLoLPlayersPage() {
                       <div>
                         <span className="text-slate-400">Assist</span>
                         <p>
-                          {playerStats.reduce(
+                          {filteredPlayerStats.reduce(
                             (total, stat) => total + stat.assists,
                             0,
                           )}
@@ -424,15 +538,15 @@ export default function ImportLoLPlayersPage() {
                         <span className="text-slate-400">KDA globale</span>
                         <p>
                           {(() => {
-                            const kills = playerStats.reduce(
+                            const kills = filteredPlayerStats.reduce(
                               (total, stat) => total + stat.kills,
                               0,
                             );
-                            const deaths = playerStats.reduce(
+                            const deaths = filteredPlayerStats.reduce(
                               (total, stat) => total + stat.deaths,
                               0,
                             );
-                            const assists = playerStats.reduce(
+                            const assists = filteredPlayerStats.reduce(
                               (total, stat) => total + stat.assists,
                               0,
                             );
@@ -443,6 +557,11 @@ export default function ImportLoLPlayersPage() {
                         </p>
                       </div>
                     </div>
+                    {filteredPlayerStats.length === 0 ? (
+                      <div className="text-center py-8 text-slate-400">
+                        Nessuna statistica per i filtri selezionati
+                      </div>
+                    ) : (
                     <div className="overflow-x-auto rounded-md border border-slate-700">
                       <Table className="min-w-[900px]">
                         <TableHeader>
@@ -456,7 +575,7 @@ export default function ImportLoLPlayersPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {playerStats.map((stat, idx) => (
+                          {filteredPlayerStats.map((stat, idx) => (
                             <TableRow key={idx}>
                               <TableCell className="font-medium">
                                 {stat.tournament}
@@ -500,6 +619,7 @@ export default function ImportLoLPlayersPage() {
                         </TableBody>
                       </Table>
                     </div>
+                    )}
                   </>
                 ) : (
                   <div className="text-center py-8 text-slate-400">
