@@ -16,6 +16,7 @@ import {
   GoogleAuthProvider,
   signOut,
   updateProfile,
+  updatePassword,
   type User as FirebaseUser,
   type AuthError,
 } from "firebase/auth";
@@ -37,6 +38,8 @@ interface AuthContextType {
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   setIsDeveloper: (value: boolean) => Promise<void>;
+  updateUserProfile: (name: string) => Promise<void>;
+  changePassword: (newPassword: string) => Promise<void>;
   isLoading: boolean;
 }
 
@@ -53,6 +56,8 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   "auth/invalid-email": "Email non valida",
   "auth/popup-closed-by-user": "Accesso con Google annullato",
   "auth/network-request-failed": "Errore di rete, riprova",
+  "auth/requires-recent-login":
+    "Per sicurezza devi rifare il login prima di cambiare la password",
 };
 
 function mapAuthError(error: unknown): string {
@@ -176,6 +181,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((prev) => (prev ? { ...prev, isDeveloper: value } : prev));
   };
 
+  const updateUserProfile = async (name: string) => {
+    if (!auth.currentUser) return;
+    await updateProfile(auth.currentUser, { displayName: name });
+    await updateDoc(doc(db, "users", auth.currentUser.uid), {
+      name,
+      updatedAt: serverTimestamp(),
+    });
+    setUser((prev) => (prev ? { ...prev, name } : prev));
+  };
+
+  const changePassword = async (newPassword: string) => {
+    if (!auth.currentUser) return;
+    try {
+      await updatePassword(auth.currentUser, newPassword);
+    } catch (error) {
+      throw new Error(mapAuthError(error));
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -185,6 +209,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         setIsDeveloper,
+        updateUserProfile,
+        changePassword,
         isLoading,
       }}
     >

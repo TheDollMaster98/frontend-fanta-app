@@ -1,0 +1,38 @@
+name: Deploy App Hosting (manuale)
+
+# ATTENZIONE PRIMA DI USARLO: se in Firebase Console, sotto App Hosting, il
+# backend "fam-fanta-app-be" risulta già collegato a questo repository
+# GitHub, il rollout dell'app parte già in automatico ad ogni push su
+# master — questa Action farebbe solo un deploy duplicato (innocuo, ma
+# inutile e più lento). Usala solo se quel collegamento NON è configurato,
+# oppure per forzare manualmente un nuovo rollout.
+#
+# Va lanciata a mano dalla tab "Actions" del repo (Run workflow). Richiede
+# lo stesso secret FIREBASE_SERVICE_ACCOUNT del workflow delle regole
+# Firestore (vedi deploy-firestore.yml).
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Configura credenziali Google Cloud
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "${RUNNER_TEMP}/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${RUNNER_TEMP}/firebase-service-account.json" >> "$GITHUB_ENV"
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Deploy backend App Hosting
+        run: >
+          npx firebase-tools@latest deploy
+          --only apphosting:fam-fanta-app-be
+          --project fam-fanta-app
+          --non-interactive

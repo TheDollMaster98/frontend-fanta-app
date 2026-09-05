@@ -7,7 +7,6 @@ import {
   collection,
   query,
   where,
-  documentId,
   getDocs,
   doc,
   updateDoc,
@@ -36,14 +35,13 @@ export default function JoinFantaPage() {
   useEffect(() => {
     if (authLoading || !user) return;
 
-    const prefix = params.code.toLowerCase();
+    const code = params.code.toUpperCase();
 
     (async () => {
       try {
         const fantasQuery = query(
           collection(db, "fantas"),
-          where(documentId(), ">=", prefix),
-          where(documentId(), "<", prefix + ""),
+          where("inviteCode", "==", code),
         );
         const snapshot = await getDocs(fantasQuery);
 

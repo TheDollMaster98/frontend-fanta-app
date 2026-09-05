@@ -83,7 +83,7 @@ function AdminPageContent({
   const [members, setMembers] = useState<
     { id: string; name: string; email: string }[]
   >([]);
-  const inviteCode = currentFanta.id.slice(0, 8).toUpperCase();
+  const inviteCode = currentFanta.inviteCode;
 
   // Ascolta in tempo reale i profili dei membri di questo fanta
   useEffect(() => {

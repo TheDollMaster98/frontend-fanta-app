@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -152,6 +151,7 @@ export default function TeamPage() {
                     Prezzo di Acquisto
                   </TableHead>
                   <TableHead className="text-right">Data Acquisto</TableHead>
+                  <TableHead className="text-right">Azioni</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -168,6 +168,15 @@ export default function TeamPage() {
                     <TableCell className="text-right text-sm text-slate-400">
                       {new Date(player.acquiredAt).toLocaleDateString("it-IT")}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setPlayerToRemove(player)}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-400" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -175,6 +184,44 @@ export default function TeamPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={Boolean(playerToRemove)}
+        onOpenChange={(open) => !open && setPlayerToRemove(null)}
+      >
+        <DialogContent>
+          {playerToRemove && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Rimuovere {playerToRemove.name}?</DialogTitle>
+                <DialogDescription>
+                  Il giocatore torna disponibile per le aste e il budget speso
+                  ({playerToRemove.purchasePrice}€) ti viene restituito.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setPlayerToRemove(null)}
+                >
+                  Annulla
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    if (user) {
+                      removePlayerFromTeam(playerToRemove.id, user.id);
+                    }
+                    setPlayerToRemove(null);
+                  }}
+                >
+                  Rimuovi
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

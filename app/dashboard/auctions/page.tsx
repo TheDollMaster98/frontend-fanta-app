@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -56,19 +56,47 @@ import {
   type LeaguepediaPlayerStats,
 } from "@/lib/leaguepediaApi";
 import type { Auction } from "@/types";
-import { Flame, AlertTriangle, Save, RotateCcw, Ban, Lock } from "lucide-react";
+import { Flame, Save, Ban, Lock } from "lucide-react";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function AuctionsPage() {
-  const { currentFanta, addPlayerToTeam, updateUserBudget } = useFanta();
+  const {
+    currentFanta,
+    auctions,
+    createAuction: createAuctionInFirestore,
+    startAuction: startAuctionInFirestore,
+    pauseAuction,
+    placeBid: placeBidInFirestore,
+    closeAuction: closeAuctionInFirestore,
+    cancelAuction: cancelAuctionInFirestore,
+  } = useFanta();
   const { user } = useAuth();
 
-  // TODO: Filtrare aste per currentFanta.id da Firebase
-  const [auctions, setAuctions] = useState<Auction[]>([]);
-  const [activeAuction, setActiveAuction] = useState<Auction | null>(null);
-  const [savedAuction, setSavedAuction] = useState<Auction | null>(null);
-  const [countdown, setCountdown] = useState<number>(0);
+  // Aste condivise via Firestore (contexts/FantaContext.tsx): questa pagina
+  // legge/scrive tramite le funzioni del context, non tiene più uno stato
+  // locale separato per asta attiva/prezzo/offerente.
+  const activeAuction = useMemo(
+    () => auctions.find((a) => a.status === "active") ?? null,
+    [auctions],
+  );
+
+  // Il countdown va ricalcolato ogni secondo a partire da countdownEndsAt
+  // (valore condiviso su Firestore), non da un contatore locale che
+  // desincronizzerebbe ogni client.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!activeAuction) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [activeAuction]);
+  const countdown = activeAuction?.countdownEndsAt
+    ? Math.max(
+        0,
+        Math.ceil((activeAuction.countdownEndsAt.getTime() - now) / 1000),
+      )
+    : 0;
+
   const [customBid, setCustomBid] = useState("");
   const [auctionPlayers, setAuctionPlayers] = useState<LeaguepediaPlayer[]>([]);
   const [auctionPlayerSearch, setAuctionPlayerSearch] = useState("");
@@ -156,58 +184,14 @@ export default function AuctionsPage() {
     };
   }, [currentFanta?.sportType, selectedAuctionLeague]);
 
-  const assignPlayerToWinner = (auction: Auction) => {
-    if (!auction.highestBidderId || !currentFanta) return;
-
-    // Crea il Player da aggiungere al team del vincitore
-    addPlayerToTeam({
-      name: auction.playerName,
-      role: auction.playerRole,
-      team: auction.playerTeam,
-      purchasePrice: auction.currentPrice,
-      userId: auction.highestBidderId,
-      fantaId: currentFanta.id,
-      customFields: {},
-    });
-
-    // Sottrai il prezzo dal budget del vincitore
-    updateUserBudget(auction.highestBidderId, -auction.currentPrice);
-
-    console.log("Giocatore assegnato:", {
-      player: auction.playerName,
-      winner: auction.highestBidderName,
-      price: auction.currentPrice,
-    });
-  };
-
-  // Simulazione countdown
-  useEffect(() => {
-    if (activeAuction?.status === "active" && countdown > 0) {
-      const timer = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            // Asta conclusa - assegna al vincitore
-            if (activeAuction.highestBidderId) {
-              assignPlayerToWinner(activeAuction);
-            }
-            setActiveAuction((auction) =>
-              auction ? { ...auction, status: "closed" } : null,
-            );
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [activeAuction, countdown]);
-
+  // Da qui in giù le azioni scrivono su Firestore tramite il context: sono
+  // condivise in tempo reale con chiunque altro abbia la pagina aperta,
+  // inclusa l'assegnazione del giocatore al vincitore alla chiusura (vedi
+  // finalizeAuction in contexts/FantaContext.tsx).
   const createAuction = () => {
-    if (!currentFanta || !user) return;
+    if (!currentFanta || !user || !newAuction.playerName) return;
 
-    const auction: Auction = {
-      id: Date.now().toString(),
-      fantaId: currentFanta.id,
+    createAuctionInFirestore({
       playerName: newAuction.playerName,
       playerRole: newAuction.playerRole,
       playerTeam: newAuction.playerTeam,
@@ -217,14 +201,9 @@ export default function AuctionsPage() {
           : newAuction.league,
       description: newAuction.description,
       basePrice: newAuction.basePrice,
-      currentPrice: newAuction.basePrice,
-      status: "pending",
-      createdBy: user.id,
       countdownSeconds: newAuction.countdownSeconds,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    setAuctions([auction, ...auctions]);
+    });
+
     setSelectedAuctionPlayer(null);
     setSelectedAuctionPlayerImage(null);
     setSelectedAuctionPlayerStats([]);
@@ -242,74 +221,32 @@ export default function AuctionsPage() {
   };
 
   const startAuction = (auction: Auction) => {
-    const updatedAuction = { ...auction, status: "active" as const };
-    setActiveAuction(updatedAuction);
-    setCountdown(auction.countdownSeconds);
+    startAuctionInFirestore(auction.id, auction.countdownSeconds);
   };
 
   const placeBid = (amount: number) => {
     if (!activeAuction) return;
-
-    const newPrice = activeAuction.currentPrice + amount;
-    const updatedAuction = {
-      ...activeAuction,
-      currentPrice: newPrice,
-      highestBidderId: "current-user-id",
-      highestBidderName: "Current User",
-    };
-
-    setActiveAuction(updatedAuction);
-    setCountdown(activeAuction.countdownSeconds); // Reset countdown
+    placeBidInFirestore(activeAuction.id, amount);
   };
 
   const closeAuction = () => {
-    if (activeAuction) {
-      // Assegna il giocatore al vincitore se c'è un'offerta
-      if (activeAuction.highestBidderId) {
-        assignPlayerToWinner(activeAuction);
-      }
-      setActiveAuction({ ...activeAuction, status: "closed" });
-      setCountdown(0);
-    }
+    if (activeAuction) closeAuctionInFirestore(activeAuction.id);
   };
 
   const cancelAuction = () => {
-    // Annulla l'asta senza assegnare il giocatore
-    if (activeAuction) {
-      setActiveAuction({ ...activeAuction, status: "closed" });
-      setCountdown(0);
-      console.log("Asta annullata:", activeAuction.playerName);
-    }
+    if (activeAuction) cancelAuctionInFirestore(activeAuction.id);
   };
 
+  // "Blocca Asta" chiude subito assegnando l'offerente corrente, invece di
+  // aspettare lo scadere del countdown: stessa logica di chiusura.
   const blockAuctionWithCurrentBid = () => {
-    // Chiude immediatamente l'asta assegnando al vincitore corrente
-    if (activeAuction) {
-      if (activeAuction.highestBidderId) {
-        assignPlayerToWinner(activeAuction);
-      }
-      setActiveAuction({ ...activeAuction, status: "closed" });
-      setCountdown(0);
-      console.log("Asta bloccata con puntata:", activeAuction.currentPrice);
-    }
+    if (activeAuction) closeAuctionInFirestore(activeAuction.id);
   };
 
+  // Mette l'asta in pausa (torna "pending", mantiene prezzo e offerente): si
+  // riprende con "Avvia" dalla lista aste qui sotto, niente stato separato.
   const saveCurrentAuction = () => {
-    // Salva l'asta corrente per poterla riprendere
-    if (activeAuction) {
-      setSavedAuction({ ...activeAuction });
-      console.log("Asta salvata:", activeAuction.playerName);
-    }
-  };
-
-  const restoreSavedAuction = () => {
-    // Ripristina l'asta salvata
-    if (savedAuction) {
-      setActiveAuction({ ...savedAuction, status: "active" });
-      setCountdown(savedAuction.countdownSeconds);
-      setSavedAuction(null);
-      console.log("Asta ripristinata:", savedAuction.playerName);
-    }
+    if (activeAuction) pauseAuction(activeAuction.id);
   };
 
   return (
@@ -913,47 +850,6 @@ export default function AuctionsPage() {
                 </div>
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Ripristina Asta Salvata */}
-      {savedAuction && isAdmin && (
-        <Card className="border-orange-500 bg-orange-950/20">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-orange-500" />
-              Asta Salvata
-            </CardTitle>
-            <CardDescription>
-              Hai un&apos;asta salvata che puoi ripristinare
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <p className="text-sm">
-                <span className="font-medium">Giocatore:</span>{" "}
-                {savedAuction.playerName}
-              </p>
-              <p className="text-sm">
-                <span className="font-medium">Ruolo:</span>{" "}
-                {savedAuction.playerRole}
-              </p>
-              <p className="text-sm">
-                <span className="font-medium">Prezzo Corrente:</span>{" "}
-                {savedAuction.currentPrice}€
-              </p>
-              {savedAuction.highestBidderName && (
-                <p className="text-sm">
-                  <span className="font-medium">Ultimo Offerente:</span>{" "}
-                  {savedAuction.highestBidderName}
-                </p>
-              )}
-            </div>
-            <Button onClick={restoreSavedAuction} className="w-full">
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Ripristina Asta
-            </Button>
           </CardContent>
         </Card>
       )}

@@ -25,6 +25,7 @@ export interface Fanta {
   viceAdminIds: string[];
   settings: FantaSettings;
   memberIds: string[];
+  inviteCode: string; // Codice per unirsi via /join/[code], indipendente dall'id
   createdAt: Date;
   updatedAt: Date;
 }

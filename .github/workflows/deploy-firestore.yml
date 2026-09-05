@@ -1,0 +1,45 @@
+name: Deploy regole Firestore & Storage
+
+# App Hosting (Cloud Run) deploya solo il codice Next.js: firestore.rules,
+# firestore.indexes.json e storage.rules restano scollegati da qualunque
+# pipeline finché non li pubblica qualcuno esplicitamente. Questo workflow
+# lo fa in automatico ad ogni push su master che li tocca, così le regole
+# nel repo sono sempre quelle davvero attive sul progetto Firebase.
+#
+# Richiede il secret GitHub FIREBASE_SERVICE_ACCOUNT: il contenuto JSON di
+# una service account con permessi sufficienti a deployare regole/indici
+# (basta il ruolo "Firebase Admin" sul progetto fam-fanta-app). Crealo da
+# Google Cloud Console > IAM > Service Account > Chiavi > Crea chiave JSON,
+# poi incollane il contenuto in Settings > Secrets and variables > Actions.
+on:
+  push:
+    branches: [master]
+    paths:
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "storage.rules"
+  workflow_dispatch:
+
+jobs:
+  deploy-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Configura credenziali Google Cloud
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "${RUNNER_TEMP}/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${RUNNER_TEMP}/firebase-service-account.json" >> "$GITHUB_ENV"
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Deploy regole Firestore e Storage
+        run: >
+          npx firebase-tools@latest deploy
+          --only firestore:rules,firestore:indexes,storage
+          --project fam-fanta-app
+          --non-interactive

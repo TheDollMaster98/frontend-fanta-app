@@ -18,14 +18,16 @@ import {
   onSnapshot,
   query,
   where,
+  orderBy,
   increment,
   arrayUnion,
   runTransaction,
+  serverTimestamp,
   Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Fanta, Player, JoinRequest } from "@/types";
+import type { Fanta, Player, JoinRequest, Auction } from "@/types";
 
 export interface TeamPlayer extends Player {
   userId: string; // ID dell'utente proprietario
@@ -52,12 +54,36 @@ interface FantaContextType {
   sendJoinRequest: (fanta: Fanta) => void;
   approveJoinRequest: (request: JoinRequest) => void;
   rejectJoinRequest: (requestId: string) => void;
+  // Aste, condivise in tempo reale tra tutti i membri della lega
+  auctions: Auction[];
+  createAuction: (
+    auction: Pick<
+      Auction,
+      | "playerName"
+      | "playerRole"
+      | "playerTeam"
+      | "auctionFormat"
+      | "description"
+      | "basePrice"
+      | "countdownSeconds"
+    >,
+  ) => void;
+  startAuction: (auctionId: string, countdownSeconds: number) => void;
+  pauseAuction: (auctionId: string) => void;
+  placeBid: (auctionId: string, amount: number) => void;
+  closeAuction: (auctionId: string) => void;
+  cancelAuction: (auctionId: string) => void;
 }
 
 const FantaContext = createContext<FantaContextType | undefined>(undefined);
 
 function toDate(value: Timestamp | Date | undefined): Date {
   if (!value) return new Date();
+  return value instanceof Timestamp ? value.toDate() : value;
+}
+
+function toOptionalDate(value: Timestamp | Date | undefined | null): Date | undefined {
+  if (!value) return undefined;
   return value instanceof Timestamp ? value.toDate() : value;
 }
 
@@ -71,9 +97,33 @@ function mapFantaDoc(id: string, data: Record<string, unknown>): Fanta {
     viceAdminIds: data.viceAdminIds || [],
     settings: data.settings,
     memberIds: data.memberIds || [],
+    inviteCode: data.inviteCode,
     createdAt: toDate(data.createdAt as Timestamp | Date | undefined),
     updatedAt: toDate(data.updatedAt as Timestamp | Date | undefined),
   } as Fanta;
+}
+
+function mapAuctionDoc(id: string, data: Record<string, unknown>): Auction {
+  return {
+    id,
+    fantaId: data.fantaId,
+    playerName: data.playerName,
+    playerRole: data.playerRole,
+    playerTeam: data.playerTeam,
+    auctionFormat: data.auctionFormat,
+    description: data.description,
+    basePrice: data.basePrice,
+    currentPrice: data.currentPrice,
+    highestBidderId: data.highestBidderId || undefined,
+    highestBidderName: data.highestBidderName || undefined,
+    status: data.status,
+    createdBy: data.createdBy,
+    countdownSeconds: data.countdownSeconds,
+    countdownEndsAt: toOptionalDate(data.countdownEndsAt as Timestamp | Date | undefined),
+    closedAt: toOptionalDate(data.closedAt as Timestamp | Date | undefined),
+    createdAt: toDate(data.createdAt as Timestamp | Date | undefined),
+    updatedAt: toDate(data.updatedAt as Timestamp | Date | undefined),
+  } as Auction;
 }
 
 function mapJoinRequestDoc(
@@ -110,6 +160,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   const [pendingJoinRequests, setPendingJoinRequests] = useState<
     JoinRequest[]
   >([]);
+  const [auctions, setAuctions] = useState<Auction[]>([]);
 
   // Ascolta in tempo reale i fanta di cui l'utente è membro
   useEffect(() => {
@@ -274,6 +325,30 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, [currentFanta]);
 
+  // Ascolta in tempo reale le aste del fanta attualmente selezionato:
+  // è ciò che rende un'asta visibile e sincronizzata su tutti i dispositivi
+  // (prima vivevano solo nello useState locale della pagina Aste).
+  useEffect(() => {
+    if (!currentFanta) {
+      setAuctions([]);
+      return;
+    }
+
+    const auctionsQuery = query(
+      collection(db, "auctions"),
+      where("fantaId", "==", currentFanta.id),
+      orderBy("createdAt", "desc"),
+    );
+
+    const unsubscribe = onSnapshot(auctionsQuery, (snapshot) => {
+      setAuctions(
+        snapshot.docs.map((docSnap) => mapAuctionDoc(docSnap.id, docSnap.data())),
+      );
+    });
+
+    return unsubscribe;
+  }, [currentFanta]);
+
   const getPlayersByUser = (userId: string, fantaId: string): TeamPlayer[] => {
     return players.filter((p) => p.userId === userId && p.fantaId === fantaId);
   };
@@ -322,6 +397,135 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     return currentFanta?.settings.generalBudget ?? 0;
   };
 
+  const createAuction: FantaContextType["createAuction"] = (auction) => {
+    if (!currentFanta || !user) return;
+    addDoc(collection(db, "auctions"), {
+      ...auction,
+      fantaId: currentFanta.id,
+      currentPrice: auction.basePrice,
+      status: "pending",
+      createdBy: user.id,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  };
+
+  const startAuction = (auctionId: string, countdownSeconds: number): void => {
+    updateDoc(doc(db, "auctions", auctionId), {
+      status: "active",
+      countdownEndsAt: Timestamp.fromMillis(Date.now() + countdownSeconds * 1000),
+      updatedAt: serverTimestamp(),
+    });
+  };
+
+  // Blocca l'asta senza assegnarla: torna disponibile in stato "pending" e
+  // può essere riavviata in seguito con "Avvia" (mantiene prezzo/offerente).
+  const pauseAuction = (auctionId: string): void => {
+    updateDoc(doc(db, "auctions", auctionId), {
+      status: "pending",
+      updatedAt: serverTimestamp(),
+    });
+  };
+
+  const placeBid = (auctionId: string, amount: number): void => {
+    if (!user) return;
+    const ref = doc(db, "auctions", auctionId);
+    runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (data.status !== "active") return;
+
+      const newPrice = (data.currentPrice as number) + amount;
+      const countdownMs = (data.countdownSeconds as number) * 1000;
+      tx.update(ref, {
+        currentPrice: newPrice,
+        highestBidderId: user.id,
+        highestBidderName: user.name,
+        countdownEndsAt: Timestamp.fromMillis(Date.now() + countdownMs),
+        updatedAt: serverTimestamp(),
+      });
+    });
+  };
+
+  // Chiude un'asta (manualmente o perché il countdown è arrivato a zero) e,
+  // se non annullata, assegna il giocatore al miglior offerente. La
+  // transazione garantisce che, se più client provano a chiuderla nello
+  // stesso momento (es. countdown scaduto su più dispositivi aperti in
+  // contemporanea), solo il primo esegua davvero l'assegnazione.
+  const finalizeAuction = (
+    auctionId: string,
+    options: { cancel?: boolean } = {},
+  ): void => {
+    const ref = doc(db, "auctions", auctionId);
+    let winner: {
+      userId: string;
+      player: Omit<TeamPlayer, "id" | "acquiredAt">;
+    } | null = null;
+
+    runTransaction(db, async (tx) => {
+      winner = null;
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (data.status === "closed") return;
+
+      tx.update(ref, {
+        status: "closed",
+        closedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      if (!options.cancel && data.highestBidderId) {
+        winner = {
+          userId: data.highestBidderId as string,
+          player: {
+            name: data.playerName,
+            role: data.playerRole,
+            team: data.playerTeam,
+            purchasePrice: data.currentPrice,
+            userId: data.highestBidderId,
+            fantaId: data.fantaId,
+            customFields: {},
+          },
+        };
+      }
+    }).then(() => {
+      if (winner) {
+        addPlayerToTeam(winner.player);
+        updateUserBudget(winner.userId, -winner.player.purchasePrice);
+      }
+    });
+  };
+
+  const closeAuction = (auctionId: string): void => finalizeAuction(auctionId);
+  const cancelAuction = (auctionId: string): void =>
+    finalizeAuction(auctionId, { cancel: true });
+
+  // Nessun backend/cron: quando il countdown di un'asta attiva scade, deve
+  // essere un client con la pagina aperta a chiuderla. Se nessuno ha la
+  // pagina aperta esattamente allo scadere, si chiude al successivo giro di
+  // questo effetto sul primo client che la apre: accettabile per un'app tra
+  // amici senza Cloud Functions.
+  useEffect(() => {
+    const activeAuctions = auctions.filter(
+      (a) => a.status === "active" && a.countdownEndsAt,
+    );
+    if (activeAuctions.length === 0) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      activeAuctions.forEach((a) => {
+        if (a.countdownEndsAt && a.countdownEndsAt.getTime() <= now) {
+          finalizeAuction(a.id);
+        }
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auctions]);
+
   const sendJoinRequest = (fanta: Fanta): void => {
     if (!user) return;
     addDoc(collection(db, "joinRequests"), {
@@ -366,6 +570,13 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         sendJoinRequest,
         approveJoinRequest,
         rejectJoinRequest,
+        auctions,
+        createAuction,
+        startAuction,
+        pauseAuction,
+        placeBid,
+        closeAuction,
+        cancelAuction,
       }}
     >
       {children}

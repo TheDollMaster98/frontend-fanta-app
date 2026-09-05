@@ -20,9 +20,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { collection, doc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { DEFAULT_FANTA_SETTINGS } from "@/lib/constants";
+import { generateInviteCode } from "@/lib/utils";
 import type { SportType } from "@/types";
 import { Plus } from "lucide-react";
 
@@ -39,7 +42,7 @@ export function CreateFantaDialog() {
   const handleCreate = () => {
     if (!user || !formData.name) return;
 
-    const newFantaId = `fanta-${Date.now()}`;
+    const newFantaId = doc(collection(db, "fantas")).id;
     addFanta({
       id: newFantaId,
       name: formData.name,
@@ -49,6 +52,7 @@ export function CreateFantaDialog() {
       viceAdminIds: [],
       settings: DEFAULT_FANTA_SETTINGS,
       memberIds: [user.id],
+      inviteCode: generateInviteCode(),
       createdAt: new Date(),
       updatedAt: new Date(),
     });

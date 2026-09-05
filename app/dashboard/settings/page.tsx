@@ -27,27 +27,46 @@ import { CreateFantaDialog } from "@/components/CreateFantaDialog";
 
 export default function SettingsPage() {
   const { fantas, currentFanta, setCurrentFanta } = useFanta();
-  const { user, setIsDeveloper } = useAuth();
+  const { user, setIsDeveloper, updateUserProfile, changePassword } = useAuth();
   // Una volta visto come developer in questa sessione, il controllo resta
   // visibile anche se lo disattivi: così puoi riattivarlo senza dover
   // passare da Firestore Console. Un reload rivaluta lo stato vero.
   const [canToggleDeveloper] = useState(() => !!user?.isDeveloper);
 
-  const [profile, setProfile] = useState({
-    name: "Mario Rossi",
-    email: "mario@example.com",
-    fantaId: "fanta-1",
-  });
+  const [name, setName] = useState(user?.name || "");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [profileMessage, setProfileMessage] = useState("");
 
   const [teamSettings, setTeamSettings] = useState({
     teamName: "I Campioni",
     fantaName: "Lega Serie A 2026",
   });
 
-  const handleProfileUpdate = (e: React.FormEvent) => {
+  const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Aggiornare Firebase
-    console.log("Update profile:", profile);
+    setProfileMessage("");
+
+    if (newPassword && newPassword !== confirmPassword) {
+      setProfileMessage("Le password non corrispondono");
+      return;
+    }
+
+    try {
+      if (name && name !== user?.name) {
+        await updateUserProfile(name);
+      }
+      if (newPassword) {
+        await changePassword(newPassword);
+        setNewPassword("");
+        setConfirmPassword("");
+      }
+      setProfileMessage("Modifiche salvate");
+    } catch (error) {
+      setProfileMessage(
+        error instanceof Error ? error.message : "Errore durante il salvataggio",
+      );
+    }
   };
 
   const handleTeamUpdate = (e: React.FormEvent) => {
@@ -84,27 +103,26 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleProfileUpdate} className="space-y-4">
+                {profileMessage && (
+                  <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">
+                    {profileMessage}
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="name">Nome</Label>
                   <Input
                     id="name"
-                    value={profile.name}
-                    onChange={(e) =>
-                      setProfile({ ...profile, name: e.target.value })
-                    }
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={profile.email}
-                    onChange={(e) =>
-                      setProfile({ ...profile, email: e.target.value })
-                    }
-                  />
+                  <Input id="email" type="email" value={user?.email || ""} disabled />
+                  <p className="text-sm text-slate-500">
+                    Per cambiare email contatta chi gestisce l&apos;app
+                  </p>
                 </div>
 
                 <Separator />
@@ -115,12 +133,19 @@ export default function SettingsPage() {
                     id="password"
                     type="password"
                     placeholder="Lascia vuoto per non modificare"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="confirmPassword">Conferma Password</Label>
-                  <Input id="confirmPassword" type="password" />
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
                 </div>
 
                 <Button type="submit">Salva Modifiche</Button>
