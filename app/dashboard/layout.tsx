@@ -42,8 +42,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }
   }, [user, isLoading, router]);
 
-  // Show loading sfantaLoading || !user || !currentFanta
-  if (isLoading || !user) {
+  // Aspetta anche il caricamento dei fanta: senza, per un attimo si vedeva
+  // "0 leghe" prima che i dati reali arrivassero da Firestore.
+  if (isLoading || fantaLoading || !user) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-center">

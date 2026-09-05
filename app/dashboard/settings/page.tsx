@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -26,7 +26,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
 
 export default function SettingsPage() {
-  const { fantas, currentFanta, setCurrentFanta } = useFanta();
+  const { fantas, currentFanta, setCurrentFanta, getTeamName, updateTeamName } =
+    useFanta();
   const { user, setIsDeveloper, updateUserProfile, changePassword } = useAuth();
   // Una volta visto come developer in questa sessione, il controllo resta
   // visibile anche se lo disattivi: così puoi riattivarlo senza dover
@@ -38,10 +39,18 @@ export default function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
 
-  const [teamSettings, setTeamSettings] = useState({
-    teamName: "I Campioni",
-    fantaName: "Lega Serie A 2026",
-  });
+  const [teamName, setTeamName] = useState(
+    user ? getTeamName(user.id) : "",
+  );
+  const [teamMessage, setTeamMessage] = useState("");
+
+  // Il nome team è per-lega: va ricaricato sia al primo arrivo dei dati da
+  // Firestore sia quando l'utente cambia "Lega Attiva" qui sotto, altrimenti
+  // il campo resterebbe fermo sul nome della lega precedente.
+  useEffect(() => {
+    if (user) setTeamName(getTeamName(user.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, currentFanta?.id]);
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,8 +80,10 @@ export default function SettingsPage() {
 
   const handleTeamUpdate = (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Aggiornare Firebase
-    console.log("Update team:", teamSettings);
+    if (user && teamName.trim()) {
+      updateTeamName(user.id, teamName.trim());
+      setTeamMessage("Nome team salvato");
+    }
   };
 
   return (
@@ -200,17 +211,17 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleTeamUpdate} className="space-y-4">
+                {teamMessage && (
+                  <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">
+                    {teamMessage}
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="teamName">Nome Team</Label>
                   <Input
                     id="teamName"
-                    value={teamSettings.teamName}
-                    onChange={(e) =>
-                      setTeamSettings({
-                        ...teamSettings,
-                        teamName: e.target.value,
-                      })
-                    }
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
                     placeholder="Es: I Campioni"
                   />
                   <p className="text-sm text-slate-500">

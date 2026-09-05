@@ -97,6 +97,7 @@ export default function AuctionsPage() {
       )
     : 0;
 
+  const maxBid = currentFanta?.settings.maxBid;
   const [customBid, setCustomBid] = useState("");
   const [auctionPlayers, setAuctionPlayers] = useState<LeaguepediaPlayer[]>([]);
   const [auctionPlayerSearch, setAuctionPlayerSearch] = useState("");
@@ -760,37 +761,57 @@ export default function AuctionsPage() {
             {/* Pulsanti Offerta */}
             <div className="space-y-3">
               <Label>Fai la tua offerta:</Label>
-              <div className="flex flex-wrap gap-2">
-                {DEFAULT_BID_PRESETS.map((preset) => (
-                  <Button
-                    key={preset.label}
-                    onClick={() => placeBid(preset.value)}
-                    variant="outline"
-                  >
-                    {preset.label}
-                  </Button>
-                ))}
-              </div>
+              {maxBid !== undefined && activeAuction.currentPrice >= maxBid ? (
+                <p className="text-sm text-slate-500">
+                  Puntata massima della lega raggiunta ({maxBid}€): l&apos;asta
+                  può solo essere chiusa o annullata.
+                </p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {DEFAULT_BID_PRESETS.map((preset) => (
+                      <Button
+                        key={preset.label}
+                        onClick={() => placeBid(preset.value)}
+                        variant="outline"
+                        disabled={
+                          maxBid !== undefined &&
+                          activeAuction.currentPrice + preset.value > maxBid
+                        }
+                      >
+                        {preset.label}
+                      </Button>
+                    ))}
+                  </div>
 
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  placeholder="Importo custom"
-                  value={customBid}
-                  onChange={(e) => setCustomBid(e.target.value)}
-                  min={1}
-                />
-                <Button
-                  onClick={() => {
-                    if (customBid) {
-                      placeBid(Number(customBid));
-                      setCustomBid("");
-                    }
-                  }}
-                >
-                  Offri
-                </Button>
-              </div>
+                  {currentFanta?.settings.allowCustomBids && (
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        placeholder="Importo custom"
+                        value={customBid}
+                        onChange={(e) => setCustomBid(e.target.value)}
+                        min={1}
+                        max={
+                          maxBid !== undefined
+                            ? maxBid - activeAuction.currentPrice
+                            : undefined
+                        }
+                      />
+                      <Button
+                        onClick={() => {
+                          if (customBid) {
+                            placeBid(Number(customBid));
+                            setCustomBid("");
+                          }
+                        }}
+                      >
+                        Offri
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {isAdmin && (

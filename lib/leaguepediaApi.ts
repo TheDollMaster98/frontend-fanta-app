@@ -6,8 +6,6 @@
  * per ottenere dati reali su giocatori professionistici di League of Legends.
  */
 
-const LEAGUEPEDIA_API_ENDPOINT = "https://lol.fandom.com/api.php";
-
 const ALLOWED_PRO_ROLES = [
   "top",
   "top laner",
@@ -32,15 +30,6 @@ const PRO_PLAYER_EXCLUSIONS = [
   "coach",
 ];
 
-const DEFAULT_AVAILABLE_LEAGUES = [
-  "TUTTI I PRO PLAYER",
-  "LCK",
-  "LPL",
-  "LCS",
-  "LEC",
-  "LCP",
-  "PCS",
-];
 const LEAGUE_FILTERS = [
   "TUTTI I PRO PLAYER",
   "LCK",
@@ -311,7 +300,15 @@ export async function searchPlayers(
     return mapped.slice(0, limit);
   }
 
-  return [];
+  // Leaguepedia irraggiungibile o rate-limited: meglio mostrare qualche
+  // pro player noto che una lista vuota che sembra un errore.
+  const query = normalizedSearch.toLowerCase();
+  return FALLBACK_PRO_PLAYERS.filter(
+    (player) =>
+      !query ||
+      player.player.toLowerCase().includes(query) ||
+      player.name.toLowerCase().includes(query),
+  ).slice(0, limit);
 }
 
 /**
@@ -355,7 +352,9 @@ export async function getPlayersByLeague(
     return mapped;
   }
 
-  return [];
+  // Leaguepedia irraggiungibile o rate-limited: il fallback locale non ha un
+  // campo lega affidabile, quindi lo usiamo solo per "tutti i pro player".
+  return isAllPlayers ? FALLBACK_PRO_PLAYERS : [];
 }
 
 /**

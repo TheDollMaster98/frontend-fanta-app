@@ -47,6 +47,8 @@ interface FantaContextType {
   removePlayerFromTeam: (playerId: string, userId: string) => void;
   updateUserBudget: (userId: string, amount: number) => void;
   getUserBudget: (userId: string) => number;
+  getTeamName: (userId: string) => string;
+  updateTeamName: (userId: string, name: string) => void;
   // Scoperta leghe e richieste di ingresso
   discoverableFantas: Fanta[];
   myJoinRequests: JoinRequest[];
@@ -76,6 +78,8 @@ interface FantaContextType {
 }
 
 const FantaContext = createContext<FantaContextType | undefined>(undefined);
+
+const DEFAULT_TEAM_NAME = "I Campioni";
 
 function toDate(value: Timestamp | Date | undefined): Date {
   if (!value) return new Date();
@@ -154,6 +158,9 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   );
   const [players, setPlayers] = useState<TeamPlayer[]>([]);
   const [userBudgets, setUserBudgets] = useState<Record<string, number>>({});
+  const [userTeamNames, setUserTeamNames] = useState<Record<string, string>>(
+    {},
+  );
   const [rawMyJoinRequests, setRawMyJoinRequests] = useState<JoinRequest[]>(
     [],
   );
@@ -294,11 +301,14 @@ export function FantaProvider({ children }: { children: ReactNode }) {
 
     const unsubscribe = onSnapshot(budgetsQuery, (snapshot) => {
       const budgets: Record<string, number> = {};
+      const teamNames: Record<string, string> = {};
       snapshot.docs.forEach((docSnap) => {
         const data = docSnap.data();
         budgets[data.userId] = data.budget;
+        teamNames[data.userId] = data.teamName || DEFAULT_TEAM_NAME;
       });
       setUserBudgets(budgets);
+      setUserTeamNames(teamNames);
     });
 
     return unsubscribe;
@@ -387,6 +397,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
           fantaId: currentFanta.id,
           userId,
           budget: generalBudget + amount,
+          teamName: DEFAULT_TEAM_NAME,
         });
       }
     });
@@ -395,6 +406,31 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   const getUserBudget = (userId: string): number => {
     if (userId in userBudgets) return userBudgets[userId];
     return currentFanta?.settings.generalBudget ?? 0;
+  };
+
+  const getTeamName = (userId: string): string => {
+    return userTeamNames[userId] || DEFAULT_TEAM_NAME;
+  };
+
+  const updateTeamName = (userId: string, name: string): void => {
+    if (!currentFanta) return;
+    const budgetId = `${currentFanta.id}_${userId}`;
+    const ref = doc(db, "teamBudgets", budgetId);
+    const generalBudget = currentFanta.settings.generalBudget;
+
+    runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (snap.exists()) {
+        tx.update(ref, { teamName: name });
+      } else {
+        tx.set(ref, {
+          fantaId: currentFanta.id,
+          userId,
+          budget: generalBudget,
+          teamName: name,
+        });
+      }
+    });
   };
 
   const createAuction: FantaContextType["createAuction"] = (auction) => {
@@ -428,7 +464,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   };
 
   const placeBid = (auctionId: string, amount: number): void => {
-    if (!user) return;
+    if (!user || !currentFanta) return;
+    const maxBid = currentFanta.settings.maxBid;
     const ref = doc(db, "auctions", auctionId);
     runTransaction(db, async (tx) => {
       const snap = await tx.get(ref);
@@ -437,6 +474,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       if (data.status !== "active") return;
 
       const newPrice = (data.currentPrice as number) + amount;
+      if (newPrice > maxBid) return;
       const countdownMs = (data.countdownSeconds as number) * 1000;
       tx.update(ref, {
         currentPrice: newPrice,
@@ -564,6 +602,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         removePlayerFromTeam,
         updateUserBudget,
         getUserBudget,
+        getTeamName,
+        updateTeamName,
         discoverableFantas,
         myJoinRequests,
         pendingJoinRequests,

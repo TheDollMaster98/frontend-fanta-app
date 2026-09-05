@@ -104,7 +104,7 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(data);
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { cargoquery: [], fallback: true, reason: "fetch_failed" },
       { status: 200 },

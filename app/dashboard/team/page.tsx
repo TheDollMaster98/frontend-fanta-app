@@ -37,10 +37,13 @@ export default function TeamPage() {
     getPlayersByUser,
     removePlayerFromTeam,
     getUserBudget,
+    getTeamName,
+    updateTeamName,
   } = useFanta();
   const { user } = useAuth();
-  const [teamName, setTeamName] = useState("I Campioni");
+  const teamName = user ? getTeamName(user.id) : "I Campioni";
   const [isEditingName, setIsEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(teamName);
   const [playerToRemove, setPlayerToRemove] = useState<TeamPlayer | null>(null);
 
   // Ottieni i giocatori dell'utente corrente
@@ -48,13 +51,18 @@ export default function TeamPage() {
     user && currentFanta ? getPlayersByUser(user.id, currentFanta.id) : [];
 
   const budget = currentFanta?.settings.generalBudget || 500;
-  const userBudget = user ? getUserBudget(user.id) : budget;
-  const spent = budget - userBudget;
-  const remaining = budget - spent;
+  const remaining = user ? getUserBudget(user.id) : budget;
+  const spent = budget - remaining;
+
+  const startEditingName = () => {
+    setDraftName(teamName);
+    setIsEditingName(true);
+  };
 
   const handleUpdateTeamName = () => {
-    // TODO: Salvare su Firebase
-    console.log("Update team name:", teamName);
+    if (user && draftName.trim()) {
+      updateTeamName(user.id, draftName.trim());
+    }
     setIsEditingName(false);
   };
 
@@ -72,8 +80,8 @@ export default function TeamPage() {
             {isEditingName ? (
               <div className="flex items-center gap-2 flex-1">
                 <Input
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
                   className="max-w-xs"
                 />
                 <Button onClick={handleUpdateTeamName} size="sm">
@@ -94,7 +102,7 @@ export default function TeamPage() {
                 </CardTitle>
                 <Button
                   variant="outline"
-                  onClick={() => setIsEditingName(true)}
+                  onClick={startEditingName}
                   size="sm"
                 >
                   Modifica Nome
