@@ -44,6 +44,40 @@ export default function SettingsPage() {
   );
   const [teamMessage, setTeamMessage] = useState("");
 
+  const [notificationPrefs, setNotificationPrefs] = useState({
+    newAuctions: true,
+    auctionsWon: true,
+    settingsChanges: true,
+  });
+  const [notificationMessage, setNotificationMessage] = useState("");
+
+  // Nessun sistema di notifiche esiste ancora in quest'app (niente push,
+  // email o centro notifiche in-app): questi checkbox prima non salvavano
+  // nulla ed erano sempre spuntati al refresh. Ora almeno la scelta viene
+  // ricordata nel browser, ma resta una preferenza senza nulla che la
+  // legga davvero finché non esiste un meccanismo di invio.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("fanta-notification-prefs");
+      if (stored) setNotificationPrefs(JSON.parse(stored));
+    } catch {
+      // localStorage non disponibile o dati corrotti: restano i default
+    }
+  }, []);
+
+  const handleNotificationPrefsUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      localStorage.setItem(
+        "fanta-notification-prefs",
+        JSON.stringify(notificationPrefs),
+      );
+      setNotificationMessage("Preferenze salvate su questo dispositivo");
+    } catch {
+      setNotificationMessage("Impossibile salvare le preferenze");
+    }
+  };
+
   // Il nome team è per-lega: va ricaricato sia al primo arrivo dei dati da
   // Firestore sia quando l'utente cambia "Lega Attiva" qui sotto, altrimenti
   // il campo resterebbe fermo sul nome della lega precedente.
@@ -305,46 +339,87 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>Preferenze Notifiche</CardTitle>
               <CardDescription>
-                Scegli quando ricevere notifiche
+                Scegli quando ricevere notifiche. Nota: l&apos;app non invia
+                ancora notifiche vere (push o email) — questa scelta viene
+                solo ricordata su questo dispositivo per quando ci saranno.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Nuove Aste</p>
-                  <p className="text-sm text-slate-600">
-                    Ricevi notifiche quando inizia una nuova asta
-                  </p>
+            <form onSubmit={handleNotificationPrefsUpdate}>
+              <CardContent className="space-y-4">
+                {notificationMessage && (
+                  <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">
+                    {notificationMessage}
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Nuove Aste</p>
+                    <p className="text-sm text-slate-600">
+                      Ricevi notifiche quando inizia una nuova asta
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4"
+                    checked={notificationPrefs.newAuctions}
+                    onChange={(e) =>
+                      setNotificationPrefs({
+                        ...notificationPrefs,
+                        newAuctions: e.target.checked,
+                      })
+                    }
+                  />
                 </div>
-                <input type="checkbox" className="w-4 h-4" defaultChecked />
-              </div>
 
-              <Separator />
+                <Separator />
 
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Aste Vinte</p>
-                  <p className="text-sm text-slate-600">
-                    Notifica quando vinci un&apos;asta
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Aste Vinte</p>
+                    <p className="text-sm text-slate-600">
+                      Notifica quando vinci un&apos;asta
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4"
+                    checked={notificationPrefs.auctionsWon}
+                    onChange={(e) =>
+                      setNotificationPrefs({
+                        ...notificationPrefs,
+                        auctionsWon: e.target.checked,
+                      })
+                    }
+                  />
                 </div>
-                <input type="checkbox" className="w-4 h-4" defaultChecked />
-              </div>
 
-              <Separator />
+                <Separator />
 
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Modifiche Impostazioni</p>
-                  <p className="text-sm text-slate-600">
-                    Notifica quando l&apos;admin modifica le impostazioni
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Modifiche Impostazioni</p>
+                    <p className="text-sm text-slate-600">
+                      Notifica quando l&apos;admin modifica le impostazioni
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4"
+                    checked={notificationPrefs.settingsChanges}
+                    onChange={(e) =>
+                      setNotificationPrefs({
+                        ...notificationPrefs,
+                        settingsChanges: e.target.checked,
+                      })
+                    }
+                  />
                 </div>
-                <input type="checkbox" className="w-4 h-4" defaultChecked />
-              </div>
 
-              <Button className="mt-4">Salva Preferenze</Button>
-            </CardContent>
+                <Button type="submit" className="mt-4">
+                  Salva Preferenze
+                </Button>
+              </CardContent>
+            </form>
           </Card>
         </TabsContent>
       </Tabs>

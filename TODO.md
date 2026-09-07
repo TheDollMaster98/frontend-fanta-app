@@ -38,6 +38,15 @@ rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
       morti (mai renderizzato in nessuna UI) — rimosso; il nome team ora è
       collegato allo stesso salvataggio reale della pagina Team, e si
       ricarica quando cambi lega dal selettore in questa stessa pagina.
+- [x] Tab "Notifiche" in Impostazioni: i checkbox erano `defaultChecked`
+      fissi, nessuno stato, "Salva Preferenze" non salvava nulla. Ora sono
+      controllati e persistono in `localStorage`. **Non è un fix completo,
+      lo dico chiaro**: nell'app non esiste nessun meccanismo che invia
+      notifiche (niente push, niente email, niente centro notifiche
+      in-app) — quindi questa preferenza oggi non pilota ancora nulla,
+      semplicemente non si resetta più ad ogni refresh. Costruire un vero
+      sistema di notifiche è una feature nuova, non un bug, e non l'ho
+      fatta perché non richiesta: se la vuoi, dimmelo esplicitamente.
 
 ## Ancora aperto
 
@@ -52,6 +61,8 @@ rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
       abilitato di default (lo è già solo manuale, ma confermalo).
 
 ### Limiti noti, non banali da risolvere senza infrastruttura in più
+(Entrambi i punti qui sotto sono "roba Firebase" — Cloud Functions/regole
+Firestore — quindi non toccati su richiesta esplicita.)
 - [ ] La chiusura automatica di un'asta allo scadere del countdown richiede
       che *qualcuno* abbia la pagina Aste aperta in quel momento (niente
       Cloud Functions/cron). Se nessuno ce l'ha aperta, si chiude al
@@ -64,12 +75,16 @@ rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
       membership nelle regole.
 
 ### Feature ancora finte/incomplete (basso impatto)
-- [ ] Tab "Notifiche" in Impostazioni: checkbox decorativi, nessuno stato,
-      nessun salvataggio, nessuna notifica viene davvero inviata.
+- [ ] Non esiste nessun invio reale di notifiche (push/email/in-app): il
+      tab Notifiche ora salva la preferenza ma niente la legge ancora.
+      Serve un canale di invio vero prima che questi checkbox contino
+      qualcosa — è una feature nuova, non un bug, quindi non l'ho aggiunta
+      di mia iniziativa.
 - [ ] Nessuna validazione server-side seria su budget/puntate oltre ai
       limiti min/max: un utente "furbo" con accesso alla console Firebase
       potrebbe scrivere direttamente su Firestore bypassando i controlli
-      client. Per soli amici è un rischio bassissimo.
+      client. Per soli amici è un rischio bassissimo. (Roba Firebase/regole
+      Firestore, non toccata su richiesta esplicita.)
 
 ## Non toccare senza un motivo preciso
 - `types/index.ts`: `Team`, `Bid`, `AppState` sono tipi definiti ma mai
