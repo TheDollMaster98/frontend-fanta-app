@@ -53,6 +53,17 @@ rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
       `cursor-pointer` — Tailwind non lo aggiunge di default su `<button>`,
       a differenza di Bootstrap). Sistemato in tutti e tre i componenti UI
       condivisi, quindi vale ovunque nell'app.
+- [x] Bug grafico: la card "Tutte le Aste" e la card "Asta in Corso" (pagina
+      Aste) usavano ancora classi Tailwind da tema chiaro mai convertite
+      (`hover:bg-slate-50`, `bg-slate-100`, `text-slate-600`, ecc.) mentre
+      il resto dell'app è scuro. Risultato: badge/bottoni con testo bianco
+      su sfondo quasi bianco all'hover, illeggibili. Sistemato in entrambe
+      le card; anche 3 righe in Impostazioni > Notifiche avevano lo stesso
+      colore scuro-su-scuro non voluto.
+- [x] Dettaglio asta chiusa: ora mostra anche ruolo, squadra e descrizione
+      del giocatore comprato (per i giocatori LoL importati, la
+      descrizione contiene nome reale/paese/residenza), non solo prezzo e
+      vincitore.
 - [x] Aggiunta la riapertura di un'asta chiusa (dev/admin/vice): toglie il
       giocatore a chi l'aveva vinta, rimborsa il budget, e resetta l'asta a
       "pending" col prezzo base — pronta per essere riavviata da capo.

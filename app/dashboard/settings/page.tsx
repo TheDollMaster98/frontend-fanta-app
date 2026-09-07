@@ -354,7 +354,7 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">Nuove Aste</p>
-                    <p className="text-sm text-slate-600">
+                    <p className="text-sm text-slate-400">
                       Ricevi notifiche quando inizia una nuova asta
                     </p>
                   </div>
@@ -376,7 +376,7 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">Aste Vinte</p>
-                    <p className="text-sm text-slate-600">
+                    <p className="text-sm text-slate-400">
                       Notifica quando vinci un&apos;asta
                     </p>
                   </div>
@@ -398,7 +398,7 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">Modifiche Impostazioni</p>
-                    <p className="text-sm text-slate-600">
+                    <p className="text-sm text-slate-400">
                       Notifica quando l&apos;admin modifica le impostazioni
                     </p>
                   </div>

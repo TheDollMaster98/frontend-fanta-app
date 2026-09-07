@@ -719,7 +719,7 @@ export default function AuctionsPage() {
                 <Flame className="w-6 h-6 text-orange-500" />
                 Asta in Corso
               </CardTitle>
-              <div className="text-4xl font-bold text-blue-600">
+              <div className="text-4xl font-bold text-blue-400">
                 {countdown}s
               </div>
             </div>
@@ -734,7 +734,7 @@ export default function AuctionsPage() {
                   <Badge className="mt-2">{activeAuction.playerRole}</Badge>
                 )}
                 {activeAuction.playerTeam && (
-                  <p className="text-slate-600 mt-1">
+                  <p className="text-slate-400 mt-1">
                     {activeAuction.playerTeam}
                   </p>
                 )}
@@ -746,13 +746,13 @@ export default function AuctionsPage() {
               </div>
 
               <div className="space-y-4">
-                <div className="bg-slate-100 p-4 rounded-lg">
-                  <p className="text-sm text-slate-600">Prezzo Attuale</p>
-                  <p className="text-3xl font-bold text-green-600">
+                <div className="bg-slate-800 border border-slate-700 p-4 rounded-lg">
+                  <p className="text-sm text-slate-400">Prezzo Attuale</p>
+                  <p className="text-3xl font-bold text-green-400">
                     {activeAuction.currentPrice}€
                   </p>
                   {activeAuction.highestBidderName && (
-                    <p className="text-sm text-slate-600 mt-1">
+                    <p className="text-sm text-slate-400 mt-1">
                       Offerente: {activeAuction.highestBidderName}
                     </p>
                   )}
@@ -878,10 +878,12 @@ export default function AuctionsPage() {
       )}
 
       {/* Lista Aste */}
-      <Card>
+      <Card className="bg-slate-900 border-slate-700">
         <CardHeader>
-          <CardTitle>Tutte le Aste</CardTitle>
-          <CardDescription>Storico completo delle aste</CardDescription>
+          <CardTitle className="text-slate-100">Tutte le Aste</CardTitle>
+          <CardDescription className="text-slate-400">
+            Storico completo delle aste
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -893,7 +895,7 @@ export default function AuctionsPage() {
               auctions.map((auction) => (
                 <div
                   key={auction.id}
-                  className={`flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50 ${
+                  className={`flex items-center justify-between p-4 border border-slate-700 rounded-lg hover:bg-slate-800 transition-colors ${
                     auction.status === "closed" ? "cursor-pointer" : ""
                   }`}
                   onClick={() => {
@@ -901,8 +903,10 @@ export default function AuctionsPage() {
                   }}
                 >
                   <div>
-                    <h3 className="font-semibold">{auction.playerName}</h3>
-                    <p className="text-sm text-slate-600">
+                    <h3 className="font-semibold text-slate-100">
+                      {auction.playerName}
+                    </h3>
+                    <p className="text-sm text-slate-400">
                       Prezzo: {auction.currentPrice}€
                       {auction.highestBidderName &&
                         ` - ${auction.highestBidderName}`}
@@ -958,11 +962,26 @@ export default function AuctionsPage() {
               <DialogHeader>
                 <DialogTitle>{detailAuction.playerName}</DialogTitle>
                 <DialogDescription>
-                  {[detailAuction.playerRole, detailAuction.playerTeam]
-                    .filter(Boolean)
-                    .join(" - ") || "Nessun dettaglio giocatore"}
+                  {detailAuction.auctionFormat || "Asta"}
                 </DialogDescription>
               </DialogHeader>
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {detailAuction.playerRole && (
+                    <Badge>{detailAuction.playerRole}</Badge>
+                  )}
+                  {detailAuction.playerTeam && (
+                    <span className="text-sm text-slate-400">
+                      {detailAuction.playerTeam}
+                    </span>
+                  )}
+                </div>
+                {detailAuction.description && (
+                  <p className="text-sm text-slate-400">
+                    {detailAuction.description}
+                  </p>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-3 rounded-md border border-slate-700 bg-slate-800/50 p-4 text-sm">
                 <div>
                   <span className="text-slate-400">Prezzo Base</span>
