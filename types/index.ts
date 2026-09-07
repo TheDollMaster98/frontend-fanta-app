@@ -80,6 +80,7 @@ export interface Auction {
   createdBy: string; // admin o vice-admin che ha creato l'asta
   countdownSeconds: number;
   countdownEndsAt?: Date;
+  startedAt?: Date; // quando è stata avviata (per calcolare la durata)
   closedAt?: Date;
   createdAt: Date;
   updatedAt: Date;

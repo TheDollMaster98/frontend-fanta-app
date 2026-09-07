@@ -53,6 +53,26 @@ rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
       `cursor-pointer` — Tailwind non lo aggiunge di default su `<button>`,
       a differenza di Bootstrap). Sistemato in tutti e tre i componenti UI
       condivisi, quindi vale ovunque nell'app.
+- [x] Aggiunta la riapertura di un'asta chiusa (dev/admin/vice): toglie il
+      giocatore a chi l'aveva vinta, rimborsa il budget, e resetta l'asta a
+      "pending" col prezzo base — pronta per essere riavviata da capo.
+- [x] Aggiunto il dettaglio di un'asta chiusa: click sulla riga per vedere
+      giocatore, prezzo base/finale, chi l'ha vinta e la durata.
+- [x] Investigato il bug "il giocatore vinto non compare in Team e il
+      budget non si scala": tracciato tutto il percorso di assegnazione
+      riga per riga, non ho trovato un difetto logico certo per analisi
+      statica (non posso far girare l'app con Firebase vero in questo
+      sandbox). Ho comunque **irrobustito** il codice: prima le due
+      scritture (assegna giocatore, scala budget) erano nello stesso
+      blocco senza gestione errori — se la prima falliva silenziosamente
+      (es. Firestore rifiuta un valore), la seconda non partiva proprio, e
+      l'asta restava "chiusa" senza né giocatore né budget aggiornati,
+      senza nessun errore visibile. Ora sono disaccoppiate (un fallimento
+      nell'una non blocca l'altra) e ogni errore finisce loggato in
+      console invece di sparire nel nulla. **Se ricapita**, apri la
+      console del browser (F12) subito dopo aver chiuso un'asta vinta e
+      mandami quello che c'è scritto in rosso — con quello trovo la causa
+      vera al primo colpo.
 - [x] Aggiunto in "Importa Pro Players LoL" un filtro per squadra, anno e
       Mondiali: usa `TournamentPlayers.Team` (la squadra del giocatore *in
       quel torneo*, diversa da `Players.Team` che è sempre quella attuale)

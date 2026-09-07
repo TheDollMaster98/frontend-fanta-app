@@ -15,6 +15,8 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  getDoc,
+  getDocs,
   onSnapshot,
   query,
   where,
@@ -23,6 +25,7 @@ import {
   arrayUnion,
   runTransaction,
   serverTimestamp,
+  deleteField,
   Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -32,6 +35,7 @@ import type { Fanta, Player, JoinRequest, Auction } from "@/types";
 export interface TeamPlayer extends Player {
   userId: string; // ID dell'utente proprietario
   fantaId: string; // ID della lega
+  auctionId?: string; // asta da cui è stato assegnato, se presente (serve a "Riapri Asta")
 }
 
 interface FantaContextType {
@@ -75,6 +79,7 @@ interface FantaContextType {
   placeBid: (auctionId: string, amount: number) => void;
   closeAuction: (auctionId: string) => void;
   cancelAuction: (auctionId: string) => void;
+  reopenAuction: (auctionId: string) => Promise<void>;
 }
 
 const FantaContext = createContext<FantaContextType | undefined>(undefined);
@@ -124,6 +129,7 @@ function mapAuctionDoc(id: string, data: Record<string, unknown>): Auction {
     createdBy: data.createdBy,
     countdownSeconds: data.countdownSeconds,
     countdownEndsAt: toOptionalDate(data.countdownEndsAt as Timestamp | Date | undefined),
+    startedAt: toOptionalDate(data.startedAt as Timestamp | Date | undefined),
     closedAt: toOptionalDate(data.closedAt as Timestamp | Date | undefined),
     createdAt: toDate(data.createdAt as Timestamp | Date | undefined),
     updatedAt: toDate(data.updatedAt as Timestamp | Date | undefined),
@@ -450,6 +456,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     updateDoc(doc(db, "auctions", auctionId), {
       status: "active",
       countdownEndsAt: Timestamp.fromMillis(Date.now() + countdownSeconds * 1000),
+      startedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
   };
@@ -524,15 +531,65 @@ export function FantaProvider({ children }: { children: ReactNode }) {
             purchasePrice: data.currentPrice,
             userId: data.highestBidderId,
             fantaId: data.fantaId,
+            auctionId,
             customFields: {},
           },
         };
       }
-    }).then(() => {
-      if (winner) {
-        addPlayerToTeam(winner.player);
-        updateUserBudget(winner.userId, -winner.player.purchasePrice);
-      }
+    })
+      .then(() => {
+        if (!winner) return;
+        // Le due scritture sono indipendenti: se una fallisce (es. un
+        // valore imprevisto che Firestore rifiuta), non deve bloccare
+        // l'altra in silenzio come succedeva prima, con l'asta segnata
+        // "chiusa" ma senza né giocatore né budget aggiornati.
+        try {
+          addPlayerToTeam(winner.player);
+        } catch (error) {
+          console.error("Errore nell'assegnazione del giocatore vinto:", error);
+        }
+        try {
+          updateUserBudget(winner.userId, -winner.player.purchasePrice);
+        } catch (error) {
+          console.error("Errore nell'aggiornamento del budget:", error);
+        }
+      })
+      .catch((error) => {
+        console.error("Errore nella chiusura dell'asta:", error);
+      });
+  };
+
+  // Annulla l'assegnazione di un'asta chiusa: toglie il giocatore a chi
+  // l'aveva vinta (rimborsando il budget) e riporta l'asta a "pending" con
+  // il prezzo resettato al base, pronta per essere riavviata da capo.
+  const reopenAuction = async (auctionId: string): Promise<void> => {
+    const ref = doc(db, "auctions", auctionId);
+    const [auctionSnap, assignedSnap] = await Promise.all([
+      getDoc(ref),
+      getDocs(
+        query(collection(db, "players"), where("auctionId", "==", auctionId)),
+      ),
+    ]);
+    if (!auctionSnap.exists()) return;
+    const auctionData = auctionSnap.data();
+
+    await Promise.all(
+      assignedSnap.docs.map(async (playerSnap) => {
+        const playerData = playerSnap.data();
+        await deleteDoc(playerSnap.ref);
+        updateUserBudget(playerData.userId, playerData.purchasePrice);
+      }),
+    );
+
+    await updateDoc(ref, {
+      status: "pending",
+      currentPrice: auctionData.basePrice,
+      highestBidderId: deleteField(),
+      highestBidderName: deleteField(),
+      countdownEndsAt: deleteField(),
+      startedAt: deleteField(),
+      closedAt: deleteField(),
+      updatedAt: serverTimestamp(),
     });
   };
 
@@ -617,6 +674,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         placeBid,
         closeAuction,
         cancelAuction,
+        reopenAuction,
       }}
     >
       {children}

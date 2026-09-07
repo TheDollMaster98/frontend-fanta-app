@@ -70,8 +70,10 @@ export default function AuctionsPage() {
     placeBid: placeBidInFirestore,
     closeAuction: closeAuctionInFirestore,
     cancelAuction: cancelAuctionInFirestore,
+    reopenAuction,
   } = useFanta();
   const { user } = useAuth();
+  const [detailAuction, setDetailAuction] = useState<Auction | null>(null);
 
   // Aste condivise via Firestore (contexts/FantaContext.tsx): questa pagina
   // legge/scrive tramite le funzioni del context, non tiene più uno stato
@@ -891,7 +893,12 @@ export default function AuctionsPage() {
               auctions.map((auction) => (
                 <div
                   key={auction.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50"
+                  className={`flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50 ${
+                    auction.status === "closed" ? "cursor-pointer" : ""
+                  }`}
+                  onClick={() => {
+                    if (auction.status === "closed") setDetailAuction(auction);
+                  }}
                 >
                   <div>
                     <h3 className="font-semibold">{auction.playerName}</h3>
@@ -920,6 +927,18 @@ export default function AuctionsPage() {
                         Avvia
                       </Button>
                     )}
+                    {auction.status === "closed" && isAdmin && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          reopenAuction(auction.id);
+                        }}
+                      >
+                        Riapri
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))
@@ -927,6 +946,76 @@ export default function AuctionsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Dettaglio asta chiusa */}
+      <Dialog
+        open={Boolean(detailAuction)}
+        onOpenChange={(open) => !open && setDetailAuction(null)}
+      >
+        <DialogContent>
+          {detailAuction && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{detailAuction.playerName}</DialogTitle>
+                <DialogDescription>
+                  {[detailAuction.playerRole, detailAuction.playerTeam]
+                    .filter(Boolean)
+                    .join(" - ") || "Nessun dettaglio giocatore"}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-3 rounded-md border border-slate-700 bg-slate-800/50 p-4 text-sm">
+                <div>
+                  <span className="text-slate-400">Prezzo Base</span>
+                  <p>{detailAuction.basePrice}€</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Prezzo Finale</span>
+                  <p>{detailAuction.currentPrice}€</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Vinta da</span>
+                  <p>{detailAuction.highestBidderName || "Nessuna offerta"}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Durata</span>
+                  <p>
+                    {detailAuction.startedAt && detailAuction.closedAt
+                      ? `${Math.max(
+                          0,
+                          Math.round(
+                            (detailAuction.closedAt.getTime() -
+                              detailAuction.startedAt.getTime()) /
+                              1000,
+                          ),
+                        )}s`
+                      : "N/D"}
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-slate-400">Chiusa il</span>
+                  <p>
+                    {detailAuction.closedAt
+                      ? detailAuction.closedAt.toLocaleString("it-IT")
+                      : "N/D"}
+                  </p>
+                </div>
+              </div>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    reopenAuction(detailAuction.id);
+                    setDetailAuction(null);
+                  }}
+                >
+                  Riapri Asta
+                </Button>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
