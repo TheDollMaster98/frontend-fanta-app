@@ -48,6 +48,19 @@ rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
       sistema di notifiche è una feature nuova, non un bug, e non l'ho
       fatta perché non richiesta: se la vuoi, dimmelo esplicitamente.
 
+- [x] Bug CSS: nessun elemento cliccabile mostrava il cursore a manina
+      sull'hover (`Button`, `TabsTrigger`, `SelectTrigger` non avevano mai
+      `cursor-pointer` — Tailwind non lo aggiunge di default su `<button>`,
+      a differenza di Bootstrap). Sistemato in tutti e tre i componenti UI
+      condivisi, quindi vale ovunque nell'app.
+- [x] Aggiunto in "Importa Pro Players LoL" un filtro per squadra, anno e
+      Mondiali: usa `TournamentPlayers.Team` (la squadra del giocatore *in
+      quel torneo*, diversa da `Players.Team` che è sempre quella attuale)
+      per mostrare il roster storico e confrontarlo con la squadra di oggi
+      ("Ancora in squadra" vs "Nel <anno>: <altra squadra>"). Schema Cargo
+      verificato a mano con l'utente prima di scrivere la query (l'accesso
+      di rete a lol.fandom.com è bloccato in questo sandbox).
+
 ## Ancora aperto
 
 ### Da decidere/fare tu

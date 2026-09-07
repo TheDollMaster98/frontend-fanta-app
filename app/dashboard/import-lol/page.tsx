@@ -38,6 +38,7 @@ import {
 import {
   searchPlayers,
   getPlayersByLeague,
+  getTeamRosterHistory,
   getPlayerStats,
   getPlayerImage,
   getAvailableLeagues,
@@ -76,6 +77,9 @@ export default function ImportLoLPlayersPage() {
   const [selectedPlayerImage, setSelectedPlayerImage] = useState<string | null>(
     null,
   );
+  const [teamSearch, setTeamSearch] = useState("");
+  const [teamSearchYear, setTeamSearchYear] = useState("");
+  const [teamSearchWorldsOnly, setTeamSearchWorldsOnly] = useState(false);
   const [statsLeagueFilter, setStatsLeagueFilter] = useState("TUTTE");
   const [statsYearFilter, setStatsYearFilter] = useState("TUTTI");
   const [statsTeamFilter, setStatsTeamFilter] = useState("TUTTI");
@@ -156,6 +160,35 @@ export default function ImportLoLPlayersPage() {
     }
   };
 
+  // Roster storico: chi ha giocato per una squadra, in un anno e/o ai
+  // Mondiali. A differenza degli altri due box, la squadra qui riportata
+  // è quella del torneo trovato, non quella attuale del giocatore — la
+  // tabella dei risultati mostra il confronto tra le due.
+  const canSearchByTeam = Boolean(
+    teamSearch.trim() || teamSearchYear.trim() || teamSearchWorldsOnly,
+  );
+
+  const handleTeamSearch = async () => {
+    if (!canSearchByTeam) return;
+
+    setIsLoading(true);
+    setApiError(false);
+    try {
+      const results = await getTeamRosterHistory({
+        team: teamSearch,
+        year: teamSearchYear,
+        worldsOnly: teamSearchWorldsOnly,
+      });
+      setPlayers(results);
+      setApiError(results.length === 0);
+    } catch (error) {
+      console.error("Errore nella ricerca per squadra:", error);
+      setApiError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Visualizza statistiche di un giocatore
   const handleViewStats = async (player: LeaguepediaPlayer) => {
     setSelectedPlayer(player);
@@ -213,6 +246,10 @@ export default function ImportLoLPlayersPage() {
         return "bg-slate-600";
     }
   };
+
+  // I risultati della ricerca per squadra/anno/Mondiali portano
+  // historicalTeam: solo in quel caso ha senso la colonna di confronto.
+  const showHistoryColumn = players.some((player) => player.historicalTeam);
 
   const statsLeagueOptions = useMemo(() => {
     const leagues = new Set(
@@ -308,6 +345,56 @@ export default function ImportLoLPlayersPage() {
               </Button>
             </div>
           </div>
+
+          {/* Cerca per squadra/anno/Mondiali */}
+          <div className="space-y-2">
+            <Label>
+              Oppure Cerca il Roster di una Squadra (per anno o Mondiali)
+            </Label>
+            <div className="grid gap-2 sm:grid-cols-[2fr_1fr_auto]">
+              <Input
+                placeholder="Squadra, es: T1, G2 Esports..."
+                value={teamSearch}
+                onChange={(e) => setTeamSearch(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleTeamSearch()}
+                className="bg-slate-800 border-slate-600"
+              />
+              <Input
+                type="number"
+                placeholder="Anno (es: 2026)"
+                value={teamSearchYear}
+                onChange={(e) => setTeamSearchYear(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleTeamSearch()}
+                className="bg-slate-800 border-slate-600"
+              />
+              <Button
+                onClick={handleTeamSearch}
+                disabled={isLoading || !canSearchByTeam}
+              >
+                <Search className="h-4 w-4 mr-2" />
+                Cerca
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="worldsOnly"
+                className="w-4 h-4"
+                checked={teamSearchWorldsOnly}
+                onChange={(e) => setTeamSearchWorldsOnly(e.target.checked)}
+              />
+              <Label htmlFor="worldsOnly" className="cursor-pointer">
+                Solo roster Mondiali (con o senza squadra/anno)
+              </Label>
+            </div>
+            <p className="text-sm text-slate-500">
+              Squadra e anno sono entrambi facoltativi: puoi cercare solo la
+              squadra (roster di sempre), solo l&apos;anno con Mondiali
+              spuntato (tutti i partecipanti ai Mondiali di quell&apos;anno),
+              o combinarli. Il risultato mostra la squadra di allora vs quella
+              attuale del giocatore.
+            </p>
+          </div>
         </CardContent>
       </Card>
 
@@ -333,6 +420,7 @@ export default function ImportLoLPlayersPage() {
                     <TableHead>Ruolo</TableHead>
                     <TableHead>Team</TableHead>
                     <TableHead>Lega</TableHead>
+                    {showHistoryColumn && <TableHead>Storico</TableHead>}
                     <TableHead>Azioni</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -349,6 +437,29 @@ export default function ImportLoLPlayersPage() {
                       </TableCell>
                       <TableCell>{player.team}</TableCell>
                       <TableCell>{player.league || "N/D"}</TableCell>
+                      {showHistoryColumn && (
+                        <TableCell>
+                          {player.historicalTeam ? (
+                            player.historicalTeam === player.team ? (
+                              <Badge className="bg-green-600">
+                                Ancora in squadra
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="border-amber-600 text-amber-400"
+                              >
+                                {player.tournamentYear
+                                  ? `Nel ${player.tournamentYear}: `
+                                  : ""}
+                                {player.historicalTeam}
+                              </Badge>
+                            )
+                          ) : (
+                            "N/D"
+                          )}
+                        </TableCell>
+                      )}
                       <TableCell>
                         <div className="flex gap-2">
                           <Button

@@ -143,6 +143,12 @@ export interface LeaguepediaPlayer {
   team?: string;
   league?: string;
   image?: string;
+  // Popolati solo dai risultati di getTeamRosterHistory: la squadra per cui
+  // il giocatore era schierato nel torneo/anno filtrato (può differire da
+  // `team`, che è sempre la squadra attuale).
+  historicalTeam?: string;
+  tournamentYear?: string;
+  tournamentName?: string;
 }
 
 // Riga grezza restituita dalle Cargo query di Leaguepedia (campi dinamici, sempre stringhe).
@@ -355,6 +361,56 @@ export async function getPlayersByLeague(
   // Leaguepedia irraggiungibile o rate-limited: il fallback locale non ha un
   // campo lega affidabile, quindi lo usiamo solo per "tutti i pro player".
   return isAllPlayers ? FALLBACK_PRO_PLAYERS : [];
+}
+
+/**
+ * Roster storico: chi ha giocato per una squadra (in un anno e/o ai
+ * Mondiali) secondo TournamentPlayers.Team, che è la squadra al momento di
+ * quel torneo — diversa da Players.Team, che è sempre la squadra attuale.
+ * Confrontando i due campi si vede se il giocatore è ancora in quella
+ * squadra oggi. Nessun fallback locale: senza l'API non ha senso mostrare
+ * dati storici inventati.
+ */
+export async function getTeamRosterHistory(filters: {
+  team?: string;
+  year?: string;
+  worldsOnly?: boolean;
+}): Promise<LeaguepediaPlayer[]> {
+  const team = filters.team?.trim();
+  const year = filters.year?.trim();
+  const worldsOnly = !!filters.worldsOnly;
+
+  if (!team && !year && !worldsOnly) return [];
+
+  const whereClauses: string[] = [];
+  if (team) whereClauses.push(`TP.Team LIKE "%${team}%"`);
+  if (year) whereClauses.push(`T.Year="${year}"`);
+  if (worldsOnly) whereClauses.push(`T.Name LIKE "%World Championship%"`);
+
+  const results = await cargoQuery({
+    tables: "Tournaments=T, TournamentPlayers=TP, PlayerRedirects=PR, Players=P",
+    fields:
+      "P.Player, P.Name, P.Country, P.Birthdate, P.Residency, P.Role, P.Team, TP.Team=HistoricalTeam, T.Name=TournamentName, T.Year",
+    where: whereClauses.join(" AND "),
+    join_on:
+      "T.OverviewPage=TP.OverviewPage, TP.Player=PR.AllName, PR.OverviewPage=P.OverviewPage",
+    order_by: "T.DateStart DESC",
+    group_by: "P.OverviewPage",
+    limit: 300,
+  });
+
+  return results
+    .map((record) => {
+      const mapped = mapLeaguepediaRecord(record);
+      if (!mapped) return null;
+      return {
+        ...mapped,
+        historicalTeam: record.HistoricalTeam || "",
+        tournamentYear: record.Year || "",
+        tournamentName: record.TournamentName || "",
+      };
+    })
+    .filter(Boolean) as LeaguepediaPlayer[];
 }
 
 /**
