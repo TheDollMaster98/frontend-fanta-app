@@ -59,7 +59,16 @@ import {
   type LeaguepediaPlayer,
   type LeaguepediaPlayerStats,
 } from "@/lib/leaguepediaApi";
-import type { Auction } from "@/types";
+import type { Auction, Bid } from "@/types";
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  onSnapshot,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { Flame, Save, Ban, Lock } from "lucide-react";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -84,6 +93,7 @@ export default function AuctionsPage() {
   const { user } = useAuth();
   const [detailAuction, setDetailAuction] = useState<Auction | null>(null);
   const [manualAssignTo, setManualAssignTo] = useState("");
+  const [bidHistory, setBidHistory] = useState<Bid[]>([]);
 
   // Aste condivise via Firestore (contexts/FantaContext.tsx): questa pagina
   // legge/scrive tramite le funzioni del context, non tiene più uno stato
@@ -92,6 +102,43 @@ export default function AuctionsPage() {
     () => auctions.find((a) => a.status === "active") ?? null,
     [auctions],
   );
+
+  // Storico delle offerte dell'asta attiva: chi ha rilanciato, quando e di
+  // quanto, non solo l'ultima. Lettura diretta da Firestore, come già fa
+  // admin/page.tsx per i membri: è un dato utile solo qui, non serve
+  // portarlo nel FantaContext condiviso.
+  useEffect(() => {
+    // Niente da fare senza un'asta attiva: uno storico rimasto in stato da
+    // un'asta precedente non si vede comunque, dato che questa sezione è
+    // renderizzata solo dentro la card "Asta Attiva".
+    if (!activeAuction) return;
+
+    const bidsQuery = query(
+      collection(db, "bids"),
+      where("auctionId", "==", activeAuction.id),
+      orderBy("createdAt", "desc"),
+      limit(15),
+    );
+
+    const unsubscribe = onSnapshot(bidsQuery, (snapshot) => {
+      setBidHistory(
+        snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            auctionId: data.auctionId,
+            userId: data.userId,
+            userName: data.userName,
+            amount: data.amount,
+            createdAt: data.createdAt?.toDate?.() || new Date(),
+          } as Bid;
+        }),
+      );
+    });
+
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAuction?.id]);
 
   // Il countdown va ricalcolato ogni secondo a partire da countdownEndsAt
   // (valore condiviso su Firestore), non da un contatore locale che
@@ -267,6 +314,12 @@ export default function AuctionsPage() {
   const placeBid = (amount: number) => {
     if (!activeAuction) return;
     placeBidInFirestore(activeAuction.id, amount);
+  };
+
+  const submitCustomBid = () => {
+    if (!customBid) return;
+    placeBid(Number(customBid));
+    setCustomBid("");
   };
 
   const closeAuction = () => {
@@ -801,6 +854,59 @@ export default function AuctionsPage() {
                     </p>
                   )}
                 </div>
+
+                {/* Crediti di tutti i membri della lega, per farsi un'idea
+                    di quanto possono ancora spingere gli avversari */}
+                {fantaMembers.length > 0 && (
+                  <div className="bg-slate-800 border border-slate-700 p-4 rounded-lg">
+                    <p className="text-sm text-slate-400 mb-2">
+                      Crediti di tutti
+                    </p>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {[...fantaMembers]
+                        .sort(
+                          (a, b) => getUserBudget(b.id) - getUserBudget(a.id),
+                        )
+                        .map((member) => (
+                          <div
+                            key={member.id}
+                            className="flex items-center justify-between text-sm"
+                          >
+                            <span className="text-slate-300">
+                              {member.name}
+                            </span>
+                            <span className="text-slate-100 font-medium">
+                              {getUserBudget(member.id)}€
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Storico offerte: chi ha rilanciato, quando e di quanto */}
+                {bidHistory.length > 0 && (
+                  <div className="bg-slate-800 border border-slate-700 p-4 rounded-lg">
+                    <p className="text-sm text-slate-400 mb-2">
+                      Storico Offerte
+                    </p>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {bidHistory.map((bid) => (
+                        <div
+                          key={bid.id}
+                          className="flex items-center justify-between text-sm"
+                        >
+                          <span className="text-slate-300">
+                            {getMemberName(bid.userId, bid.userName)}
+                          </span>
+                          <span className="text-slate-100 font-medium">
+                            +{bid.amount}€
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -861,19 +967,11 @@ export default function AuctionsPage() {
                         placeholder="Importo custom"
                         value={customBid}
                         onChange={(e) => setCustomBid(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && submitCustomBid()}
                         min={1}
                         max={maxAffordableBid - activeAuction.currentPrice}
                       />
-                      <Button
-                        onClick={() => {
-                          if (customBid) {
-                            placeBid(Number(customBid));
-                            setCustomBid("");
-                          }
-                        }}
-                      >
-                        Offri
-                      </Button>
+                      <Button onClick={submitCustomBid}>Offri</Button>
                     </div>
                   )}
                 </>

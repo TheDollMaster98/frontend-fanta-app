@@ -4,7 +4,41 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
-## Fatto in questo giro
+## Fatto in questo giro (asta live)
+
+- [x] Offerta custom: invio anche con Enter, non solo col bottone.
+- [x] Pannello "Crediti di tutti" nell'asta attiva: budget di ogni membro
+      della lega, per capire quanto possono ancora spingere gli altri.
+- [x] Storico offerte: chi ha rilanciato, quando e di quanto (prima si
+      vedeva solo l'offerta più alta corrente). Nuova collection `bids` —
+      usa il tipo `Bid` che esisteva già in types/index.ts ma non era mai
+      stato collegato a nulla.
+- [ ] **Proposta di cambiare il modello dati del Fanta (member[] embedded
+      con budgetTot/budgetSpent/budgetLeft/team/role) — respinta con
+      motivazione tecnica**, non implementata: `team`/`role` singolare per
+      membro non è compatibile con la rosa multi-giocatore già costruita
+      (maxPlayersTotal/maxPlayersPerRole); i tre campi budget ridondanti
+      rischiano di disallinearsi; e soprattutto scrivere tutti i budget
+      nello stesso documento Fanta farebbe scontrare le transazioni di
+      offerte concorrenti durante un'asta live. Architettura attuale
+      (un documento per membro in teamBudgets) confermata.
+
+## Ancora da discutere prima di implementare (feedback ricevuto dal gruppo)
+
+- [ ] **Titolari/panchina**: interfaccia per scegliere quali giocatori
+      della rosa schierare. Da decidere: vincoli per ruolo (es. esatto un
+      titolare a ruolo) o scelta libera?
+- [ ] **Voti/punteggio**: serve un modo di assegnare punti alle prestazioni
+      reali dei giocatori. Da decidere: chi li inserisce (admin a mano
+      dopo ogni giornata, o import automatico — fattibile solo per LoL via
+      Leaguepedia, non per calcio/basket) e con quale formula/struttura.
+- [ ] **Andamento partita vs avversario**: serve un concetto di
+      giornata/turno con un calendario di chi affronta chi. Da decidere:
+      calendario generato a mano dall'admin o automaticamente
+      (round-robin), e se "andamento" significa davvero live o solo
+      "ultimo risultato inserito" (dipende dalla risposta sui voti).
+
+## Fatto in giri precedenti
 
 - [x] Regole Firestore: rimossa la scadenza automatica al 30/9/2026 e
       l'accesso anonimo aperto a chiunque (ora richiede solo login).

@@ -538,7 +538,13 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     if (maxPlayersTotal > 0 && myRoster.length >= maxPlayersTotal) return;
 
     const ref = doc(db, "auctions", auctionId);
+    // La transazione può no-oppare (limiti superati, asta non più attiva):
+    // logghiamo lo storico solo se l'offerta è stata davvero accettata,
+    // altrimenti risulterebbe un rilancio che in realtà non è avvenuto.
+    let accepted = false;
+
     runTransaction(db, async (tx) => {
+      accepted = false;
       const snap = await tx.get(ref);
       if (!snap.exists()) return;
       const data = snap.data();
@@ -569,6 +575,16 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         highestBidderName: user.name,
         countdownEndsAt: Timestamp.fromMillis(Date.now() + countdownMs),
         updatedAt: serverTimestamp(),
+      });
+      accepted = true;
+    }).then(() => {
+      if (!accepted) return;
+      addDoc(collection(db, "bids"), {
+        auctionId,
+        userId: user.id,
+        userName: user.name,
+        amount,
+        createdAt: serverTimestamp(),
       });
     });
   };
