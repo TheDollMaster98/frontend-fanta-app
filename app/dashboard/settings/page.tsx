@@ -28,13 +28,15 @@ import { CreateFantaDialog } from "@/components/CreateFantaDialog";
 export default function SettingsPage() {
   const { fantas, currentFanta, setCurrentFanta, getTeamName, updateTeamName } =
     useFanta();
-  const { user, setIsDeveloper, updateUserProfile, changePassword } = useAuth();
+  const { user, setIsDeveloper, updateUserProfile, updateUserEmail, changePassword } =
+    useAuth();
   // Una volta visto come developer in questa sessione, il controllo resta
   // visibile anche se lo disattivi: così puoi riattivarlo senza dover
   // passare da Firestore Console. Un reload rivaluta lo stato vero.
   const [canToggleDeveloper] = useState(() => !!user?.isDeveloper);
 
   const [name, setName] = useState(user?.name || "");
+  const [email, setEmail] = useState(user?.email || "");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
@@ -98,6 +100,9 @@ export default function SettingsPage() {
     try {
       if (name && name !== user?.name) {
         await updateUserProfile(name);
+      }
+      if (email && email !== user?.email) {
+        await updateUserEmail(email);
       }
       if (newPassword) {
         await changePassword(newPassword);
@@ -164,9 +169,15 @@ export default function SettingsPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" value={user?.email || ""} disabled />
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                   <p className="text-sm text-slate-500">
-                    Per cambiare email contatta chi gestisce l&apos;app
+                    Usala anche per accedere: se la cambi qui, dal prossimo
+                    login dovrai usare quella nuova
                   </p>
                 </div>
 

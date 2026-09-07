@@ -17,6 +17,7 @@ import {
   signOut,
   updateProfile,
   updatePassword,
+  updateEmail,
   type User as FirebaseUser,
   type AuthError,
 } from "firebase/auth";
@@ -39,13 +40,12 @@ interface AuthContextType {
   logout: () => Promise<void>;
   setIsDeveloper: (value: boolean) => Promise<void>;
   updateUserProfile: (name: string) => Promise<void>;
+  updateUserEmail: (email: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
   isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const DEFAULT_BUDGET = 500;
 
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
   "auth/invalid-credential": "Email o password non corretti",
@@ -79,14 +79,25 @@ async function loadOrCreateUserProfile(
 
   if (snap.exists()) {
     const data = snap.data();
+    // Firebase Auth resta la fonte di verità per nome/email (es. dopo un
+    // cambio email confermato via link, o un profilo aggiornato altrove):
+    // se il documento Firestore è rimasto indietro, lo riallineiamo qui,
+    // così ogni punto dell'app che legge da "users" vede sempre il valore
+    // corrente, non quello congelato al momento della creazione.
+    const authEmail = firebaseUser.email || data.email;
+    const authName = firebaseUser.displayName || data.name;
+    if (authEmail !== data.email || authName !== data.name) {
+      updateDoc(ref, {
+        email: authEmail,
+        name: authName,
+        updatedAt: serverTimestamp(),
+      });
+    }
     return {
       id: firebaseUser.uid,
-      email: data.email,
-      name: data.name,
+      email: authEmail,
+      name: authName,
       isDeveloper: data.isDeveloper ?? false,
-      fantaId: data.fantaId,
-      teamName: data.teamName,
-      budget: data.budget,
       createdAt: toDate(data.createdAt),
       updatedAt: toDate(data.updatedAt),
     };
@@ -96,7 +107,6 @@ async function loadOrCreateUserProfile(
     email: firebaseUser.email || "",
     name: nameOverride || firebaseUser.displayName || firebaseUser.email || "Utente",
     isDeveloper: false,
-    budget: DEFAULT_BUDGET,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -107,7 +117,6 @@ async function loadOrCreateUserProfile(
     email: profile.email,
     name: profile.name,
     isDeveloper: profile.isDeveloper,
-    budget: profile.budget,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -191,6 +200,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((prev) => (prev ? { ...prev, name } : prev));
   };
 
+  const updateUserEmail = async (email: string) => {
+    if (!auth.currentUser) return;
+    try {
+      await updateEmail(auth.currentUser, email);
+    } catch (error) {
+      throw new Error(mapAuthError(error));
+    }
+    await updateDoc(doc(db, "users", auth.currentUser.uid), {
+      email,
+      updatedAt: serverTimestamp(),
+    });
+    setUser((prev) => (prev ? { ...prev, email } : prev));
+  };
+
   const changePassword = async (newPassword: string) => {
     if (!auth.currentUser) return;
     try {
@@ -210,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         setIsDeveloper,
         updateUserProfile,
+        updateUserEmail,
         changePassword,
         isLoading,
       }}

@@ -47,7 +47,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { DEFAULT_BID_PRESETS, SPORT_TEMPLATES } from "@/lib/constants";
+import {
+  DEFAULT_BID_PRESETS,
+  SPORT_TEMPLATES,
+  MIN_COUNTDOWN_SECONDS,
+} from "@/lib/constants";
 import {
   getPlayersByLeague,
   getPlayerImage,
@@ -71,9 +75,15 @@ export default function AuctionsPage() {
     closeAuction: closeAuctionInFirestore,
     cancelAuction: cancelAuctionInFirestore,
     reopenAuction,
+    assignAuctionManually,
+    getPlayersByUser,
+    getUserBudget,
+    fantaMembers,
+    getMemberName,
   } = useFanta();
   const { user } = useAuth();
   const [detailAuction, setDetailAuction] = useState<Auction | null>(null);
+  const [manualAssignTo, setManualAssignTo] = useState("");
 
   // Aste condivise via Firestore (contexts/FantaContext.tsx): questa pagina
   // legge/scrive tramite le funzioni del context, non tiene più uno stato
@@ -100,6 +110,32 @@ export default function AuctionsPage() {
     : 0;
 
   const maxBid = currentFanta?.settings.maxBid;
+
+  // Rosa e budget dell'utente corrente, per sapere se può ancora fare
+  // offerte su questa asta: limite rosa totale, limite per ruolo, e budget
+  // minimo da lasciare per gli slot ancora liberi (1 credito ciascuno,
+  // altrimenti si rischia di finire i soldi prima di completare la rosa).
+  // Stessa logica, stessi numeri, di FantaContext.placeBid — qui serve solo
+  // a spiegare in UI perché un'offerta è disabilitata.
+  const myRoster =
+    user && currentFanta ? getPlayersByUser(user.id, currentFanta.id) : [];
+  const maxPlayersTotal = currentFanta?.settings.maxPlayersTotal || 0;
+  const isRosterFull =
+    maxPlayersTotal > 0 && myRoster.length >= maxPlayersTotal;
+  const roleLimit = activeAuction?.playerRole
+    ? currentFanta?.settings.maxPlayersPerRole?.[activeAuction.playerRole]
+    : undefined;
+  const isRoleFull =
+    !!roleLimit &&
+    myRoster.filter((p) => p.role === activeAuction?.playerRole).length >=
+      roleLimit;
+  const myBudget = user ? getUserBudget(user.id) : 0;
+  const openSlots = maxPlayersTotal > 0 ? maxPlayersTotal - myRoster.length : 0;
+  const maxAffordableBid =
+    maxBid !== undefined
+      ? Math.min(maxBid, myBudget - openSlots)
+      : myBudget - openSlots;
+
   const [customBid, setCustomBid] = useState("");
   const [auctionPlayers, setAuctionPlayers] = useState<LeaguepediaPlayer[]>([]);
   const [auctionPlayerSearch, setAuctionPlayerSearch] = useState("");
@@ -146,7 +182,8 @@ export default function AuctionsPage() {
     playerTeam: "",
     description: "",
     basePrice: 1,
-    countdownSeconds: currentFanta?.settings.defaultCountdown || 3,
+    countdownSeconds:
+      currentFanta?.settings.defaultCountdown || MIN_COUNTDOWN_SECONDS,
     ...prefilledAuction,
   });
 
@@ -696,8 +733,11 @@ export default function AuctionsPage() {
                           countdownSeconds: Number(e.target.value),
                         })
                       }
-                      min={1}
+                      min={MIN_COUNTDOWN_SECONDS}
                     />
+                    <p className="text-sm text-slate-500">
+                      Minimo {MIN_COUNTDOWN_SECONDS}s
+                    </p>
                   </div>
                 </div>
 
@@ -751,9 +791,13 @@ export default function AuctionsPage() {
                   <p className="text-3xl font-bold text-green-400">
                     {activeAuction.currentPrice}€
                   </p>
-                  {activeAuction.highestBidderName && (
+                  {activeAuction.highestBidderId && (
                     <p className="text-sm text-slate-400 mt-1">
-                      Offerente: {activeAuction.highestBidderName}
+                      Offerente:{" "}
+                      {getMemberName(
+                        activeAuction.highestBidderId,
+                        activeAuction.highestBidderName,
+                      )}
                     </p>
                   )}
                 </div>
@@ -763,13 +807,37 @@ export default function AuctionsPage() {
             {/* Pulsanti Offerta */}
             <div className="space-y-3">
               <Label>Fai la tua offerta:</Label>
-              {maxBid !== undefined && activeAuction.currentPrice >= maxBid ? (
+              {isRosterFull ? (
+                <p className="text-sm text-slate-500">
+                  Hai già {maxPlayersTotal} giocatori: rosa al completo, non
+                  puoi fare altre offerte.
+                </p>
+              ) : isRoleFull ? (
+                <p className="text-sm text-slate-500">
+                  Hai già {roleLimit} giocatori nel ruolo &quot;
+                  {activeAuction.playerRole}&quot;: limite raggiunto per
+                  questo ruolo.
+                </p>
+              ) : maxBid !== undefined && activeAuction.currentPrice >= maxBid ? (
                 <p className="text-sm text-slate-500">
                   Puntata massima della lega raggiunta ({maxBid}€): l&apos;asta
                   può solo essere chiusa o annullata.
                 </p>
+              ) : maxAffordableBid <= activeAuction.currentPrice ? (
+                <p className="text-sm text-slate-500">
+                  {openSlots > 0
+                    ? `Con ${openSlots} posti rosa ancora da riempire devi tenere almeno ${openSlots} crediti da parte: non puoi rilanciare oltre.`
+                    : "Budget insufficiente per rilanciare."}
+                </p>
               ) : (
                 <>
+                  {openSlots > 0 && (
+                    <p className="text-xs text-slate-500">
+                      Puoi arrivare fino a {maxAffordableBid}€ (budget:{" "}
+                      {myBudget}€, {openSlots} posti rosa ancora da riempire
+                      dopo questo).
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     {DEFAULT_BID_PRESETS.map((preset) => (
                       <Button
@@ -777,8 +845,8 @@ export default function AuctionsPage() {
                         onClick={() => placeBid(preset.value)}
                         variant="outline"
                         disabled={
-                          maxBid !== undefined &&
-                          activeAuction.currentPrice + preset.value > maxBid
+                          activeAuction.currentPrice + preset.value >
+                          maxAffordableBid
                         }
                       >
                         {preset.label}
@@ -794,11 +862,7 @@ export default function AuctionsPage() {
                         value={customBid}
                         onChange={(e) => setCustomBid(e.target.value)}
                         min={1}
-                        max={
-                          maxBid !== undefined
-                            ? maxBid - activeAuction.currentPrice
-                            : undefined
-                        }
+                        max={maxAffordableBid - activeAuction.currentPrice}
                       />
                       <Button
                         onClick={() => {
@@ -871,6 +935,45 @@ export default function AuctionsPage() {
                     Chiudi Asta
                   </Button>
                 </div>
+
+                {/* Assegnazione manuale: utile quando due persone si sono
+                    già accordate fuori dall'asta su chi se lo prende, a
+                    prescindere da chi risulta offerente più alto. */}
+                <div className="flex gap-2 pt-2 border-t border-slate-700">
+                  <Select
+                    value={manualAssignTo}
+                    onValueChange={setManualAssignTo}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Assegna manualmente a..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fantaMembers.map((member) => (
+                        <SelectItem key={member.id} value={member.id}>
+                          {member.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    disabled={!manualAssignTo}
+                    onClick={() => {
+                      const member = fantaMembers.find(
+                        (m) => m.id === manualAssignTo,
+                      );
+                      if (!member) return;
+                      assignAuctionManually(
+                        activeAuction.id,
+                        member.id,
+                        member.name,
+                      );
+                      setManualAssignTo("");
+                    }}
+                  >
+                    Assegna
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>
@@ -908,8 +1011,8 @@ export default function AuctionsPage() {
                     </h3>
                     <p className="text-sm text-slate-400">
                       Prezzo: {auction.currentPrice}€
-                      {auction.highestBidderName &&
-                        ` - ${auction.highestBidderName}`}
+                      {auction.highestBidderId &&
+                        ` - ${getMemberName(auction.highestBidderId, auction.highestBidderName)}`}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -993,7 +1096,14 @@ export default function AuctionsPage() {
                 </div>
                 <div>
                   <span className="text-slate-400">Vinta da</span>
-                  <p>{detailAuction.highestBidderName || "Nessuna offerta"}</p>
+                  <p>
+                    {detailAuction.highestBidderId
+                      ? getMemberName(
+                          detailAuction.highestBidderId,
+                          detailAuction.highestBidderName,
+                        )
+                      : "Nessuna offerta"}
+                  </p>
                 </div>
                 <div>
                   <span className="text-slate-400">Durata</span>

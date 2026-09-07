@@ -53,6 +53,33 @@ rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
       `cursor-pointer` — Tailwind non lo aggiunge di default su `<button>`,
       a differenza di Bootstrap). Sistemato in tutti e tre i componenti UI
       condivisi, quindi vale ovunque nell'app.
+- [x] Limiti rosa configurabili dall'admin: numero massimo di giocatori
+      totali e per ruolo. Un'offerta che porterebbe a superarli viene
+      bloccata sia in UI (bottoni disabilitati, messaggio) sia in
+      `placeBid` lato context.
+- [x] Countdown minimo 15s: sia come default di lega sia come valore
+      custom per singola asta, con clamp difensivo anche lato context (non
+      solo `min` sull'input).
+- [x] Assegnazione manuale del vincitore: admin/vice/dev possono assegnare
+      l'asta attiva a un membro scelto dalla lista, anche se non è lui
+      l'offerente più alto registrato (utile per accordi presi fuori
+      dall'app). Riusa la stessa logica di chiusura/assegnazione di
+      `finalizeAuction`.
+- [x] Floor di budget legato ai posti rosa liberi: un'offerta non può mai
+      portare il budget rimanente sotto il numero di slot ancora da
+      riempire (1 credito minimo a slot). Aggiunto anche un controllo che
+      mancava del tutto: non si poteva offrire più di quanto si avesse in
+      budget.
+- [x] Rimossi `User.budget`, `User.fantaId`, `User.teamName`: erano dati
+      morti (il budget/nome team veri sono per-lega in `teamBudgets`,
+      nessun altro punto del codice li leggeva).
+- [x] Cambio email vero in Impostazioni (prima era un campo disabilitato
+      con su scritto "contatta chi gestisce l'app").
+- [x] Nomi utente risolti live per id invece che congelati: un cambio nome
+      in Impostazioni ora si riflette subito nell'offerente di un'asta
+      attiva/chiusa (prima restava quello scritto al momento dell'offerta).
+      `AuthContext` inoltre riallinea da solo Firestore se Firebase Auth
+      risulta più aggiornato (es. dopo un cambio email).
 - [x] Bug grafico: la card "Tutte le Aste" e la card "Asta in Corso" (pagina
       Aste) usavano ancora classi Tailwind da tema chiaro mai convertite
       (`hover:bg-slate-50`, `bg-slate-100`, `text-slate-600`, ecc.) mentre

@@ -9,13 +9,19 @@ export const DEFAULT_BID_PRESETS: BidPreset[] = [
   { label: "+100", value: 100 },
 ];
 
+// Countdown minimo consentito per un'asta, sia come default di lega sia come
+// valore custom quando se ne crea una: mai possibile scendere sotto questo.
+export const MIN_COUNTDOWN_SECONDS = 15;
+
 // Default fanta settings
 export const DEFAULT_FANTA_SETTINGS = {
   generalBudget: 500,
   minBid: 1,
   maxBid: 1000,
-  defaultCountdown: 3,
+  defaultCountdown: MIN_COUNTDOWN_SECONDS,
   allowCustomBids: true,
+  maxPlayersTotal: 0,
+  maxPlayersPerRole: {} as Record<string, number>,
 };
 
 // Esempi di ruoli per diversi sport/giochi (personalizzabili)

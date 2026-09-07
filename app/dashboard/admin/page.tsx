@@ -35,6 +35,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import type { Fanta, SportType } from "@/types";
+import { MIN_COUNTDOWN_SECONDS, SPORT_TEMPLATES } from "@/lib/constants";
 import { Copy, UserPlus } from "lucide-react";
 
 export default function AdminPage() {
@@ -71,7 +72,12 @@ function AdminPageContent({
 }) {
   const { pendingJoinRequests, approveJoinRequest, rejectJoinRequest } =
     useFanta();
-  const [settings, setSettings] = useState(currentFanta.settings);
+  const [settings, setSettings] = useState({
+    ...currentFanta.settings,
+    maxPlayersTotal: currentFanta.settings.maxPlayersTotal || 0,
+    maxPlayersPerRole: currentFanta.settings.maxPlayersPerRole || {},
+  });
+  const availableRoles = SPORT_TEMPLATES[currentFanta.sportType]?.roles || [];
   const [generalInfo, setGeneralInfo] = useState({
     name: currentFanta.name,
     description: currentFanta.description || "",
@@ -317,8 +323,11 @@ function AdminPageContent({
                           defaultCountdown: Number(e.target.value),
                         })
                       }
-                      min={1}
+                      min={MIN_COUNTDOWN_SECONDS}
                     />
+                    <p className="text-xs text-slate-500">
+                      Minimo {MIN_COUNTDOWN_SECONDS}s
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -352,7 +361,68 @@ function AdminPageContent({
                       min={settings.minBid}
                     />
                   </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="maxPlayersTotal">
+                      Max Giocatori in Rosa
+                    </Label>
+                    <Input
+                      id="maxPlayersTotal"
+                      type="number"
+                      value={settings.maxPlayersTotal}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          maxPlayersTotal: Number(e.target.value),
+                        })
+                      }
+                      min={0}
+                    />
+                    <p className="text-xs text-slate-500">0 = nessun limite</p>
+                  </div>
                 </div>
+
+                {availableRoles.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Max Giocatori per Ruolo</Label>
+                    <p className="text-xs text-slate-500">
+                      Vuoto = nessun limite per quel ruolo
+                    </p>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {availableRoles.map((role) => (
+                        <div key={role} className="space-y-2">
+                          <Label
+                            htmlFor={`roleLimit-${role}`}
+                            className="text-slate-400 font-normal"
+                          >
+                            {role}
+                          </Label>
+                          <Input
+                            id={`roleLimit-${role}`}
+                            type="number"
+                            min={0}
+                            placeholder="Nessun limite"
+                            value={settings.maxPlayersPerRole[role] ?? ""}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              const nextPerRole = { ...settings.maxPlayersPerRole };
+                              if (value === "") {
+                                delete nextPerRole[role];
+                              } else {
+                                nextPerRole[role] = Number(value);
+                              }
+                              setSettings({
+                                ...settings,
+                                maxPlayersPerRole: nextPerRole,
+                              });
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center space-x-2">
                   <input
                     type="checkbox"

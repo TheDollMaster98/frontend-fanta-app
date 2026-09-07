@@ -17,6 +17,7 @@ import {
   deleteDoc,
   getDoc,
   getDocs,
+  documentId,
   onSnapshot,
   query,
   where,
@@ -30,6 +31,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
+import { MIN_COUNTDOWN_SECONDS } from "@/lib/constants";
 import type { Fanta, Player, JoinRequest, Auction } from "@/types";
 
 export interface TeamPlayer extends Player {
@@ -53,6 +55,9 @@ interface FantaContextType {
   getUserBudget: (userId: string) => number;
   getTeamName: (userId: string) => string;
   updateTeamName: (userId: string, name: string) => void;
+  // Membri della lega corrente (id/nome/email), sempre aggiornati
+  fantaMembers: { id: string; name: string; email: string }[];
+  getMemberName: (userId: string, fallback?: string) => string;
   // Scoperta leghe e richieste di ingresso
   discoverableFantas: Fanta[];
   myJoinRequests: JoinRequest[];
@@ -80,6 +85,11 @@ interface FantaContextType {
   closeAuction: (auctionId: string) => void;
   cancelAuction: (auctionId: string) => void;
   reopenAuction: (auctionId: string) => Promise<void>;
+  assignAuctionManually: (
+    auctionId: string,
+    userId: string,
+    userName: string,
+  ) => void;
 }
 
 const FantaContext = createContext<FantaContextType | undefined>(undefined);
@@ -174,6 +184,9 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     JoinRequest[]
   >([]);
   const [auctions, setAuctions] = useState<Auction[]>([]);
+  const [fantaMembers, setFantaMembers] = useState<
+    { id: string; name: string; email: string }[]
+  >([]);
 
   // Ascolta in tempo reale i fanta di cui l'utente è membro
   useEffect(() => {
@@ -365,6 +378,39 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, [currentFanta]);
 
+  // Ascolta in tempo reale i profili dei membri del fanta attualmente
+  // selezionato: è la fonte unica per mostrare nomi/email ovunque nell'app
+  // (offerente di un'asta, assegnazione manuale, ecc.), così un cambio nome
+  // in Impostazioni si riflette subito dappertutto invece di restare
+  // congelato a una copia scritta altrove in un momento precedente.
+  useEffect(() => {
+    if (!currentFanta || currentFanta.memberIds.length === 0) {
+      setFantaMembers([]);
+      return;
+    }
+
+    const membersQuery = query(
+      collection(db, "users"),
+      where(documentId(), "in", currentFanta.memberIds.slice(0, 30)),
+    );
+
+    const unsubscribe = onSnapshot(membersQuery, (snapshot) => {
+      setFantaMembers(
+        snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          name: docSnap.data().name || "Utente",
+          email: docSnap.data().email || "",
+        })),
+      );
+    });
+
+    return unsubscribe;
+  }, [currentFanta]);
+
+  const getMemberName = (userId: string, fallback?: string): string => {
+    return fantaMembers.find((m) => m.id === userId)?.name || fallback || "Utente";
+  };
+
   const getPlayersByUser = (userId: string, fantaId: string): TeamPlayer[] => {
     return players.filter((p) => p.userId === userId && p.fantaId === fantaId);
   };
@@ -443,6 +489,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     if (!currentFanta || !user) return;
     addDoc(collection(db, "auctions"), {
       ...auction,
+      // Difensivo: il form UI ha già min=15, ma non fidarsi solo del client.
+      countdownSeconds: Math.max(MIN_COUNTDOWN_SECONDS, auction.countdownSeconds),
       fantaId: currentFanta.id,
       currentPrice: auction.basePrice,
       status: "pending",
@@ -473,6 +521,22 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   const placeBid = (auctionId: string, amount: number): void => {
     if (!user || !currentFanta) return;
     const maxBid = currentFanta.settings.maxBid;
+    const maxPlayersTotal = currentFanta.settings.maxPlayersTotal || 0;
+    const maxPlayersPerRole = currentFanta.settings.maxPlayersPerRole || {};
+
+    // Rosa e budget vengono dallo stato locale (aggiornato in tempo reale
+    // via onSnapshot), non da una lettura live dentro la transazione: per
+    // un'app tra amici va bene, non serve la rigidità di una vera asta
+    // finanziaria. Stesso approccio già usato altrove (getUserBudget).
+    const myRoster = players.filter(
+      (p) => p.userId === user.id && p.fantaId === currentFanta.id,
+    );
+    const myBudget = getUserBudget(user.id);
+    const openSlots =
+      maxPlayersTotal > 0 ? maxPlayersTotal - myRoster.length : 0;
+
+    if (maxPlayersTotal > 0 && myRoster.length >= maxPlayersTotal) return;
+
     const ref = doc(db, "auctions", auctionId);
     runTransaction(db, async (tx) => {
       const snap = await tx.get(ref);
@@ -480,8 +544,24 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       const data = snap.data();
       if (data.status !== "active") return;
 
+      const role = data.playerRole as string | undefined;
+      const roleLimit = role ? maxPlayersPerRole[role] : undefined;
+      if (
+        roleLimit &&
+        myRoster.filter((p) => p.role === role).length >= roleLimit
+      ) {
+        return;
+      }
+
       const newPrice = (data.currentPrice as number) + amount;
       if (newPrice > maxBid) return;
+      // Non si può offrire più di quanto si ha, e se ci sono altri posti
+      // rosa da riempire dopo questo, il budget rimanente non può scendere
+      // sotto il loro numero (1 credito minimo a slot, altrimenti si
+      // arriva a fine asta senza soldi per completare la squadra).
+      if (newPrice > myBudget) return;
+      if (openSlots > 0 && myBudget - newPrice < openSlots) return;
+
       const countdownMs = (data.countdownSeconds as number) * 1000;
       tx.update(ref, {
         currentPrice: newPrice,
@@ -500,7 +580,11 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   // contemporanea), solo il primo esegua davvero l'assegnazione.
   const finalizeAuction = (
     auctionId: string,
-    options: { cancel?: boolean } = {},
+    options: {
+      cancel?: boolean;
+      overrideWinnerId?: string;
+      overrideWinnerName?: string;
+    } = {},
   ): void => {
     const ref = doc(db, "auctions", auctionId);
     let winner: {
@@ -515,21 +599,35 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       const data = snap.data();
       if (data.status === "closed") return;
 
-      tx.update(ref, {
+      // L'assegnazione manuale (admin/vice/dev) sostituisce il miglior
+      // offerente registrato con chi hanno deciso loro: utile quando due
+      // persone si sono già accordate fuori dall'asta e vogliono solo che
+      // il gestionale registri l'esito. Il prezzo resta quello raggiunto.
+      const winnerId = options.overrideWinnerId || data.highestBidderId;
+      const winnerName = options.overrideWinnerId
+        ? options.overrideWinnerName
+        : data.highestBidderName;
+
+      const update: Record<string, unknown> = {
         status: "closed",
         closedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      };
+      if (options.overrideWinnerId) {
+        update.highestBidderId = winnerId;
+        update.highestBidderName = winnerName;
+      }
+      tx.update(ref, update);
 
-      if (!options.cancel && data.highestBidderId) {
+      if (!options.cancel && winnerId) {
         winner = {
-          userId: data.highestBidderId as string,
+          userId: winnerId as string,
           player: {
             name: data.playerName,
             role: data.playerRole,
             team: data.playerTeam,
             purchasePrice: data.currentPrice,
-            userId: data.highestBidderId,
+            userId: winnerId as string,
             fantaId: data.fantaId,
             auctionId,
             customFields: {},
@@ -597,6 +695,20 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   const cancelAuction = (auctionId: string): void =>
     finalizeAuction(auctionId, { cancel: true });
 
+  // Assegna manualmente l'asta a un membro scelto da admin/vice/dev, anche
+  // se non è lui l'offerente più alto registrato (es. due utenti si sono
+  // già accordati fuori dall'asta su chi se lo prende).
+  const assignAuctionManually = (
+    auctionId: string,
+    userId: string,
+    userName: string,
+  ): void => {
+    finalizeAuction(auctionId, {
+      overrideWinnerId: userId,
+      overrideWinnerName: userName,
+    });
+  };
+
   // Nessun backend/cron: quando il countdown di un'asta attiva scade, deve
   // essere un client con la pagina aperta a chiuderla. Se nessuno ha la
   // pagina aperta esattamente allo scadere, si chiude al successivo giro di
@@ -661,6 +773,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         getUserBudget,
         getTeamName,
         updateTeamName,
+        fantaMembers,
+        getMemberName,
         discoverableFantas,
         myJoinRequests,
         pendingJoinRequests,
@@ -675,6 +789,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         closeAuction,
         cancelAuction,
         reopenAuction,
+        assignAuctionManually,
       }}
     >
       {children}

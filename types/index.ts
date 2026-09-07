@@ -1,14 +1,13 @@
-// Il ruolo (admin/vice-admin/giocatore) è per-lega: vedi Fanta.adminId e
-// Fanta.viceAdminIds. L'unico attributo globale sull'account è isDeveloper,
-// un flag per chi sviluppa/testa l'app (accesso universale, zero blocchi).
+// Il ruolo (admin/vice-admin/giocatore) e tutto ciò che è per-lega (budget,
+// nome team, fanta di appartenenza) vivono altrove: vedi Fanta.adminId/
+// viceAdminIds, teamBudgets (contexts/FantaContext.tsx: getUserBudget/
+// getTeamName) e Fanta.memberIds. L'unico attributo globale sull'account è
+// isDeveloper, un flag per chi sviluppa/testa l'app (accesso universale).
 export interface User {
   id: string;
   email: string;
   name: string;
   isDeveloper?: boolean;
-  fantaId?: string; // ID del fanta a cui appartiene
-  teamName?: string;
-  budget: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,8 +33,10 @@ export interface FantaSettings {
   generalBudget: number; // Budget generale per tutti
   minBid: number; // Puntata minima
   maxBid: number; // Puntata massima
-  defaultCountdown: number; // Countdown predefinito in secondi (default 3)
+  defaultCountdown: number; // Countdown predefinito in secondi (minimo 15)
   allowCustomBids: boolean; // Se permettere puntate custom
+  maxPlayersTotal?: number; // Limite rosa totale per utente (0/assente = nessun limite)
+  maxPlayersPerRole?: Record<string, number>; // Limite per ruolo (assente = nessun limite per quel ruolo)
 }
 
 // Team types
