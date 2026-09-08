@@ -49,15 +49,18 @@
   // Con lo schema a sottocollezioni (fantas/{id}/auctions, fantas/{id}/auctions/{id}/bids,
   // fantas/{id}/history) le query sono già scoperte al singolo fanta dal path stesso: bastano
   // gli indici automatici a campo singolo di Firestore, niente indici composti "COLLECTION" qui.
-  // Serve invece un indice esplicito per la query collection-group "le mie richieste di ingresso"
-  // (collectionGroup(joinRequests) where userId == ...), che attraversa le sottocollezioni di
-  // tutte le leghe.
-  "indexes": [
+  // Serve invece che Firestore indicizzi "userId" anche in ambito collection-group, per la
+  // query "le mie richieste di ingresso" (collectionGroup(joinRequests) where userId == ...)
+  // che attraversa le sottocollezioni di tutte le leghe. Essendo un solo campo, va dichiarato
+  // come "single field index control" (fieldOverrides), non come indice composto in "indexes":
+  // Firestore rifiuta un indice composto con un solo campo ("this index is not necessary,
+  // configure using single field index controls").
+  "indexes": [],
+  "fieldOverrides": [
     {
       "collectionGroup": "joinRequests",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }]
+      "fieldPath": "userId",
+      "indexes": [{ "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }]
     }
-  ],
-  "fieldOverrides": []
+  ]
 }
