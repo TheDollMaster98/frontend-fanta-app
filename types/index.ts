@@ -32,12 +32,12 @@ export interface ScoringWeights {
   assists: number;
   win: number; // bonus se la squadra del giocatore vince quella partita
   // csPer50/visionPer10/pentakill: punti ogni 50 CS, ogni 10 di Vision
-  // Score, e bonus per ogni pentakill segnata. ATTENZIONE — non ancora
-  // applicati al calcolo reale in FantaContext.recalculateScores: servono
-  // i nomi esatti dei campi Leaguepedia (ScoreboardPlayers) per CS, Vision
-  // Score e Pentakills, non ancora confermati. Il campo si salva e si
-  // mostra in UI, ma oggi non produce punti finché quei nomi non sono
-  // verificati (vedi TODO.md).
+  // Score, e bonus per ogni pentakill segnata. NON calcolati
+  // automaticamente da Leaguepedia in FantaContext.recalculateScores —
+  // servono i nomi esatti dei campi (ScoreboardPlayers) per CS, Vision
+  // Score e Pentakills, non ancora confermati. Contano comunque nel
+  // punteggio se admin/vice/dev inseriscono le statistiche a mano su un
+  // pick (TeamPick.manualPlayerStats, vedi lib/scoring.ts).
   csPer50: number;
   visionPer10: number;
   pentakill: number;
@@ -54,13 +54,14 @@ export type RoleScoringWeights = Record<string, ScoringWeights>;
 // Pesi per le pick "team"/"coach": la squadra (o quella allenata dal
 // coach) non è un giocatore singolo, quindi ha un set di statistiche
 // completamente diverso — obiettivi di partita invece di kill/morti/
-// assist individuali. Stessa avvertenza di ScoringWeights: tower/dragon/
+// assist individuali. Stessa nota di ScoringWeights: tower/dragon/
 // voidGrub/riftHerald/inhibitor/atakhan/csPer100/goldPer10k NON sono
-// ancora applicati al calcolo reale, servono i nomi esatti dei campi
-// Leaguepedia (ScoreboardGames) per gli obiettivi — non ancora confermati.
-// kill/death/assist/win/csPer100 restano 0 di default: sono qui per
-// completezza (rispecchiano lo schema a cui si è ispirata la lega), ma un
-// pick "team" non ha kill/morti/assist propri — solo obiettivi e vittoria.
+// calcolati automaticamente (servono i nomi esatti dei campi Leaguepedia
+// ScoreboardGames, non ancora confermati), ma contano se inseriti a mano
+// su un pick (TeamPick.manualTeamStats, vedi lib/scoring.ts). kill/death/
+// assist/csPer100 restano 0 di default: sono qui per completezza
+// (rispecchiano lo schema a cui si è ispirata la lega), ma un pick "team"
+// non ha kill/morti/assist propri — solo obiettivi e vittoria.
 export interface TeamScoringWeights {
   win: number;
   tower: number;
@@ -115,6 +116,33 @@ export type MemberRole = "admin" | "vice" | "membro";
 //   non espone una tabella coach utilizzabile).
 export type TeamPickType = "player" | "jolly" | "team" | "coach";
 
+// Statistiche inserite a mano da admin/vice/dev per un pick "player"/
+// "jolly": copre CS, Vision Score e pentakill finché il calcolo
+// automatico da Leaguepedia non li supporta (nomi campo non confermati —
+// vedi ScoringWeights). Contano nel punteggio insieme ai pesi csPer50/
+// visionPer10/pentakill della lega, sommandosi a "points" (che resta solo
+// kill/morti/assist/vittoria calcolati da Leaguepedia).
+export interface ManualPlayerStats {
+  cs?: number;
+  visionScore?: number;
+  pentakills?: number;
+}
+
+// Statistiche inserite a mano per un pick "team"/"coach": obiettivi di
+// partita e oro, finché il calcolo automatico non li supporta (nomi campo
+// ScoreboardGames non confermati — vedi TeamScoringWeights).
+export interface ManualTeamStats {
+  towers?: number;
+  dragons?: number;
+  voidGrubs?: number;
+  riftHeralds?: number;
+  inhibitors?: number;
+  atakhans?: number;
+  barons?: number;
+  cs?: number;
+  gold?: number;
+}
+
 export interface TeamPick {
   id: string;
   pickType: TeamPickType;
@@ -128,8 +156,13 @@ export interface TeamPick {
   // non gira almeno una volta "Ricalcola Punteggi", poi aggiornato ad ogni
   // ricalcolo. Per pickType "team"/"coach" sono punti-vittoria della
   // squadra; per "player"/"jolly" derivano da kill/morti/assist/vittorie
-  // pesati con gli scoringWeights della lega.
+  // pesati con gli scoringWeights della lega. Il totale mostrato in UI è
+  // points + il bonus calcolato da manualPlayerStats/manualTeamStats (vedi
+  // lib/scoring.ts) — quest'ultimo non richiede "Ricalcola Punteggi",
+  // basta salvare le statistiche manuali.
   points?: number;
+  manualPlayerStats?: ManualPlayerStats; // solo pickType player/jolly
+  manualTeamStats?: ManualTeamStats; // solo pickType team/coach
 }
 
 // fantas/{fantaId}/members/{userId}

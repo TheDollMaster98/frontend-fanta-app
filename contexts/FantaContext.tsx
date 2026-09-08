@@ -43,6 +43,7 @@ import {
   getFantasyPlayerStats,
   getFantasyTeamStats,
 } from "@/lib/leaguepediaApi";
+import { totalPickPoints } from "@/lib/scoring";
 import type {
   Fanta,
   FantaMember,
@@ -53,6 +54,8 @@ import type {
   JoinRequest,
   Auction,
   CalendarRound,
+  ManualPlayerStats,
+  ManualTeamStats,
 } from "@/types";
 
 const DEFAULT_TEAM_NAME = "I Campioni";
@@ -101,6 +104,16 @@ interface FantaContextType {
   updateTeamName: (userId: string, name: string) => void;
   getPlayersByUser: (userId: string) => TeamPick[];
   removePlayerFromTeam: (userId: string, pickId: string) => void;
+  // Statistiche inserite a mano su un pick (CS/Vision Score/Pentakill per
+  // player-jolly, obiettivi/CS/oro per team-coach): fallback finché il
+  // calcolo automatico da Leaguepedia non copre questi campi. Si
+  // sommano subito ai punti mostrati, senza dover rilanciare "Ricalcola
+  // Punteggi".
+  updatePickManualStats: (
+    userId: string,
+    pickId: string,
+    stats: { manualPlayerStats?: ManualPlayerStats; manualTeamStats?: ManualTeamStats },
+  ) => void;
 
   // Gestione membri/vice-admin (solo isFantaAdmin)
   addViceAdmin: (userId: string) => void;
@@ -519,6 +532,42 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // Salva le statistiche inserite a mano su un pick (fallback per CS/
+  // Vision Score/Pentakill/obiettivi, finché Leaguepedia non li copre in
+  // automatico — vedi lib/scoring.ts). Rimuove le chiavi undefined prima
+  // di scrivere: Firestore rifiuta valori undefined annidati in un oggetto.
+  const updatePickManualStats = (
+    userId: string,
+    pickId: string,
+    stats: { manualPlayerStats?: ManualPlayerStats; manualTeamStats?: ManualTeamStats },
+  ): void => {
+    if (!currentFanta) return;
+    const member = fantaMembers.find((m) => m.userId === userId);
+    if (!member) return;
+    if (!member.team.some((p) => p.id === pickId)) return;
+
+    const clean = <T extends object>(obj: T): T =>
+      Object.fromEntries(
+        Object.entries(obj).filter(([, v]) => v !== undefined),
+      ) as T;
+
+    const updatedTeam = member.team.map((p): TeamPick => {
+      if (p.id !== pickId) return p;
+      const next: TeamPick = { ...p };
+      if (stats.manualPlayerStats) {
+        next.manualPlayerStats = clean(stats.manualPlayerStats);
+      }
+      if (stats.manualTeamStats) {
+        next.manualTeamStats = clean(stats.manualTeamStats);
+      }
+      return next;
+    });
+
+    updateDoc(doc(db, "fantas", currentFanta.id, "members", userId), {
+      team: updatedTeam,
+    });
+  };
+
   const addViceAdmin = (userId: string): void => {
     if (!currentFanta) return;
     const member = fantaMembers.find((m) => m.userId === userId);
@@ -749,18 +798,23 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   // del calendario: manca una mappatura affidabile tra "giornata fantasy" e
   // data reale delle partite pro su Leaguepedia — vedi il commento su
   // CalendarRound in types/index.ts.
-  const standings: StandingsEntry[] = useMemo(
-    () =>
-      [...fantaMembers]
-        .map((m) => ({
-          userId: m.userId,
-          name: m.name,
-          teamName: m.teamName,
-          totalPoints: m.team.reduce((sum, p) => sum + (p.points || 0), 0),
-        }))
-        .sort((a, b) => b.totalPoints - a.totalPoints),
-    [fantaMembers],
-  );
+  const standings: StandingsEntry[] = useMemo(() => {
+    const roleWeights = currentFanta?.settings.scoringWeights || {};
+    const teamWeights =
+      currentFanta?.settings.teamScoringWeights || DEFAULT_TEAM_SCORING_WEIGHTS;
+
+    return [...fantaMembers]
+      .map((m) => ({
+        userId: m.userId,
+        name: m.name,
+        teamName: m.teamName,
+        totalPoints: m.team.reduce(
+          (sum, p) => sum + totalPickPoints(p, roleWeights, teamWeights),
+          0,
+        ),
+      }))
+      .sort((a, b) => b.totalPoints - a.totalPoints);
+  }, [fantaMembers, currentFanta]);
 
   const createAuction: FantaContextType["createAuction"] = (auction) => {
     if (!currentFanta || !user) return;
@@ -1150,6 +1204,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         updateTeamName,
         getPlayersByUser,
         removePlayerFromTeam,
+        updatePickManualStats,
         addViceAdmin,
         removeViceAdmin,
         removeMember,

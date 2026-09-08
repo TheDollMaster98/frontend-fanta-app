@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -25,6 +25,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Trophy, RefreshCw, CalendarDays, ChevronRight } from "lucide-react";
 import { useFanta, type FantaMemberProfile } from "@/contexts/FantaContext";
 import {
@@ -33,8 +35,28 @@ import {
   type PlayerGameLog,
   type TeamGameLog,
 } from "@/lib/leaguepediaApi";
+import { computeManualBonus, totalPickPoints } from "@/lib/scoring";
 import type { TeamPick, TeamPickType } from "@/types";
 import { DEFAULT_TEAM_SCORING_WEIGHTS } from "@/lib/constants";
+
+// Campi delle statistiche manuali per pickType: chiave del form -> etichetta.
+// Player/jolly: CS, Vision Score, Pentakill. Team/coach: obiettivi + CS + oro.
+const MANUAL_PLAYER_FIELDS: { key: string; label: string }[] = [
+  { key: "cs", label: "CS" },
+  { key: "visionScore", label: "Vision Score" },
+  { key: "pentakills", label: "Pentakill" },
+];
+const MANUAL_TEAM_FIELDS: { key: string; label: string }[] = [
+  { key: "towers", label: "Torri" },
+  { key: "dragons", label: "Draghi" },
+  { key: "voidGrubs", label: "Void Grub" },
+  { key: "riftHeralds", label: "Rift Herald" },
+  { key: "inhibitors", label: "Inibitori" },
+  { key: "atakhans", label: "Atakhan" },
+  { key: "barons", label: "Baroni" },
+  { key: "cs", label: "CS" },
+  { key: "gold", label: "Oro" },
+];
 
 const PICK_TYPE_LABELS: Record<TeamPickType, string> = {
   player: "Giocatore",
@@ -59,7 +81,9 @@ export default function StandingsPage() {
     calendar,
     generateCalendar,
     recalculateScores,
+    updatePickManualStats,
     isFantaAdmin,
+    isFantaViceOrAdmin,
     getMemberName,
   } = useFanta();
   const [selectedMember, setSelectedMember] = useState<FantaMemberProfile | null>(
@@ -73,9 +97,32 @@ export default function StandingsPage() {
   // partita (data, avversario/champion, stats, punti). Caricato al volo
   // solo quando si apre, non prefetchato per tutta la rosa.
   const [drillPick, setDrillPick] = useState<TeamPick | null>(null);
+  const [drillMemberId, setDrillMemberId] = useState<string | null>(null);
   const [playerLog, setPlayerLog] = useState<PlayerGameLog[]>([]);
   const [teamLog, setTeamLog] = useState<TeamGameLog[]>([]);
   const [isLoadingLog, setIsLoadingLog] = useState(false);
+
+  // Form statistiche manuali (fallback finché Leaguepedia non copre CS/
+  // Vision Score/Pentakill/obiettivi in automatico — vedi lib/scoring.ts).
+  // Ripopolato dal pick ogni volta che si apre un nuovo drill-down.
+  const [manualForm, setManualForm] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!drillPick) {
+      setManualForm({});
+      return;
+    }
+    const source =
+      drillPick.pickType === "team" || drillPick.pickType === "coach"
+        ? drillPick.manualTeamStats
+        : drillPick.manualPlayerStats;
+    const next: Record<string, string> = {};
+    if (source) {
+      Object.entries(source).forEach(([k, v]) => {
+        if (v !== undefined) next[k] = String(v);
+      });
+    }
+    setManualForm(next);
+  }, [drillPick]);
 
   const handleGenerateCalendar = async () => {
     setIsGenerating(true);
@@ -105,9 +152,10 @@ export default function StandingsPage() {
     }
   };
 
-  const openDrillDown = async (pick: TeamPick) => {
+  const openDrillDown = async (pick: TeamPick, memberId: string) => {
     if (!currentFanta?.settings.circuitType) return;
     setDrillPick(pick);
+    setDrillMemberId(memberId);
     setPlayerLog([]);
     setTeamLog([]);
     setIsLoadingLog(true);
@@ -145,6 +193,43 @@ export default function StandingsPage() {
     drillPick?.playerRole ? roleWeights[drillPick.playerRole] : undefined;
   const teamWeights =
     currentFanta.settings.teamScoringWeights || DEFAULT_TEAM_SCORING_WEIGHTS;
+
+  const manualFields =
+    drillPick?.pickType === "team" || drillPick?.pickType === "coach"
+      ? MANUAL_TEAM_FIELDS
+      : MANUAL_PLAYER_FIELDS;
+
+  const parsedManualForm = Object.fromEntries(
+    Object.entries(manualForm)
+      .map(([k, v]) => [k, v.trim() === "" ? undefined : Number(v)])
+      .filter(([, v]) => v === undefined || !Number.isNaN(v as number)),
+  );
+
+  // Anteprima live del bonus manuale, calcolata dai valori appena digitati
+  // (non da quelli salvati su drillPick, che restano quelli dell'ultimo
+  // salvataggio finché non si preme "Salva").
+  const manualBonusPreview = drillPick
+    ? computeManualBonus(
+        drillPick.pickType === "team" || drillPick.pickType === "coach"
+          ? { ...drillPick, manualTeamStats: parsedManualForm }
+          : { ...drillPick, manualPlayerStats: parsedManualForm },
+        roleWeights,
+        teamWeights,
+      )
+    : 0;
+
+  const handleSaveManualStats = () => {
+    if (!drillPick || !drillMemberId) return;
+    if (drillPick.pickType === "team" || drillPick.pickType === "coach") {
+      updatePickManualStats(drillMemberId, drillPick.id, {
+        manualTeamStats: parsedManualForm,
+      });
+    } else {
+      updatePickManualStats(drillMemberId, drillPick.id, {
+        manualPlayerStats: parsedManualForm,
+      });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -310,12 +395,16 @@ export default function StandingsPage() {
               ) : (
                 <div className="space-y-2">
                   {[...selectedMember.team]
-                    .sort((a, b) => (b.points || 0) - (a.points || 0))
+                    .sort(
+                      (a, b) =>
+                        totalPickPoints(b, roleWeights, teamWeights) -
+                        totalPickPoints(a, roleWeights, teamWeights),
+                    )
                     .map((pick) => (
                       <div
                         key={pick.id}
                         className="flex items-center justify-between p-2 border border-slate-700 rounded-lg cursor-pointer hover:border-slate-600 transition-colors"
-                        onClick={() => openDrillDown(pick)}
+                        onClick={() => openDrillDown(pick, selectedMember.userId)}
                       >
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary">
@@ -330,7 +419,7 @@ export default function StandingsPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-green-400">
-                            {pick.points !== undefined ? pick.points : "—"}
+                            {totalPickPoints(pick, roleWeights, teamWeights)}
                           </span>
                           <ChevronRight className="h-4 w-4 text-slate-500" />
                         </div>
@@ -340,7 +429,8 @@ export default function StandingsPage() {
                     <span className="text-slate-300 font-medium">Totale</span>
                     <span className="text-lg font-bold text-green-400">
                       {selectedMember.team.reduce(
-                        (sum, p) => sum + (p.points || 0),
+                        (sum, p) =>
+                          sum + totalPickPoints(p, roleWeights, teamWeights),
                         0,
                       )}
                     </span>
@@ -356,7 +446,12 @@ export default function StandingsPage() {
           partita per partita (non solo il totale già in rosa) */}
       <Dialog
         open={Boolean(drillPick)}
-        onOpenChange={(open) => !open && setDrillPick(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDrillPick(null);
+            setDrillMemberId(null);
+          }
+        }}
       >
         <DialogContent className="max-w-2xl">
           {drillPick && (
@@ -374,6 +469,51 @@ export default function StandingsPage() {
                   {currentFanta.settings.circuitType || "N/D"}
                 </DialogDescription>
               </DialogHeader>
+
+              {isFantaViceOrAdmin && (
+                <div className="space-y-2 rounded-md border border-slate-700 p-3">
+                  <p className="text-xs text-slate-500">
+                    Statistiche inserite a mano (CS/Vision Score/Pentakill/
+                    obiettivi non sono ancora calcolati in automatico da
+                    Leaguepedia): si sommano subito ai punti, senza dover
+                    ricalcolare tutta la lega.
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {manualFields.map(({ key, label }) => (
+                      <div key={key} className="space-y-1">
+                        <Label
+                          htmlFor={`manual-${key}`}
+                          className="text-xs font-normal"
+                        >
+                          {label}
+                        </Label>
+                        <Input
+                          id={`manual-${key}`}
+                          type="number"
+                          value={manualForm[key] ?? ""}
+                          onChange={(e) =>
+                            setManualForm({
+                              ...manualForm,
+                              [key]: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <p className="text-xs text-slate-400">
+                      Bonus da queste statistiche:{" "}
+                      <span className="font-semibold text-green-400">
+                        {Math.round(manualBonusPreview * 100) / 100}
+                      </span>
+                    </p>
+                    <Button size="sm" onClick={handleSaveManualStats}>
+                      Salva
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {isLoadingLog ? (
                 <p className="text-sm text-slate-400">Caricamento partite...</p>

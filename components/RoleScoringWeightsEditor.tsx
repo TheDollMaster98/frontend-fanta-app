@@ -98,9 +98,10 @@ export function RoleScoringWeightsEditor({
         Quanti punti valgono le statistiche reali, un set per ruolo (kill/
         morti/assist non valgono uguale ovunque) più uno per le pick
         Squadra/Coach. Modificabile dopo, ma bloccato a partite iniziate. I
-        campi con <span className="text-amber-500">●</span> si salvano ma
-        non contano ancora nel calcolo punti: in attesa di conferma dei nomi
-        campo su Leaguepedia.
+        campi con <span className="text-amber-500">●</span> non sono ancora
+        calcolati in automatico da Leaguepedia (nomi campo non confermati):
+        contano solo se inseriti a mano su un pick, in Classifica → dettaglio
+        membro → dettaglio pick.
       </p>
       <div className="flex flex-wrap gap-1">
         {roles.map((role) => (

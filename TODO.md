@@ -47,6 +47,19 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
       unico globale). Stesso pallino giallo degli altri campi nuovi: non
       ho conferma che `ScoreboardPlayers` esponga un campo Pentakills, non
       applicato al calcolo reale finché non è verificato.
+      **Quarto aggiornamento — fallback manuale**: dato che Leaguepedia
+      resta bloccato per CS/Vision Score/Pentakill/obiettivi (nomi campo
+      mai confermati), aggiunto un inserimento a mano per pick invece di
+      aspettare oltre. `TeamPick.manualPlayerStats`/`manualTeamStats`
+      (nuovi tipi in `types/index.ts`) + `lib/scoring.ts`
+      (`computeManualBonus`/`totalPickPoints`, pure functions condivise
+      tra context e UI) + `FantaContext.updatePickManualStats`. In
+      Classifica → dettaglio membro → dettaglio pick, admin/vice/dev
+      vedono un form (CS/Vision Score/Pentakill per player-jolly,
+      obiettivi/CS/oro per team-coach) che si somma subito ai punti
+      mostrati — non serve rilanciare "Ricalcola Punteggi". Il pallino
+      giallo nell'editor pesi ora dice questo esplicitamente invece di
+      lasciar credere che quei pesi siano morti.
 - [x] **Step 2 — Punteggio reale + calendario**: nuova pagina "Classifica"
       (solo leghe LoL). `lib/roundRobin.ts` genera il calendario a girone
       all'italiana (metodo del cerchio) tra i membri, salvato in
