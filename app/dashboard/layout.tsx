@@ -32,6 +32,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     currentFanta,
     fantas,
     setCurrentFanta,
+    isFantaViceOrAdmin,
     isLoading: fantaLoading,
   } = useFanta();
 
@@ -75,13 +76,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   // developer (vedi isAuthorized in app/dashboard/admin/page.tsx — senza
   // i vice-admin qui, potevano aprire la pagina digitando l'URL ma non
   // la vedevano mai in sidebar).
-  if (
-    currentFanta &&
-    user &&
-    (currentFanta.adminId === user.id ||
-      currentFanta.viceAdminIds.includes(user.id) ||
-      user.isDeveloper)
-  ) {
+  if (currentFanta && user && isFantaViceOrAdmin) {
     navigation.splice(4, 0, {
       name: "Gestione",
       href: "/dashboard/admin",

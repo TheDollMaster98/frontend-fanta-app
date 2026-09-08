@@ -9,11 +9,12 @@ import {
   where,
   getDocs,
   doc,
-  updateDoc,
-  arrayUnion,
+  getDoc,
+  setDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
+import type { FantaMember } from "@/types";
 import {
   Card,
   CardContent,
@@ -52,17 +53,27 @@ export default function JoinFantaPage() {
 
         const fantaDoc = snapshot.docs[0];
         const data = fantaDoc.data();
-        const memberIds: string[] = data.memberIds || [];
         setFantaName(data.name || "");
 
-        if (memberIds.includes(user.id)) {
+        const memberRef = doc(db, "fantas", fantaDoc.id, "members", user.id);
+        const memberSnap = await getDoc(memberRef);
+
+        if (memberSnap.exists()) {
           setStatus("already-member");
           return;
         }
 
-        await updateDoc(doc(db, "fantas", fantaDoc.id), {
-          memberIds: arrayUnion(user.id),
-        });
+        const generalBudget = data.settings?.generalBudget ?? 0;
+        const newMember: FantaMember = {
+          userId: user.id,
+          role: "membro",
+          teamName: "I Campioni",
+          team: [],
+          budgetTot: generalBudget,
+          budgetSpent: 0,
+          budgetLeft: generalBudget,
+        };
+        await setDoc(memberRef, newMember);
         setStatus("success");
       } catch (error) {
         console.error("Errore durante l'ingresso nel fanta:", error);

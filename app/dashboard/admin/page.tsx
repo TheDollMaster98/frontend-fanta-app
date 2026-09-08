@@ -26,17 +26,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
-import {
-  collection,
-  query,
-  where,
-  documentId,
-  getDocs,
-  onSnapshot,
-} from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import type { Fanta, SportType } from "@/types";
 import {
   MIN_COUNTDOWN_SECONDS,
+  MAX_COUNTDOWN_SECONDS,
   SPORT_TEMPLATES,
   CIRCUIT_TYPES,
   DEFAULT_SCORING_WEIGHTS,
@@ -45,20 +39,18 @@ import { Copy, UserPlus } from "lucide-react";
 
 export default function AdminPage() {
   const router = useRouter();
-  const { currentFanta, updateFanta, isLoading: fantaLoading } = useFanta();
+  const {
+    currentFanta,
+    updateFanta,
+    isFantaViceOrAdmin,
+    isLoading: fantaLoading,
+  } = useFanta();
   const { user, isLoading: authLoading } = useAuth();
 
   const loading = authLoading || fantaLoading;
-  // Stesso criterio di "isAdmin" usato nella pagina Aste (creare/chiudere
-  // aste, assegnare manualmente): prima qui i vice-admin non potevano
-  // proprio entrare in Gestione Lega, incoerente col fatto che altrove
-  // hanno già gli stessi poteri del creatore sulle decisioni della lega.
-  const isAuthorized =
-    !!currentFanta &&
-    !!user &&
-    (currentFanta.adminId === user.id ||
-      currentFanta.viceAdminIds.includes(user.id) ||
-      !!user.isDeveloper);
+  // Creatore, vice-admin o developer possono entrare in Gestione Lega: chi
+  // no viene rimandato alla dashboard.
+  const isAuthorized = !!currentFanta && !!user && isFantaViceOrAdmin;
 
   // Redirect se non è il creatore né un developer (solo dopo che i dati sono stati caricati)
   useEffect(() => {
@@ -81,16 +73,21 @@ function AdminPageContent({
   currentFanta: Fanta;
   updateFanta: (fanta: Fanta) => void;
 }) {
-  const { pendingJoinRequests, approveJoinRequest, rejectJoinRequest } =
-    useFanta();
-  const { user } = useAuth();
+  const {
+    pendingJoinRequests,
+    approveJoinRequest,
+    rejectJoinRequest,
+    fantaMembers,
+    isFantaAdmin,
+    addViceAdmin,
+    removeViceAdmin,
+    removeMember,
+  } = useFanta();
   // I vice-admin possono entrare in Gestione Lega e toccare le
   // impostazioni (budget, circuito, pesi punteggio, ecc.), ma non gestire
   // chi fa parte della lega: aggiungere/togliere vice-admin o cacciare
   // membri resta una decisione del creatore (o di un dev).
-  const canManageMembers =
-    !!user &&
-    (currentFanta.adminId === user.id || !!user.isDeveloper);
+  const canManageMembers = isFantaAdmin;
   const [settings, setSettings] = useState({
     ...currentFanta.settings,
     maxPlayersTotal: currentFanta.settings.maxPlayersTotal || 0,
@@ -111,32 +108,8 @@ function AdminPageContent({
   const [copiedCode, setCopiedCode] = useState(false);
   const [newViceEmail, setNewViceEmail] = useState("");
   const [isAddingVice, setIsAddingVice] = useState(false);
-  const [members, setMembers] = useState<
-    { id: string; name: string; email: string }[]
-  >([]);
+  const members = fantaMembers;
   const inviteCode = currentFanta.inviteCode;
-
-  // Ascolta in tempo reale i profili dei membri di questo fanta
-  useEffect(() => {
-    if (currentFanta.memberIds.length === 0) return;
-
-    const membersQuery = query(
-      collection(db, "users"),
-      where(documentId(), "in", currentFanta.memberIds.slice(0, 30)),
-    );
-
-    const unsubscribe = onSnapshot(membersQuery, (snapshot) => {
-      setMembers(
-        snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          name: docSnap.data().name || "Utente",
-          email: docSnap.data().email || "",
-        })),
-      );
-    });
-
-    return unsubscribe;
-  }, [currentFanta.memberIds]);
 
   const handleGeneralInfoUpdate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,7 +119,16 @@ function AdminPageContent({
 
   const handleSettingsUpdate = (e: React.FormEvent) => {
     e.preventDefault();
-    updateFanta({ ...currentFanta, settings });
+    updateFanta({
+      ...currentFanta,
+      settings: {
+        ...settings,
+        defaultCountdown: Math.min(
+          MAX_COUNTDOWN_SECONDS,
+          Math.max(MIN_COUNTDOWN_SECONDS, settings.defaultCountdown),
+        ),
+      },
+    });
     alert("Impostazioni aggiornate!");
   };
 
@@ -156,7 +138,7 @@ function AdminPageContent({
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  const addViceAdmin = async () => {
+  const handleAddViceAdmin = async () => {
     const email = newViceEmail.trim();
     if (!email) return;
 
@@ -174,47 +156,35 @@ function AdminPageContent({
       }
 
       const foundId = snapshot.docs[0].id;
+      const foundMember = members.find((m) => m.userId === foundId);
 
-      if (!currentFanta.memberIds.includes(foundId)) {
+      if (!foundMember) {
         alert("Questo utente deve prima entrare nella lega (invito o richiesta)");
         return;
       }
-      if (currentFanta.viceAdminIds.includes(foundId)) {
+      if (foundMember.role === "vice") {
         alert("È già vice-admin");
         return;
       }
+      if (foundMember.role === "admin") {
+        alert("È già il creatore della lega");
+        return;
+      }
 
-      updateFanta({
-        ...currentFanta,
-        viceAdminIds: [...currentFanta.viceAdminIds, foundId],
-      });
+      addViceAdmin(foundId);
       setNewViceEmail("");
     } finally {
       setIsAddingVice(false);
     }
   };
 
-  const removeViceAdmin = (userId: string) => {
-    const newViceAdminIds = currentFanta.viceAdminIds.filter(
-      (id) => id !== userId,
-    );
-    updateFanta({ ...currentFanta, viceAdminIds: newViceAdminIds });
-  };
-
-  const removeMember = (userId: string) => {
-    if (userId === currentFanta.adminId) {
+  const handleRemoveMember = (userId: string) => {
+    const member = members.find((m) => m.userId === userId);
+    if (member?.role === "admin") {
       alert("Non puoi rimuovere il creatore!");
       return;
     }
-    const newMemberIds = currentFanta.memberIds.filter((id) => id !== userId);
-    const newViceAdminIds = currentFanta.viceAdminIds.filter(
-      (id) => id !== userId,
-    );
-    updateFanta({
-      ...currentFanta,
-      memberIds: newMemberIds,
-      viceAdminIds: newViceAdminIds,
-    });
+    removeMember(userId);
   };
 
   return (
@@ -349,9 +319,10 @@ function AdminPageContent({
                         })
                       }
                       min={MIN_COUNTDOWN_SECONDS}
+                      max={MAX_COUNTDOWN_SECONDS}
                     />
                     <p className="text-xs text-slate-500">
-                      Minimo {MIN_COUNTDOWN_SECONDS}s
+                      Tra {MIN_COUNTDOWN_SECONDS}s e {MAX_COUNTDOWN_SECONDS}s
                     </p>
                   </div>
 
@@ -725,7 +696,7 @@ function AdminPageContent({
                     onChange={(e) => setNewViceEmail(e.target.value)}
                     disabled={isAddingVice}
                   />
-                  <Button onClick={addViceAdmin} disabled={isAddingVice}>
+                  <Button onClick={handleAddViceAdmin} disabled={isAddingVice}>
                     {isAddingVice ? "..." : "Aggiungi"}
                   </Button>
                 </div>
@@ -738,24 +709,22 @@ function AdminPageContent({
 
               <div className="space-y-2">
                 <Label className="text-slate-300">Vice Admin Attuali:</Label>
-                {currentFanta.viceAdminIds.length === 0 ? (
+                {members.filter((m) => m.role === "vice").length === 0 ? (
                   <p className="text-sm text-slate-500">
                     Nessun vice admin configurato
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {currentFanta.viceAdminIds.map((viceId) => {
-                      const member = members.find((m) => m.id === viceId);
-                      return (
+                    {members
+                      .filter((m) => m.role === "vice")
+                      .map((member) => (
                         <div
-                          key={viceId}
+                          key={member.userId}
                           className="flex items-center justify-between p-3 bg-slate-800 border border-slate-700 rounded-lg"
                         >
                           <div>
-                            <p className="text-slate-100">
-                              {member?.name || "Utente"}
-                            </p>
-                            {member?.email && (
+                            <p className="text-slate-100">{member.name}</p>
+                            {member.email && (
                               <p className="text-sm text-slate-400">
                                 {member.email}
                               </p>
@@ -765,14 +734,13 @@ function AdminPageContent({
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => removeViceAdmin(viceId)}
+                              onClick={() => removeViceAdmin(member.userId)}
                             >
                               Rimuovi
                             </Button>
                           )}
                         </div>
-                      );
-                    })}
+                      ))}
                   </div>
                 )}
               </div>
@@ -794,13 +762,11 @@ function AdminPageContent({
               ) : (
                 <div className="space-y-2">
                   {members.map((member) => {
-                    const isCreator = member.id === currentFanta.adminId;
-                    const isVice = currentFanta.viceAdminIds.includes(
-                      member.id,
-                    );
+                    const isCreator = member.role === "admin";
+                    const isVice = member.role === "vice";
                     return (
                       <div
-                        key={member.id}
+                        key={member.userId}
                         className="flex items-center justify-between p-4 border border-slate-700 rounded-lg"
                       >
                         <div>
@@ -823,7 +789,7 @@ function AdminPageContent({
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => removeMember(member.id)}
+                              onClick={() => handleRemoveMember(member.userId)}
                             >
                               Rimuovi
                             </Button>

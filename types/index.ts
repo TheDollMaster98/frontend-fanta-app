@@ -1,8 +1,8 @@
-// Il ruolo (admin/vice-admin/giocatore) e tutto ciò che è per-lega (budget,
-// nome team, fanta di appartenenza) vivono altrove: vedi Fanta.adminId/
-// viceAdminIds, teamBudgets (contexts/FantaContext.tsx: getUserBudget/
-// getTeamName) e Fanta.memberIds. L'unico attributo globale sull'account è
-// isDeveloper, un flag per chi sviluppa/testa l'app (accesso universale).
+// Il ruolo (admin/vice-admin/membro) e tutto ciò che è per-lega (budget,
+// rosa, nome team) vive nella sottocollezione fantas/{id}/members — non più
+// sparso su Fanta.adminId/viceAdminIds/memberIds. L'unico attributo globale
+// sull'account è isDeveloper, un flag per chi sviluppa/testa l'app (accesso
+// universale, zero blocchi).
 export interface User {
   id: string;
   email: string;
@@ -20,10 +20,7 @@ export interface Fanta {
   name: string;
   description?: string;
   sportType: SportType; // Tipo di sport/gioco
-  adminId: string;
-  viceAdminIds: string[];
   settings: FantaSettings;
-  memberIds: string[];
   inviteCode: string; // Codice per unirsi via /join/[code], indipendente dall'id
   createdAt: Date;
   updatedAt: Date;
@@ -40,7 +37,7 @@ export interface FantaSettings {
   generalBudget: number; // Budget generale per tutti
   minBid: number; // Puntata minima
   maxBid: number; // Puntata massima
-  defaultCountdown: number; // Countdown predefinito in secondi (minimo 15)
+  defaultCountdown: number; // Countdown predefinito in secondi (30-300)
   allowCustomBids: boolean; // Se permettere puntate custom
   maxPlayersTotal?: number; // Limite rosa totale per utente (0/assente = nessun limite)
   maxPlayersPerRole?: Record<string, number>; // Limite per ruolo (assente = nessun limite per quel ruolo)
@@ -55,32 +52,70 @@ export interface FantaSettings {
   scoringWeights?: ScoringWeights;
 }
 
-// Team types
-export interface Team {
+// Ruolo di un membro NELLA LEGA (permessi) — non va confuso col ruolo del
+// giocatore pro comprato (es. "Mid Laner"), che vive su TeamPick.playerRole.
+export type MemberRole = "admin" | "vice" | "membro";
+
+// Un acquisto in rosa: un giocatore pro (o, dallo step 4, una squadra/coach)
+// comprato all'asta da un membro. pickType distingue di che tipo di slot
+// si tratta quando il draft composto sarà pronto.
+export interface TeamPick {
   id: string;
-  name: string;
-  userId: string;
-  fantaId: string;
-  budget: number;
-  remainingBudget: number;
-  players: Player[];
-  createdAt: Date;
-  updatedAt: Date;
+  pickType: "player" | "jolly";
+  playerName: string;
+  playerRole?: string; // ruolo del giocatore pro, es. "Mid Laner"
+  playerTeam?: string; // squadra pro reale, es. "T1"
+  purchasePrice: number;
+  auctionId?: string;
+  acquiredAt: Date;
 }
 
-export interface Player {
+// fantas/{fantaId}/members/{userId}
+export interface FantaMember {
+  userId: string;
+  role: MemberRole;
+  teamName: string; // nome della squadra fantasy scelto dal membro
+  team: TeamPick[]; // rosa: tutti gli acquisti
+  budgetTot: number;
+  budgetSpent: number;
+  budgetLeft: number;
+}
+
+// fantas/{fantaId}/history/{id} — log immutabile di chi ha comprato cosa,
+// da chi e quando. A differenza di FantaMember.team, una voce qui resta
+// anche se il giocatore viene poi rimosso dalla rosa o l'asta riaperta.
+export interface HistoryEntry {
   id: string;
+  playerName: string;
+  playerRole?: string;
+  playerTeam?: string;
+  buyerUserId: string;
+  buyerName: string;
+  price: number;
+  auctionId?: string;
+  purchasedAt: Date;
+}
+
+// Cache locale dei pro player di un circuito, presa da Leaguepedia: evita
+// di richiamare l'API ad ogni ricerca. Aggiornata da un'azione manuale
+// (nessun cron/Cloud Function in quest'app), non in automatico.
+export interface ProPlayer {
+  id: string;
+  circuit: string;
+  player: string;
   name: string;
-  role?: string; // Ruolo personalizzabile (es: "Top Laner", "Portiere", "Point Guard")
-  team?: string; // Team/Squadra personalizzabile
-  purchasePrice: number;
-  customFields?: Record<string, string>; // Campi extra personalizzabili
-  acquiredAt: Date;
+  country: string;
+  role: string;
+  team: string;
+  birthdate: string;
+  residency: string;
+  updatedAt: Date;
 }
 
 // Auction types
 export type AuctionStatus = "pending" | "active" | "closing" | "closed";
 
+// fantas/{fantaId}/auctions/{id}
 export interface Auction {
   id: string;
   fantaId: string;
@@ -103,6 +138,7 @@ export interface Auction {
   updatedAt: Date;
 }
 
+// fantas/{fantaId}/auctions/{auctionId}/bids/{id}
 export interface Bid {
   id: string;
   auctionId: string;
@@ -118,7 +154,7 @@ export interface BidPreset {
   value: number;
 }
 
-// Richieste di ingresso in un fanta
+// Richieste di ingresso in un fanta — fantas/{fantaId}/joinRequests/{id}
 export type JoinRequestStatus = "pending" | "approved" | "rejected";
 
 export interface JoinRequest {

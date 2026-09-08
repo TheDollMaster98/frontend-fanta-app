@@ -18,7 +18,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useFanta } from "@/contexts/FantaContext";
-import { useAuth } from "@/contexts/AuthContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
 import { Trophy, Users, Crown, Zap } from "lucide-react";
 import type { Fanta } from "@/types";
@@ -30,18 +29,15 @@ export default function DashboardPage() {
     discoverableFantas,
     myJoinRequests,
     sendJoinRequest,
+    getMyRoleFor,
+    getMemberCount,
   } = useFanta();
-  const { user } = useAuth();
   const [infoFanta, setInfoFanta] = useState<Fanta | null>(null);
 
-  const getUserRole = (
-    fantaId: string,
-    adminId: string,
-    viceAdminIds: string[],
-  ) => {
-    if (!user) return "Giocatore";
-    if (adminId === user.id) return "Creatore";
-    if (viceAdminIds.includes(user.id)) return "Vice-Admin";
+  const getUserRole = (fantaId: string) => {
+    const role = getMyRoleFor(fantaId);
+    if (role === "admin") return "Creatore";
+    if (role === "vice") return "Vice-Admin";
     return "Giocatore";
   };
 
@@ -91,11 +87,7 @@ export default function DashboardPage() {
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {fantas.map((fanta) => {
-            const role = getUserRole(
-              fanta.id,
-              fanta.adminId,
-              fanta.viceAdminIds,
-            );
+            const role = getUserRole(fanta.id);
             const activeAuctions = 0; // TODO: Contare aste attive da Firebase
 
             return (
@@ -132,7 +124,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2 text-sm">
                       <Users className="w-4 h-4 text-slate-500" />
                       <span className="text-slate-400">
-                        {fanta.memberIds.length} membri
+                        {getMemberCount(fanta.id)} membri
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
@@ -201,7 +193,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2 text-sm mb-4">
                       <Users className="w-4 h-4 text-slate-500" />
                       <span className="text-slate-400">
-                        {fanta.memberIds.length} membri
+                        {getMemberCount(fanta.id)} membri
                       </span>
                     </div>
                     <div className="flex gap-2 mt-auto">
@@ -261,7 +253,7 @@ export default function DashboardPage() {
               <div className="grid grid-cols-2 gap-3 rounded-md border border-slate-700 bg-slate-800/50 p-4 text-sm">
                 <div>
                   <span className="text-slate-400">Membri</span>
-                  <p>{infoFanta.memberIds.length}</p>
+                  <p>{getMemberCount(infoFanta.id)}</p>
                 </div>
                 <div>
                   <span className="text-slate-400">Budget Generale</span>

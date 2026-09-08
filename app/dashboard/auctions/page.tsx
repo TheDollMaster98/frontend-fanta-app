@@ -51,6 +51,7 @@ import {
   DEFAULT_BID_PRESETS,
   SPORT_TEMPLATES,
   MIN_COUNTDOWN_SECONDS,
+  MAX_COUNTDOWN_SECONDS,
 } from "@/lib/constants";
 import {
   getPlayersByLeague,
@@ -63,7 +64,6 @@ import type { Auction, Bid } from "@/types";
 import {
   collection,
   query,
-  where,
   orderBy,
   limit,
   onSnapshot,
@@ -89,6 +89,7 @@ export default function AuctionsPage() {
     getUserBudget,
     fantaMembers,
     getMemberName,
+    isFantaViceOrAdmin,
   } = useFanta();
   const { user } = useAuth();
   const [detailAuction, setDetailAuction] = useState<Auction | null>(null);
@@ -114,8 +115,14 @@ export default function AuctionsPage() {
     if (!activeAuction) return;
 
     const bidsQuery = query(
-      collection(db, "bids"),
-      where("auctionId", "==", activeAuction.id),
+      collection(
+        db,
+        "fantas",
+        activeAuction.fantaId,
+        "auctions",
+        activeAuction.id,
+        "bids",
+      ),
       orderBy("createdAt", "desc"),
       limit(15),
     );
@@ -164,8 +171,7 @@ export default function AuctionsPage() {
   // altrimenti si rischia di finire i soldi prima di completare la rosa).
   // Stessa logica, stessi numeri, di FantaContext.placeBid — qui serve solo
   // a spiegare in UI perché un'offerta è disabilitata.
-  const myRoster =
-    user && currentFanta ? getPlayersByUser(user.id, currentFanta.id) : [];
+  const myRoster = user && currentFanta ? getPlayersByUser(user.id) : [];
   const maxPlayersTotal = currentFanta?.settings.maxPlayersTotal || 0;
   const isRosterFull =
     maxPlayersTotal > 0 && myRoster.length >= maxPlayersTotal;
@@ -174,8 +180,8 @@ export default function AuctionsPage() {
     : undefined;
   const isRoleFull =
     !!roleLimit &&
-    myRoster.filter((p) => p.role === activeAuction?.playerRole).length >=
-      roleLimit;
+    myRoster.filter((p) => p.playerRole === activeAuction?.playerRole)
+      .length >= roleLimit;
   const myBudget = user ? getUserBudget(user.id) : 0;
   const openSlots = maxPlayersTotal > 0 ? maxPlayersTotal - myRoster.length : 0;
   const maxAffordableBid =
@@ -200,12 +206,7 @@ export default function AuctionsPage() {
     null,
   );
 
-  const isAdmin =
-    !!user &&
-    !!currentFanta &&
-    (currentFanta.adminId === user.id ||
-      currentFanta.viceAdminIds.includes(user.id) ||
-      !!user.isDeveloper);
+  const isAdmin = !!user && !!currentFanta && isFantaViceOrAdmin;
 
   // Carica dati precompilati da localStorage (da pagina import), una sola volta al mount
   const [prefilledAuction] = useState(() => {
@@ -787,9 +788,10 @@ export default function AuctionsPage() {
                         })
                       }
                       min={MIN_COUNTDOWN_SECONDS}
+                      max={MAX_COUNTDOWN_SECONDS}
                     />
                     <p className="text-sm text-slate-500">
-                      Minimo {MIN_COUNTDOWN_SECONDS}s
+                      Tra {MIN_COUNTDOWN_SECONDS}s e {MAX_COUNTDOWN_SECONDS}s
                     </p>
                   </div>
                 </div>
@@ -865,18 +867,19 @@ export default function AuctionsPage() {
                     <div className="space-y-1 max-h-32 overflow-y-auto">
                       {[...fantaMembers]
                         .sort(
-                          (a, b) => getUserBudget(b.id) - getUserBudget(a.id),
+                          (a, b) =>
+                            getUserBudget(b.userId) - getUserBudget(a.userId),
                         )
                         .map((member) => (
                           <div
-                            key={member.id}
+                            key={member.userId}
                             className="flex items-center justify-between text-sm"
                           >
                             <span className="text-slate-300">
                               {member.name}
                             </span>
                             <span className="text-slate-100 font-medium">
-                              {getUserBudget(member.id)}€
+                              {getUserBudget(member.userId)}€
                             </span>
                           </div>
                         ))}
@@ -1047,7 +1050,7 @@ export default function AuctionsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {fantaMembers.map((member) => (
-                        <SelectItem key={member.id} value={member.id}>
+                        <SelectItem key={member.userId} value={member.userId}>
                           {member.name}
                         </SelectItem>
                       ))}
@@ -1058,12 +1061,12 @@ export default function AuctionsPage() {
                     disabled={!manualAssignTo}
                     onClick={() => {
                       const member = fantaMembers.find(
-                        (m) => m.id === manualAssignTo,
+                        (m) => m.userId === manualAssignTo,
                       );
                       if (!member) return;
                       assignAuctionManually(
                         activeAuction.id,
-                        member.id,
+                        member.userId,
                         member.name,
                       );
                       setManualAssignTo("");

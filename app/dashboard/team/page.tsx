@@ -28,8 +28,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Trash2 } from "lucide-react";
-import { useFanta, type TeamPlayer } from "@/contexts/FantaContext";
+import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
+import type { TeamPick } from "@/types";
 
 export default function TeamPage() {
   const {
@@ -44,11 +45,10 @@ export default function TeamPage() {
   const teamName = user ? getTeamName(user.id) : "I Campioni";
   const [isEditingName, setIsEditingName] = useState(false);
   const [draftName, setDraftName] = useState(teamName);
-  const [playerToRemove, setPlayerToRemove] = useState<TeamPlayer | null>(null);
+  const [playerToRemove, setPlayerToRemove] = useState<TeamPick | null>(null);
 
   // Ottieni i giocatori dell'utente corrente
-  const players =
-    user && currentFanta ? getPlayersByUser(user.id, currentFanta.id) : [];
+  const players = user && currentFanta ? getPlayersByUser(user.id) : [];
 
   const budget = currentFanta?.settings.generalBudget || 500;
   const remaining = user ? getUserBudget(user.id) : budget;
@@ -165,11 +165,15 @@ export default function TeamPage() {
               <TableBody>
                 {players.map((player) => (
                   <TableRow key={player.id}>
-                    <TableCell className="font-medium">{player.name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{player.role}</Badge>
+                    <TableCell className="font-medium">
+                      {player.playerName}
                     </TableCell>
-                    <TableCell>{player.team}</TableCell>
+                    <TableCell>
+                      {player.playerRole && (
+                        <Badge variant="outline">{player.playerRole}</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>{player.playerTeam}</TableCell>
                     <TableCell className="text-right font-semibold">
                       {player.purchasePrice}€
                     </TableCell>
@@ -201,7 +205,7 @@ export default function TeamPage() {
           {playerToRemove && (
             <>
               <DialogHeader>
-                <DialogTitle>Rimuovere {playerToRemove.name}?</DialogTitle>
+                <DialogTitle>Rimuovere {playerToRemove.playerName}?</DialogTitle>
                 <DialogDescription>
                   Il giocatore torna disponibile per le aste e il budget speso
                   ({playerToRemove.purchasePrice}€) ti viene restituito.
@@ -218,7 +222,7 @@ export default function TeamPage() {
                   variant="destructive"
                   onClick={() => {
                     if (user) {
-                      removePlayerFromTeam(playerToRemove.id, user.id);
+                      removePlayerFromTeam(user.id, playerToRemove.id);
                     }
                     setPlayerToRemove(null);
                   }}

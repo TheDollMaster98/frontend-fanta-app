@@ -10,13 +10,13 @@ import {
 } from "react";
 import {
   collection,
+  collectionGroup,
   doc,
   addDoc,
   setDoc,
   updateDoc,
   deleteDoc,
   getDoc,
-  getDocs,
   documentId,
   onSnapshot,
   query,
@@ -24,6 +24,7 @@ import {
   orderBy,
   increment,
   arrayUnion,
+  writeBatch,
   runTransaction,
   serverTimestamp,
   deleteField,
@@ -31,13 +32,32 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
-import { MIN_COUNTDOWN_SECONDS } from "@/lib/constants";
-import type { Fanta, Player, JoinRequest, Auction } from "@/types";
+import { MIN_COUNTDOWN_SECONDS, MAX_COUNTDOWN_SECONDS } from "@/lib/constants";
+import type {
+  Fanta,
+  FantaMember,
+  MemberRole,
+  TeamPick,
+  HistoryEntry,
+  JoinRequest,
+  Auction,
+} from "@/types";
 
-export interface TeamPlayer extends Player {
-  userId: string; // ID dell'utente proprietario
-  fantaId: string; // ID della lega
-  auctionId?: string; // asta da cui è stato assegnato, se presente (serve a "Riapri Asta")
+const DEFAULT_TEAM_NAME = "I Campioni";
+
+// Documento membro così come vive su Firestore, con l'id della lega di
+// appartenenza ricavato dal path (fantas/{fantaId}/members/{userId}), utile
+// per lavorare su membership di più leghe insieme senza doverlo ripetere
+// come campo nel documento stesso.
+interface MembershipDoc extends FantaMember {
+  fantaId: string;
+}
+
+// Membro arricchito col profilo utente (nome/email), per mostrarlo in UI
+// senza dover risolvere l'id ogni volta.
+export interface FantaMemberProfile extends MembershipDoc {
+  name: string;
+  email: string;
 }
 
 interface FantaContextType {
@@ -47,17 +67,30 @@ interface FantaContextType {
   addFanta: (fanta: Fanta) => void;
   updateFanta: (fanta: Fanta) => void;
   isLoading: boolean;
-  // Gestione giocatori
-  getPlayersByUser: (userId: string, fantaId: string) => TeamPlayer[];
-  addPlayerToTeam: (player: Omit<TeamPlayer, "id" | "acquiredAt">) => void;
-  removePlayerFromTeam: (playerId: string, userId: string) => void;
-  updateUserBudget: (userId: string, amount: number) => void;
+
+  // Membri della lega corrente: ruolo, budget, rosa, uniti al profilo utente
+  fantaMembers: FantaMemberProfile[];
+  currentMember: FantaMemberProfile | null;
+  myRole: MemberRole | null;
+  isFantaAdmin: boolean; // creatore o developer (gestisce membri/vice)
+  isFantaViceOrAdmin: boolean; // creatore, vice o developer (gestisce aste/impostazioni)
+  getMemberName: (userId: string, fallback?: string) => string;
+  getMemberCount: (fantaId: string) => number;
+  getMyRoleFor: (fantaId: string) => MemberRole | null;
   getUserBudget: (userId: string) => number;
   getTeamName: (userId: string) => string;
   updateTeamName: (userId: string, name: string) => void;
-  // Membri della lega corrente (id/nome/email), sempre aggiornati
-  fantaMembers: { id: string; name: string; email: string }[];
-  getMemberName: (userId: string, fallback?: string) => string;
+  getPlayersByUser: (userId: string) => TeamPick[];
+  removePlayerFromTeam: (userId: string, pickId: string) => void;
+
+  // Gestione membri/vice-admin (solo isFantaAdmin)
+  addViceAdmin: (userId: string) => void;
+  removeViceAdmin: (userId: string) => void;
+  removeMember: (userId: string) => void;
+
+  // Storico acquisti: immutabile, resta anche se un'asta viene riaperta
+  history: HistoryEntry[];
+
   // Scoperta leghe e richieste di ingresso
   discoverableFantas: Fanta[];
   myJoinRequests: JoinRequest[];
@@ -65,6 +98,7 @@ interface FantaContextType {
   sendJoinRequest: (fanta: Fanta) => void;
   approveJoinRequest: (request: JoinRequest) => void;
   rejectJoinRequest: (requestId: string) => void;
+
   // Aste, condivise in tempo reale tra tutti i membri della lega
   auctions: Auction[];
   createAuction: (
@@ -94,8 +128,6 @@ interface FantaContextType {
 
 const FantaContext = createContext<FantaContextType | undefined>(undefined);
 
-const DEFAULT_TEAM_NAME = "I Campioni";
-
 function toDate(value: Timestamp | Date | undefined): Date {
   if (!value) return new Date();
   return value instanceof Timestamp ? value.toDate() : value;
@@ -112,14 +144,32 @@ function mapFantaDoc(id: string, data: Record<string, unknown>): Fanta {
     name: data.name,
     description: data.description,
     sportType: data.sportType,
-    adminId: data.adminId,
-    viceAdminIds: data.viceAdminIds || [],
     settings: data.settings,
-    memberIds: data.memberIds || [],
     inviteCode: data.inviteCode,
     createdAt: toDate(data.createdAt as Timestamp | Date | undefined),
     updatedAt: toDate(data.updatedAt as Timestamp | Date | undefined),
   } as Fanta;
+}
+
+function mapMembershipDoc(
+  fantaId: string,
+  userId: string,
+  data: Record<string, unknown>,
+): MembershipDoc {
+  const rawTeam = (data.team as Record<string, unknown>[]) || [];
+  return {
+    fantaId,
+    userId,
+    role: data.role as MemberRole,
+    teamName: (data.teamName as string) || DEFAULT_TEAM_NAME,
+    team: rawTeam.map((pick) => ({
+      ...pick,
+      acquiredAt: toDate(pick.acquiredAt as Timestamp | Date | undefined),
+    })) as TeamPick[],
+    budgetTot: (data.budgetTot as number) ?? 0,
+    budgetSpent: (data.budgetSpent as number) ?? 0,
+    budgetLeft: (data.budgetLeft as number) ?? 0,
+  };
 }
 
 function mapAuctionDoc(id: string, data: Record<string, unknown>): Auction {
@@ -162,20 +212,30 @@ function mapJoinRequestDoc(
   } as JoinRequest;
 }
 
+function mapHistoryDoc(id: string, data: Record<string, unknown>): HistoryEntry {
+  return {
+    id,
+    playerName: data.playerName,
+    playerRole: data.playerRole,
+    playerTeam: data.playerTeam,
+    buyerUserId: data.buyerUserId,
+    buyerName: data.buyerName,
+    price: data.price,
+    auctionId: data.auctionId,
+    purchasedAt: toDate(data.purchasedAt as Timestamp | Date | undefined),
+  } as HistoryEntry;
+}
+
 export function FantaProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [rawFantas, setRawFantas] = useState<Fanta[]>([]);
   const [allFantas, setAllFantas] = useState<Fanta[]>([]);
-  const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null);
+  const [fantasLoaded, setFantasLoaded] = useState(false);
+  const [allMemberships, setAllMemberships] = useState<MembershipDoc[]>([]);
+  const [membershipsLoaded, setMembershipsLoaded] = useState(false);
   const [currentFantaId, setCurrentFantaId] = useState<string | null>(() =>
     typeof window !== "undefined"
       ? localStorage.getItem("fanta-current-id")
       : null,
-  );
-  const [players, setPlayers] = useState<TeamPlayer[]>([]);
-  const [userBudgets, setUserBudgets] = useState<Record<string, number>>({});
-  const [userTeamNames, setUserTeamNames] = useState<Record<string, string>>(
-    {},
   );
   const [rawMyJoinRequests, setRawMyJoinRequests] = useState<JoinRequest[]>(
     [],
@@ -184,30 +244,13 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     JoinRequest[]
   >([]);
   const [auctions, setAuctions] = useState<Auction[]>([]);
-  const [fantaMembers, setFantaMembers] = useState<
-    { id: string; name: string; email: string }[]
-  >([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [memberProfiles, setMemberProfiles] = useState<
+    Record<string, { name: string; email: string }>
+  >({});
 
-  // Ascolta in tempo reale i fanta di cui l'utente è membro
-  useEffect(() => {
-    if (!user) return;
-
-    const fantasQuery = query(
-      collection(db, "fantas"),
-      where("memberIds", "array-contains", user.id),
-    );
-
-    const unsubscribe = onSnapshot(fantasQuery, (snapshot) => {
-      setRawFantas(
-        snapshot.docs.map((docSnap) => mapFantaDoc(docSnap.id, docSnap.data())),
-      );
-      setLoadedForUserId(user.id);
-    });
-
-    return unsubscribe;
-  }, [user]);
-
-  // Ascolta in tempo reale TUTTI i fanta esistenti, per la "scoperta" di leghe altrui
+  // Ascolta in tempo reale TUTTI i fanta esistenti: serve sia per "scoprire"
+  // leghe altrui sia per mostrare le proprie (filtrate via allMemberships).
   useEffect(() => {
     if (!user) return;
 
@@ -215,17 +258,41 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       setAllFantas(
         snapshot.docs.map((docSnap) => mapFantaDoc(docSnap.id, docSnap.data())),
       );
+      setFantasLoaded(true);
     });
 
     return unsubscribe;
   }, [user]);
 
-  // Ascolta le richieste di ingresso inviate dall'utente corrente
+  // Ascolta in tempo reale TUTTE le membership di TUTTE le leghe (collection
+  // group su fantas/*/members): da qui derivano sia "di quali leghe faccio
+  // parte" sia il conteggio membri di ogni lega, senza dover mantenere più
+  // listener separati per lega.
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubscribe = onSnapshot(
+      collectionGroup(db, "members"),
+      (snapshot) => {
+        setAllMemberships(
+          snapshot.docs.map((docSnap) => {
+            const fantaId = docSnap.ref.parent.parent!.id;
+            return mapMembershipDoc(fantaId, docSnap.id, docSnap.data());
+          }),
+        );
+        setMembershipsLoaded(true);
+      },
+    );
+
+    return unsubscribe;
+  }, [user]);
+
+  // Ascolta le richieste di ingresso inviate dall'utente corrente, su tutte le leghe
   useEffect(() => {
     if (!user) return;
 
     const requestsQuery = query(
-      collection(db, "joinRequests"),
+      collectionGroup(db, "joinRequests"),
       where("userId", "==", user.id),
     );
 
@@ -240,23 +307,32 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, [user]);
 
-  // I fanta caricati restano validi solo finché sono dell'utente loggato attuale.
-  // Un "developer" ha accesso universale: vede/gestisce tutte le leghe, zero blocchi.
   const isDeveloper = !!user?.isDeveloper;
+
+  // Un "developer" ha accesso universale: vede/gestisce tutte le leghe.
   const fantas = useMemo(() => {
     if (!user) return [];
-    return isDeveloper ? allFantas : rawFantas;
-  }, [user, isDeveloper, allFantas, rawFantas]);
+    if (isDeveloper) return allFantas;
+    const myFantaIds = new Set(
+      allMemberships.filter((m) => m.userId === user.id).map((m) => m.fantaId),
+    );
+    return allFantas.filter((f) => myFantaIds.has(f.id));
+  }, [user, isDeveloper, allFantas, allMemberships]);
+
   const myJoinRequests = useMemo(
     () => (user ? rawMyJoinRequests : []),
     [user, rawMyJoinRequests],
   );
-  const isLoading = !!user && !isDeveloper && loadedForUserId !== user.id;
+
+  const isLoading = !!user && !(fantasLoaded && membershipsLoaded);
 
   const discoverableFantas = useMemo(() => {
     if (!user || isDeveloper) return [];
-    return allFantas.filter((fanta) => !fanta.memberIds.includes(user.id));
-  }, [allFantas, user, isDeveloper]);
+    const myFantaIds = new Set(
+      allMemberships.filter((m) => m.userId === user.id).map((m) => m.fantaId),
+    );
+    return allFantas.filter((fanta) => !myFantaIds.has(fanta.id));
+  }, [allFantas, user, isDeveloper, allMemberships]);
 
   const currentFanta = useMemo(() => {
     if (fantas.length === 0) return null;
@@ -268,78 +344,175 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("fanta-current-id", fanta.id);
   };
 
-  const addFanta = (fanta: Fanta) => {
-    setDoc(doc(db, "fantas", fanta.id), fanta);
+  const getMemberCount = (fantaId: string): number =>
+    allMemberships.filter((m) => m.fantaId === fantaId).length;
+
+  const getMyRoleFor = (fantaId: string): MemberRole | null => {
+    if (!user) return null;
+    if (isDeveloper) return "admin";
+    return (
+      allMemberships.find((m) => m.fantaId === fantaId && m.userId === user.id)
+        ?.role ?? null
+    );
+  };
+
+  const addFanta = (fanta: Fanta): void => {
+    if (!user) return;
+    const batch = writeBatch(db);
+    batch.set(doc(db, "fantas", fanta.id), fanta);
+    const memberRef = doc(db, "fantas", fanta.id, "members", user.id);
+    const generalBudget = fanta.settings.generalBudget;
+    const adminMember: FantaMember = {
+      userId: user.id,
+      role: "admin",
+      teamName: DEFAULT_TEAM_NAME,
+      team: [],
+      budgetTot: generalBudget,
+      budgetSpent: 0,
+      budgetLeft: generalBudget,
+    };
+    batch.set(memberRef, adminMember);
+    batch.commit();
     setCurrentFanta(fanta);
   };
 
-  const updateFanta = (fanta: Fanta) => {
+  const updateFanta = (fanta: Fanta): void => {
     setDoc(doc(db, "fantas", fanta.id), fanta);
   };
 
-  // Ascolta in tempo reale i giocatori del fanta attualmente selezionato
-  useEffect(() => {
-    if (!currentFanta) return;
+  // Membri del fanta attualmente selezionato, uniti al profilo (nome/email)
+  const rawFantaMembers = useMemo(
+    () =>
+      currentFanta
+        ? allMemberships.filter((m) => m.fantaId === currentFanta.id)
+        : [],
+    [allMemberships, currentFanta],
+  );
 
-    const playersQuery = query(
-      collection(db, "players"),
-      where("fantaId", "==", currentFanta.id),
+  // Ascolta in tempo reale i profili (nome/email) dei membri del fanta
+  // attualmente selezionato: fonte unica per i nomi ovunque nell'app, così un
+  // cambio nome in Impostazioni si riflette subito invece di restare
+  // congelato a una copia scritta altrove in un momento precedente.
+  useEffect(() => {
+    const userIds = rawFantaMembers.map((m) => m.userId);
+    if (userIds.length === 0) {
+      setMemberProfiles({});
+      return;
+    }
+
+    const membersQuery = query(
+      collection(db, "users"),
+      where(documentId(), "in", userIds.slice(0, 30)),
     );
 
-    const unsubscribe = onSnapshot(playersQuery, (snapshot) => {
-      const loaded = snapshot.docs.map((docSnap) => {
-        const data = docSnap.data();
-        return {
-          id: docSnap.id,
-          name: data.name,
-          role: data.role,
-          team: data.team,
-          purchasePrice: data.purchasePrice,
-          customFields: data.customFields,
-          acquiredAt: toDate(data.acquiredAt),
-          userId: data.userId,
-          fantaId: data.fantaId,
-        } as TeamPlayer;
-      });
-      setPlayers(loaded);
-    });
-
-    return unsubscribe;
-  }, [currentFanta]);
-
-  // Ascolta in tempo reale i budget del fanta attualmente selezionato
-  // (il budget è per-lega, non per account: ogni utente può avere budget
-  // diversi in leghe diverse, tutti a partire dallo stesso generalBudget)
-  useEffect(() => {
-    if (!currentFanta) return;
-
-    const budgetsQuery = query(
-      collection(db, "teamBudgets"),
-      where("fantaId", "==", currentFanta.id),
-    );
-
-    const unsubscribe = onSnapshot(budgetsQuery, (snapshot) => {
-      const budgets: Record<string, number> = {};
-      const teamNames: Record<string, string> = {};
+    const unsubscribe = onSnapshot(membersQuery, (snapshot) => {
+      const profiles: Record<string, { name: string; email: string }> = {};
       snapshot.docs.forEach((docSnap) => {
-        const data = docSnap.data();
-        budgets[data.userId] = data.budget;
-        teamNames[data.userId] = data.teamName || DEFAULT_TEAM_NAME;
+        profiles[docSnap.id] = {
+          name: docSnap.data().name || "Utente",
+          email: docSnap.data().email || "",
+        };
       });
-      setUserBudgets(budgets);
-      setUserTeamNames(teamNames);
+      setMemberProfiles(profiles);
     });
 
     return unsubscribe;
-  }, [currentFanta]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawFantaMembers.map((m) => m.userId).join(",")]);
+
+  const fantaMembers: FantaMemberProfile[] = useMemo(
+    () =>
+      rawFantaMembers.map((m) => ({
+        ...m,
+        name: memberProfiles[m.userId]?.name || "Utente",
+        email: memberProfiles[m.userId]?.email || "",
+      })),
+    [rawFantaMembers, memberProfiles],
+  );
+
+  const currentMember = useMemo(
+    () => (user ? fantaMembers.find((m) => m.userId === user.id) || null : null),
+    [fantaMembers, user],
+  );
+
+  const myRole: MemberRole | null = currentMember?.role ?? null;
+  const isFantaAdmin = myRole === "admin" || isDeveloper;
+  const isFantaViceOrAdmin =
+    myRole === "admin" || myRole === "vice" || isDeveloper;
+
+  const getMemberName = (userId: string, fallback?: string): string => {
+    return (
+      fantaMembers.find((m) => m.userId === userId)?.name || fallback || "Utente"
+    );
+  };
+
+  const getUserBudget = (userId: string): number => {
+    const member = fantaMembers.find((m) => m.userId === userId);
+    return member ? member.budgetLeft : currentFanta?.settings.generalBudget ?? 0;
+  };
+
+  const getTeamName = (userId: string): string => {
+    return fantaMembers.find((m) => m.userId === userId)?.teamName || DEFAULT_TEAM_NAME;
+  };
+
+  const updateTeamName = (userId: string, name: string): void => {
+    if (!currentFanta) return;
+    updateDoc(doc(db, "fantas", currentFanta.id, "members", userId), {
+      teamName: name,
+    });
+  };
+
+  const getPlayersByUser = (userId: string): TeamPick[] => {
+    return fantaMembers.find((m) => m.userId === userId)?.team || [];
+  };
+
+  const removePlayerFromTeam = (userId: string, pickId: string): void => {
+    if (!currentFanta) return;
+    const member = fantaMembers.find((m) => m.userId === userId);
+    if (!member) return;
+    const pick = member.team.find((p) => p.id === pickId);
+    if (!pick) return;
+
+    updateDoc(doc(db, "fantas", currentFanta.id, "members", userId), {
+      team: member.team.filter((p) => p.id !== pickId),
+      budgetSpent: increment(-pick.purchasePrice),
+      budgetLeft: increment(pick.purchasePrice),
+    });
+  };
+
+  const addViceAdmin = (userId: string): void => {
+    if (!currentFanta) return;
+    const member = fantaMembers.find((m) => m.userId === userId);
+    if (!member) return;
+    if (member.role === "admin") return;
+    updateDoc(doc(db, "fantas", currentFanta.id, "members", userId), {
+      role: "vice",
+    });
+  };
+
+  const removeViceAdmin = (userId: string): void => {
+    if (!currentFanta) return;
+    updateDoc(doc(db, "fantas", currentFanta.id, "members", userId), {
+      role: "membro",
+    });
+  };
+
+  const removeMember = (userId: string): void => {
+    if (!currentFanta) return;
+    const member = fantaMembers.find((m) => m.userId === userId);
+    if (member?.role === "admin") return;
+    deleteDoc(doc(db, "fantas", currentFanta.id, "members", userId));
+  };
 
   // Ascolta le richieste di ingresso pendenti per il fanta attualmente selezionato
   useEffect(() => {
-    if (!currentFanta) return;
+    if (!currentFanta) {
+      setPendingJoinRequests([]);
+      return;
+    }
 
     const requestsQuery = query(
-      collection(db, "joinRequests"),
-      where("fantaId", "==", currentFanta.id),
+      collection(db, "fantas", currentFanta.id, "joinRequests"),
       where("status", "==", "pending"),
     );
 
@@ -354,9 +527,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, [currentFanta]);
 
-  // Ascolta in tempo reale le aste del fanta attualmente selezionato:
-  // è ciò che rende un'asta visibile e sincronizzata su tutti i dispositivi
-  // (prima vivevano solo nello useState locale della pagina Aste).
+  // Ascolta in tempo reale le aste del fanta attualmente selezionato
   useEffect(() => {
     if (!currentFanta) {
       setAuctions([]);
@@ -364,8 +535,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     }
 
     const auctionsQuery = query(
-      collection(db, "auctions"),
-      where("fantaId", "==", currentFanta.id),
+      collection(db, "fantas", currentFanta.id, "auctions"),
       orderBy("createdAt", "desc"),
     );
 
@@ -378,119 +548,38 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, [currentFanta]);
 
-  // Ascolta in tempo reale i profili dei membri del fanta attualmente
-  // selezionato: è la fonte unica per mostrare nomi/email ovunque nell'app
-  // (offerente di un'asta, assegnazione manuale, ecc.), così un cambio nome
-  // in Impostazioni si riflette subito dappertutto invece di restare
-  // congelato a una copia scritta altrove in un momento precedente.
+  // Ascolta lo storico acquisti del fanta attualmente selezionato: log
+  // immutabile, resta anche se un'asta viene poi riaperta o un giocatore
+  // rimosso dalla rosa.
   useEffect(() => {
-    if (!currentFanta || currentFanta.memberIds.length === 0) {
-      setFantaMembers([]);
+    if (!currentFanta) {
+      setHistory([]);
       return;
     }
 
-    const membersQuery = query(
-      collection(db, "users"),
-      where(documentId(), "in", currentFanta.memberIds.slice(0, 30)),
+    const historyQuery = query(
+      collection(db, "fantas", currentFanta.id, "history"),
+      orderBy("purchasedAt", "desc"),
     );
 
-    const unsubscribe = onSnapshot(membersQuery, (snapshot) => {
-      setFantaMembers(
-        snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          name: docSnap.data().name || "Utente",
-          email: docSnap.data().email || "",
-        })),
+    const unsubscribe = onSnapshot(historyQuery, (snapshot) => {
+      setHistory(
+        snapshot.docs.map((docSnap) => mapHistoryDoc(docSnap.id, docSnap.data())),
       );
     });
 
     return unsubscribe;
   }, [currentFanta]);
 
-  const getMemberName = (userId: string, fallback?: string): string => {
-    return fantaMembers.find((m) => m.id === userId)?.name || fallback || "Utente";
-  };
-
-  const getPlayersByUser = (userId: string, fantaId: string): TeamPlayer[] => {
-    return players.filter((p) => p.userId === userId && p.fantaId === fantaId);
-  };
-
-  const addPlayerToTeam = (
-    player: Omit<TeamPlayer, "id" | "acquiredAt">,
-  ): void => {
-    addDoc(collection(db, "players"), {
-      ...player,
-      acquiredAt: new Date(),
-    });
-  };
-
-  const removePlayerFromTeam = (playerId: string, userId: string): void => {
-    const player = players.find(
-      (p) => p.id === playerId && p.userId === userId,
-    );
-    if (player) {
-      deleteDoc(doc(db, "players", playerId));
-      updateUserBudget(userId, player.purchasePrice);
-    }
-  };
-
-  const updateUserBudget = (userId: string, amount: number): void => {
-    if (!currentFanta) return;
-    const budgetId = `${currentFanta.id}_${userId}`;
-    const ref = doc(db, "teamBudgets", budgetId);
-    const generalBudget = currentFanta.settings.generalBudget;
-
-    runTransaction(db, async (tx) => {
-      const snap = await tx.get(ref);
-      if (snap.exists()) {
-        tx.update(ref, { budget: increment(amount) });
-      } else {
-        tx.set(ref, {
-          fantaId: currentFanta.id,
-          userId,
-          budget: generalBudget + amount,
-          teamName: DEFAULT_TEAM_NAME,
-        });
-      }
-    });
-  };
-
-  const getUserBudget = (userId: string): number => {
-    if (userId in userBudgets) return userBudgets[userId];
-    return currentFanta?.settings.generalBudget ?? 0;
-  };
-
-  const getTeamName = (userId: string): string => {
-    return userTeamNames[userId] || DEFAULT_TEAM_NAME;
-  };
-
-  const updateTeamName = (userId: string, name: string): void => {
-    if (!currentFanta) return;
-    const budgetId = `${currentFanta.id}_${userId}`;
-    const ref = doc(db, "teamBudgets", budgetId);
-    const generalBudget = currentFanta.settings.generalBudget;
-
-    runTransaction(db, async (tx) => {
-      const snap = await tx.get(ref);
-      if (snap.exists()) {
-        tx.update(ref, { teamName: name });
-      } else {
-        tx.set(ref, {
-          fantaId: currentFanta.id,
-          userId,
-          budget: generalBudget,
-          teamName: name,
-        });
-      }
-    });
-  };
-
   const createAuction: FantaContextType["createAuction"] = (auction) => {
     if (!currentFanta || !user) return;
-    addDoc(collection(db, "auctions"), {
+    addDoc(collection(db, "fantas", currentFanta.id, "auctions"), {
       ...auction,
-      // Difensivo: il form UI ha già min=15, ma non fidarsi solo del client.
-      countdownSeconds: Math.max(MIN_COUNTDOWN_SECONDS, auction.countdownSeconds),
+      // Difensivo: il form UI ha già min/max, ma non fidarsi solo del client.
+      countdownSeconds: Math.min(
+        MAX_COUNTDOWN_SECONDS,
+        Math.max(MIN_COUNTDOWN_SECONDS, auction.countdownSeconds),
+      ),
       fantaId: currentFanta.id,
       currentPrice: auction.basePrice,
       status: "pending",
@@ -501,7 +590,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   };
 
   const startAuction = (auctionId: string, countdownSeconds: number): void => {
-    updateDoc(doc(db, "auctions", auctionId), {
+    if (!currentFanta) return;
+    updateDoc(doc(db, "fantas", currentFanta.id, "auctions", auctionId), {
       status: "active",
       countdownEndsAt: Timestamp.fromMillis(Date.now() + countdownSeconds * 1000),
       startedAt: serverTimestamp(),
@@ -512,14 +602,15 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   // Blocca l'asta senza assegnarla: torna disponibile in stato "pending" e
   // può essere riavviata in seguito con "Avvia" (mantiene prezzo/offerente).
   const pauseAuction = (auctionId: string): void => {
-    updateDoc(doc(db, "auctions", auctionId), {
+    if (!currentFanta) return;
+    updateDoc(doc(db, "fantas", currentFanta.id, "auctions", auctionId), {
       status: "pending",
       updatedAt: serverTimestamp(),
     });
   };
 
   const placeBid = (auctionId: string, amount: number): void => {
-    if (!user || !currentFanta) return;
+    if (!user || !currentFanta || !currentMember) return;
     const maxBid = currentFanta.settings.maxBid;
     const maxPlayersTotal = currentFanta.settings.maxPlayersTotal || 0;
     const maxPlayersPerRole = currentFanta.settings.maxPlayersPerRole || {};
@@ -527,17 +618,15 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     // Rosa e budget vengono dallo stato locale (aggiornato in tempo reale
     // via onSnapshot), non da una lettura live dentro la transazione: per
     // un'app tra amici va bene, non serve la rigidità di una vera asta
-    // finanziaria. Stesso approccio già usato altrove (getUserBudget).
-    const myRoster = players.filter(
-      (p) => p.userId === user.id && p.fantaId === currentFanta.id,
-    );
-    const myBudget = getUserBudget(user.id);
+    // finanziaria.
+    const myRoster = currentMember.team;
+    const myBudget = currentMember.budgetLeft;
     const openSlots =
       maxPlayersTotal > 0 ? maxPlayersTotal - myRoster.length : 0;
 
     if (maxPlayersTotal > 0 && myRoster.length >= maxPlayersTotal) return;
 
-    const ref = doc(db, "auctions", auctionId);
+    const ref = doc(db, "fantas", currentFanta.id, "auctions", auctionId);
     // La transazione può no-oppare (limiti superati, asta non più attiva):
     // logghiamo lo storico solo se l'offerta è stata davvero accettata,
     // altrimenti risulterebbe un rilancio che in realtà non è avvenuto.
@@ -554,7 +643,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       const roleLimit = role ? maxPlayersPerRole[role] : undefined;
       if (
         roleLimit &&
-        myRoster.filter((p) => p.role === role).length >= roleLimit
+        myRoster.filter((p) => p.playerRole === role).length >= roleLimit
       ) {
         return;
       }
@@ -579,21 +668,25 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       accepted = true;
     }).then(() => {
       if (!accepted) return;
-      addDoc(collection(db, "bids"), {
-        auctionId,
-        userId: user.id,
-        userName: user.name,
-        amount,
-        createdAt: serverTimestamp(),
-      });
+      addDoc(
+        collection(db, "fantas", currentFanta.id, "auctions", auctionId, "bids"),
+        {
+          auctionId,
+          userId: user.id,
+          userName: user.name,
+          amount,
+          createdAt: serverTimestamp(),
+        },
+      );
     });
   };
 
   // Chiude un'asta (manualmente o perché il countdown è arrivato a zero) e,
-  // se non annullata, assegna il giocatore al miglior offerente. La
-  // transazione garantisce che, se più client provano a chiuderla nello
-  // stesso momento (es. countdown scaduto su più dispositivi aperti in
-  // contemporanea), solo il primo esegua davvero l'assegnazione.
+  // se non annullata, assegna il giocatore al miglior offerente: aggiunge il
+  // pick alla rosa del vincitore, scala il budget e registra una voce nello
+  // storico immutabile. La transazione sull'asta garantisce che, se più
+  // client provano a chiuderla nello stesso momento, solo il primo esegua
+  // davvero l'assegnazione.
   const finalizeAuction = (
     auctionId: string,
     options: {
@@ -602,10 +695,13 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       overrideWinnerName?: string;
     } = {},
   ): void => {
-    const ref = doc(db, "auctions", auctionId);
+    if (!currentFanta) return;
+    const fantaId = currentFanta.id;
+    const ref = doc(db, "fantas", fantaId, "auctions", auctionId);
     let winner: {
       userId: string;
-      player: Omit<TeamPlayer, "id" | "acquiredAt">;
+      userName: string;
+      pick: TeamPick;
     } | null = null;
 
     runTransaction(db, async (tx) => {
@@ -638,34 +734,51 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       if (!options.cancel && winnerId) {
         winner = {
           userId: winnerId as string,
-          player: {
-            name: data.playerName,
-            role: data.playerRole,
-            team: data.playerTeam,
+          userName: (winnerName as string) || "Utente",
+          pick: {
+            id: auctionId,
+            pickType: "player",
+            playerName: data.playerName,
+            playerRole: data.playerRole,
+            playerTeam: data.playerTeam,
             purchasePrice: data.currentPrice,
-            userId: winnerId as string,
-            fantaId: data.fantaId,
             auctionId,
-            customFields: {},
+            acquiredAt: new Date(),
           },
         };
       }
     })
       .then(() => {
         if (!winner) return;
-        // Le due scritture sono indipendenti: se una fallisce (es. un
-        // valore imprevisto che Firestore rifiuta), non deve bloccare
-        // l'altra in silenzio come succedeva prima, con l'asta segnata
-        // "chiusa" ma senza né giocatore né budget aggiornati.
+        const { userId, userName, pick } = winner;
+        // Le scritture sono indipendenti: se una fallisce, non deve
+        // bloccare le altre in silenzio, con l'asta segnata "chiusa" ma
+        // senza né giocatore né budget né storico aggiornati.
         try {
-          addPlayerToTeam(winner.player);
+          updateDoc(doc(db, "fantas", fantaId, "members", userId), {
+            team: arrayUnion(pick),
+            budgetSpent: increment(pick.purchasePrice),
+            budgetLeft: increment(-pick.purchasePrice),
+          });
         } catch (error) {
           console.error("Errore nell'assegnazione del giocatore vinto:", error);
         }
         try {
-          updateUserBudget(winner.userId, -winner.player.purchasePrice);
+          const entry: Omit<HistoryEntry, "id" | "purchasedAt"> = {
+            playerName: pick.playerName,
+            playerRole: pick.playerRole,
+            playerTeam: pick.playerTeam,
+            buyerUserId: userId,
+            buyerName: userName,
+            price: pick.purchasePrice,
+            auctionId,
+          };
+          addDoc(collection(db, "fantas", fantaId, "history"), {
+            ...entry,
+            purchasedAt: serverTimestamp(),
+          });
         } catch (error) {
-          console.error("Errore nell'aggiornamento del budget:", error);
+          console.error("Errore nella scrittura dello storico:", error);
         }
       })
       .catch((error) => {
@@ -675,25 +788,38 @@ export function FantaProvider({ children }: { children: ReactNode }) {
 
   // Annulla l'assegnazione di un'asta chiusa: toglie il giocatore a chi
   // l'aveva vinta (rimborsando il budget) e riporta l'asta a "pending" con
-  // il prezzo resettato al base, pronta per essere riavviata da capo.
+  // il prezzo resettato al base, pronta per essere riavviata da capo. Lo
+  // storico NON viene toccato: resta come log di ciò che è realmente
+  // avvenuto, anche se poi annullato.
   const reopenAuction = async (auctionId: string): Promise<void> => {
-    const ref = doc(db, "auctions", auctionId);
-    const [auctionSnap, assignedSnap] = await Promise.all([
-      getDoc(ref),
-      getDocs(
-        query(collection(db, "players"), where("auctionId", "==", auctionId)),
-      ),
-    ]);
+    if (!currentFanta) return;
+    const fantaId = currentFanta.id;
+    const ref = doc(db, "fantas", fantaId, "auctions", auctionId);
+    const auctionSnap = await getDoc(ref);
     if (!auctionSnap.exists()) return;
     const auctionData = auctionSnap.data();
+    const winnerId = auctionData.highestBidderId as string | undefined;
 
-    await Promise.all(
-      assignedSnap.docs.map(async (playerSnap) => {
-        const playerData = playerSnap.data();
-        await deleteDoc(playerSnap.ref);
-        updateUserBudget(playerData.userId, playerData.purchasePrice);
-      }),
-    );
+    if (winnerId) {
+      const memberRef = doc(db, "fantas", fantaId, "members", winnerId);
+      const memberSnap = await getDoc(memberRef);
+      if (memberSnap.exists()) {
+        const memberData = memberSnap.data();
+        const team = (memberData.team as Record<string, unknown>[]) || [];
+        const removed = team.filter((p) => p.auctionId === auctionId);
+        const refund = removed.reduce(
+          (sum, p) => sum + ((p.purchasePrice as number) || 0),
+          0,
+        );
+        if (removed.length > 0) {
+          await updateDoc(memberRef, {
+            team: team.filter((p) => p.auctionId !== auctionId),
+            budgetSpent: increment(-refund),
+            budgetLeft: increment(refund),
+          });
+        }
+      }
+    }
 
     await updateDoc(ref, {
       status: "pending",
@@ -751,7 +877,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
 
   const sendJoinRequest = (fanta: Fanta): void => {
     if (!user) return;
-    addDoc(collection(db, "joinRequests"), {
+    addDoc(collection(db, "fantas", fanta.id, "joinRequests"), {
       fantaId: fanta.id,
       fantaName: fanta.name,
       userId: user.id,
@@ -763,14 +889,33 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   };
 
   const approveJoinRequest = (request: JoinRequest): void => {
-    updateDoc(doc(db, "fantas", request.fantaId), {
-      memberIds: arrayUnion(request.userId),
-    });
-    updateDoc(doc(db, "joinRequests", request.id), { status: "approved" });
+    const fanta = allFantas.find((f) => f.id === request.fantaId);
+    const generalBudget = fanta?.settings.generalBudget ?? 0;
+    const newMember: FantaMember = {
+      userId: request.userId,
+      role: "membro",
+      teamName: DEFAULT_TEAM_NAME,
+      team: [],
+      budgetTot: generalBudget,
+      budgetSpent: 0,
+      budgetLeft: generalBudget,
+    };
+    setDoc(
+      doc(db, "fantas", request.fantaId, "members", request.userId),
+      newMember,
+    );
+    updateDoc(
+      doc(db, "fantas", request.fantaId, "joinRequests", request.id),
+      { status: "approved" },
+    );
   };
 
   const rejectJoinRequest = (requestId: string): void => {
-    updateDoc(doc(db, "joinRequests", requestId), { status: "rejected" });
+    if (!currentFanta) return;
+    updateDoc(
+      doc(db, "fantas", currentFanta.id, "joinRequests", requestId),
+      { status: "rejected" },
+    );
   };
 
   return (
@@ -782,15 +927,23 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         addFanta,
         updateFanta,
         isLoading,
-        getPlayersByUser,
-        addPlayerToTeam,
-        removePlayerFromTeam,
-        updateUserBudget,
+        fantaMembers,
+        currentMember,
+        myRole,
+        isFantaAdmin,
+        isFantaViceOrAdmin,
+        getMemberName,
+        getMemberCount,
+        getMyRoleFor,
         getUserBudget,
         getTeamName,
         updateTeamName,
-        fantaMembers,
-        getMemberName,
+        getPlayersByUser,
+        removePlayerFromTeam,
+        addViceAdmin,
+        removeViceAdmin,
+        removeMember,
+        history,
         discoverableFantas,
         myJoinRequests,
         pendingJoinRequests,

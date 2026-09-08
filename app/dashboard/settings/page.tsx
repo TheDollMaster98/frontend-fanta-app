@@ -26,8 +26,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
 
 export default function SettingsPage() {
-  const { fantas, currentFanta, setCurrentFanta, getTeamName, updateTeamName } =
-    useFanta();
+  const {
+    fantas,
+    currentFanta,
+    setCurrentFanta,
+    getTeamName,
+    updateTeamName,
+    getMemberCount,
+  } = useFanta();
   const { user, setIsDeveloper, updateUserProfile, updateUserEmail, changePassword } =
     useAuth();
   // Una volta visto come developer in questa sessione, il controllo resta
@@ -332,7 +338,7 @@ export default function SettingsPage() {
                             {fanta.name}
                           </p>
                           <p className="text-sm text-slate-400">
-                            {fanta.sportType} • {fanta.memberIds.length} membri
+                            {fanta.sportType} • {getMemberCount(fanta.id)} membri
                           </p>
                         </div>
                         {currentFanta?.id === fanta.id && <Badge>Attiva</Badge>}

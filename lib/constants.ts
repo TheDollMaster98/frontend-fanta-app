@@ -9,9 +9,11 @@ export const DEFAULT_BID_PRESETS: BidPreset[] = [
   { label: "+100", value: 100 },
 ];
 
-// Countdown minimo consentito per un'asta, sia come default di lega sia come
-// valore custom quando se ne crea una: mai possibile scendere sotto questo.
-export const MIN_COUNTDOWN_SECONDS = 15;
+// Countdown minimo e massimo consentiti per un'asta, sia come default di
+// lega sia come valore custom quando se ne crea una: mai fuori da questo
+// intervallo (30s - 5min).
+export const MIN_COUNTDOWN_SECONDS = 30;
+export const MAX_COUNTDOWN_SECONDS = 300;
 
 // Circuiti LoL selezionabili alla creazione di una lega. WORLDS e MSI sono
 // a eliminazione (girone poi bracket): attivano la doppia fase quando la

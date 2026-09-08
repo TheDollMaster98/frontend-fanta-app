@@ -20,12 +20,16 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
       impostazioni (prima era solo creatore+dev — incoerente con gli altri
       poteri che hanno già altrove nell'app); non possono però gestire
       membri/vice-admin, resta creatore+dev.
-- [ ] **Step 2 — Punteggio reale + calendario**: BLOCCATO, in attesa dei
-      campi `ScoreboardGames` da Leaguepedia (data partita, chi ha vinto)
-      per scrivere la query corretta.
+- [ ] **Step 2 — Punteggio reale + calendario**: campi `ScoreboardGames`
+      ricevuti (`DateTime_UTC`, `WinTeam`/`LossTeam`, obiettivi solo a
+      livello squadra) — sbloccato, ma non ancora implementato (calendario
+      round-robin, calcolo punti, pagina classifica).
 - [ ] **Step 3 — Drill-down**: dipende dallo Step 2.
-- [ ] **Step 4 — Draft composto**: BLOCCATO, in attesa dei campi tabella
-      `Teams` e del nome/campi della tabella coach da Leaguepedia.
+- [ ] **Step 4 — Draft composto**: campi tabella `Teams` ricevuti (Name,
+      OverviewPage, Short, Region, Image, IsDisbanded, RenamedTo) —
+      ricerca squadra sbloccata. Tabella coach su Leaguepedia non trovata:
+      per ora il coach resterà probabilmente testo libero, da confermare.
+      Non ancora implementato.
 - [ ] **Step 5 — Doppia fase**: dipende da Step 2 e 4.
 - [ ] **Step 6 — Statistiche extra (MVP/CS/obiettivi)**: da verificare se
       Leaguepedia le ha davvero, non scontato.
@@ -39,15 +43,31 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
       vedeva solo l'offerta più alta corrente). Nuova collection `bids` —
       usa il tipo `Bid` che esisteva già in types/index.ts ma non era mai
       stato collegato a nulla.
-- [ ] **Proposta di cambiare il modello dati del Fanta (member[] embedded
-      con budgetTot/budgetSpent/budgetLeft/team/role) — respinta con
-      motivazione tecnica**, non implementata: `team`/`role` singolare per
-      membro non è compatibile con la rosa multi-giocatore già costruita
-      (maxPlayersTotal/maxPlayersPerRole); i tre campi budget ridondanti
-      rischiano di disallinearsi; e soprattutto scrivere tutti i budget
-      nello stesso documento Fanta farebbe scontrare le transazioni di
-      offerte concorrenti durante un'asta live. Architettura attuale
-      (un documento per membro in teamBudgets) confermata.
+- [x] **Ristrutturazione completa del modello dati Firestore, richiesta
+      esplicitamente e in modo vincolante dal gruppo**: `Fanta` non ha più
+      `adminId`/`viceAdminIds`/`memberIds` — ogni membro è ora un
+      documento in `fantas/{id}/members/{userId}` con `role`
+      (admin/vice/membro), `teamName`, `team` (rosa: array di
+      `TeamPick` con tutte le info del giocatore pro + prezzo pagato),
+      `budgetTot`/`budgetSpent`/`budgetLeft`. Aggiunte anche
+      `fantas/{id}/history` (log immutabile di chi ha comprato cosa, da
+      chi e quando — resta anche se un'asta viene poi riaperta o il
+      giocatore rimosso dalla rosa) e `fantas/{id}/joinRequests`. Aste e
+      offerte sono diventate sottocollezioni annidate:
+      `fantas/{id}/auctions` e `fantas/{id}/auctions/{id}/bids`. Rimosse
+      del tutto le vecchie collezioni piatte `players`, `teamBudgets`,
+      `auctions`, `bids`, `joinRequests` — **cutover netto, senza
+      migrazione dati**: qualunque fanta/asta/giocatore di test creato
+      prima di questo giro resta nel vecchio schema e non verrà più letto
+      dall'app. Aggiunta anche `proplayers` (cache dei giocatori pro di un
+      circuito presa da Leaguepedia, da riempire con una sync manuale —
+      non ancora costruita, solo il tipo esiste). Nota tecnica: avevo
+      inizialmente sconsigliato un array `member[]` embedded dentro
+      `Fanta` per il rischio di scritture concorrenti sullo stesso
+      documento durante un'asta live — la richiesta è stata confermata
+      comunque, quindi ho usato sottocollezioni (un documento per membro,
+      non un array unico) per ottenere la stessa forma dei dati voluta
+      senza quel rischio specifico.
 
 ## Ancora da discutere prima di implementare (feedback ricevuto dal gruppo)
 
@@ -119,7 +139,9 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
       `placeBid` lato context.
 - [x] Countdown minimo 15s: sia come default di lega sia come valore
       custom per singola asta, con clamp difensivo anche lato context (non
-      solo `min` sull'input).
+      solo `min` sull'input). **Aggiornato in seguito a 30s minimo, 5 minuti
+      (300s) massimo** — richiesta esplicita, vedi voce sulla
+      ristrutturazione del modello dati più sopra.
 - [x] Assegnazione manuale del vincitore: admin/vice/dev possono assegnare
       l'asta attiva a un membro scelto dalla lista, anche se non è lui
       l'offerente più alto registrato (utile per accordi presi fuori
@@ -218,8 +240,5 @@ Firestore — quindi non toccati su richiesta esplicita.)
       Firestore, non toccata su richiesta esplicita.)
 
 ## Non toccare senza un motivo preciso
-- `types/index.ts`: `Team`, `Bid`, `AppState` sono tipi definiti ma mai
-  usati nel codice reale (la persistenza usa `teamBudgets`/`players`/
-  `auctions` come collezioni piatte, non l'oggetto `Team` aggregato). Non
-  sono bug, sono semplicemente non ancora adottati — se un giorno serve un
-  modello più ricco per team, sono già lì.
+- `types/index.ts`: `AppState` è un tipo definito ma mai usato nel codice
+  reale. Non è un bug, semplicemente non ancora adottato.

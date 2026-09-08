@@ -58,8 +58,6 @@ export function CreateFantaDialog() {
       name: formData.name,
       description: formData.description,
       sportType: formData.sportType,
-      adminId: user.id,
-      viceAdminIds: [],
       settings: {
         ...DEFAULT_FANTA_SETTINGS,
         ...(isLol
@@ -70,7 +68,6 @@ export function CreateFantaDialog() {
             }
           : {}),
       },
-      memberIds: [user.id],
       inviteCode: generateInviteCode(),
       createdAt: new Date(),
       updatedAt: new Date(),
