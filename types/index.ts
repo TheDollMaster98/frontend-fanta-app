@@ -29,6 +29,13 @@ export interface Fanta {
   updatedAt: Date;
 }
 
+export interface ScoringWeights {
+  kills: number;
+  deaths: number;
+  assists: number;
+  win: number; // bonus se la squadra del giocatore vince quella partita
+}
+
 export interface FantaSettings {
   generalBudget: number; // Budget generale per tutti
   minBid: number; // Puntata minima
@@ -37,6 +44,15 @@ export interface FantaSettings {
   allowCustomBids: boolean; // Se permettere puntate custom
   maxPlayersTotal?: number; // Limite rosa totale per utente (0/assente = nessun limite)
   maxPlayersPerRole?: Record<string, number>; // Limite per ruolo (assente = nessun limite per quel ruolo)
+  // Solo per leghe LoL: circuito seguito (LCK/LPL/.../WORLDS/MSI/ALTRO) e
+  // numero di slot jolly (giocatori extra senza vincolo di ruolo). WORLDS e
+  // MSI sono a eliminazione: attiveranno la doppia fase gironi/finale.
+  circuitType?: string;
+  maxJolly?: number;
+  // Pesi per calcolare i punti fantasy dalle statistiche reali dei
+  // giocatori. Bloccati (modificabili solo da admin/dev, non vice) una
+  // volta che le partite del torneo sono iniziate.
+  scoringWeights?: ScoringWeights;
 }
 
 // Team types

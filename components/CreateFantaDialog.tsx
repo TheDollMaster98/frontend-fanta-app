@@ -24,20 +24,30 @@ import { collection, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { DEFAULT_FANTA_SETTINGS } from "@/lib/constants";
+import {
+  DEFAULT_FANTA_SETTINGS,
+  CIRCUIT_TYPES,
+  DEFAULT_SCORING_WEIGHTS,
+} from "@/lib/constants";
 import { generateInviteCode } from "@/lib/utils";
 import type { SportType } from "@/types";
 import { Plus } from "lucide-react";
+
+const INITIAL_FORM = {
+  name: "",
+  description: "",
+  sportType: "calcio" as SportType,
+  circuitType: "LCK",
+  maxJolly: 0,
+  scoringWeights: { ...DEFAULT_SCORING_WEIGHTS },
+};
 
 export function CreateFantaDialog() {
   const { addFanta } = useFanta();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    sportType: "calcio" as SportType,
-  });
+  const [formData, setFormData] = useState(INITIAL_FORM);
+  const isLol = formData.sportType === "lol";
 
   const handleCreate = () => {
     if (!user || !formData.name) return;
@@ -50,14 +60,23 @@ export function CreateFantaDialog() {
       sportType: formData.sportType,
       adminId: user.id,
       viceAdminIds: [],
-      settings: DEFAULT_FANTA_SETTINGS,
+      settings: {
+        ...DEFAULT_FANTA_SETTINGS,
+        ...(isLol
+          ? {
+              circuitType: formData.circuitType,
+              maxJolly: formData.maxJolly,
+              scoringWeights: formData.scoringWeights,
+            }
+          : {}),
+      },
       memberIds: [user.id],
       inviteCode: generateInviteCode(),
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    setFormData({ name: "", description: "", sportType: "calcio" });
+    setFormData(INITIAL_FORM);
     setOpen(false);
   };
 
@@ -69,7 +88,7 @@ export function CreateFantaDialog() {
           Crea Nuovo Fanta
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Crea Nuova Lega</DialogTitle>
           <DialogDescription>
@@ -124,6 +143,144 @@ export function CreateFantaDialog() {
               rows={3}
             />
           </div>
+
+          {isLol && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="circuitType">Circuito *</Label>
+                <Select
+                  value={formData.circuitType}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, circuitType: value })
+                  }
+                >
+                  <SelectTrigger id="circuitType">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CIRCUIT_TYPES.map((circuit) => (
+                      <SelectItem key={circuit} value={circuit}>
+                        {circuit}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">
+                  Worlds e MSI sono a eliminazione: più avanti attiveranno la
+                  doppia fase gironi/finale
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="maxJolly">Giocatori Jolly Max</Label>
+                <Input
+                  id="maxJolly"
+                  type="number"
+                  min={0}
+                  value={formData.maxJolly}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      maxJolly: Number(e.target.value),
+                    })
+                  }
+                />
+                <p className="text-xs text-slate-500">
+                  Slot extra in rosa senza vincolo di ruolo. 0 = nessuno
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Pesi Punteggio *</Label>
+                <p className="text-xs text-slate-500">
+                  Quanti punti valgono le statistiche reali dei giocatori.
+                  Modificabile dopo, ma bloccato a partite iniziate.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="wKills" className="text-xs font-normal">
+                      Kill
+                    </Label>
+                    <Input
+                      id="wKills"
+                      type="number"
+                      step="0.5"
+                      value={formData.scoringWeights.kills}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          scoringWeights: {
+                            ...formData.scoringWeights,
+                            kills: Number(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="wDeaths" className="text-xs font-normal">
+                      Morte
+                    </Label>
+                    <Input
+                      id="wDeaths"
+                      type="number"
+                      step="0.5"
+                      value={formData.scoringWeights.deaths}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          scoringWeights: {
+                            ...formData.scoringWeights,
+                            deaths: Number(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="wAssists" className="text-xs font-normal">
+                      Assist
+                    </Label>
+                    <Input
+                      id="wAssists"
+                      type="number"
+                      step="0.5"
+                      value={formData.scoringWeights.assists}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          scoringWeights: {
+                            ...formData.scoringWeights,
+                            assists: Number(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="wWin" className="text-xs font-normal">
+                      Vittoria squadra
+                    </Label>
+                    <Input
+                      id="wWin"
+                      type="number"
+                      step="0.5"
+                      value={formData.scoringWeights.win}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          scoringWeights: {
+                            ...formData.scoringWeights,
+                            win: Number(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
         <div className="flex gap-2 justify-end">
           <Button variant="outline" onClick={() => setOpen(false)}>

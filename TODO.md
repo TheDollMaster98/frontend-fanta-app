@@ -4,6 +4,32 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
+## Motore fantacampionato — piano a step (in corso)
+
+Il gruppo ha chiesto un sistema molto più completo (punteggi da statistiche
+reali, calendario a girone, draft composto squadra+coach+jolly, doppia fase
+gironi/finale). È stato spezzato in 6 step, ognuno usabile da solo prima di
+passare al successivo — vedi la chat per tutte le decisioni di design prese.
+
+- [x] **Step 1 — Fondamenta**: `FantaSettings` ha ora `circuitType`
+      (LCK/LPL/LEC/LCS/MSI/WORLDS/ALTRO), `maxJolly` (slot extra senza
+      vincolo di ruolo) e `scoringWeights` (kills/morti/assist/vittoria,
+      default 3/-1/1.5/2). Campi obbligatori in `CreateFantaDialog` quando
+      si crea una lega LoL, modificabili dopo in Gestione Lega. I
+      vice-admin ora possono entrare in Gestione Lega e modificare le
+      impostazioni (prima era solo creatore+dev — incoerente con gli altri
+      poteri che hanno già altrove nell'app); non possono però gestire
+      membri/vice-admin, resta creatore+dev.
+- [ ] **Step 2 — Punteggio reale + calendario**: BLOCCATO, in attesa dei
+      campi `ScoreboardGames` da Leaguepedia (data partita, chi ha vinto)
+      per scrivere la query corretta.
+- [ ] **Step 3 — Drill-down**: dipende dallo Step 2.
+- [ ] **Step 4 — Draft composto**: BLOCCATO, in attesa dei campi tabella
+      `Teams` e del nome/campi della tabella coach da Leaguepedia.
+- [ ] **Step 5 — Doppia fase**: dipende da Step 2 e 4.
+- [ ] **Step 6 — Statistiche extra (MVP/CS/obiettivi)**: da verificare se
+      Leaguepedia le ha davvero, non scontato.
+
 ## Fatto in questo giro (asta live)
 
 - [x] Offerta custom: invio anche con Enter, non solo col bottone.

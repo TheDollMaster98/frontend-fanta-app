@@ -35,7 +35,12 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import type { Fanta, SportType } from "@/types";
-import { MIN_COUNTDOWN_SECONDS, SPORT_TEMPLATES } from "@/lib/constants";
+import {
+  MIN_COUNTDOWN_SECONDS,
+  SPORT_TEMPLATES,
+  CIRCUIT_TYPES,
+  DEFAULT_SCORING_WEIGHTS,
+} from "@/lib/constants";
 import { Copy, UserPlus } from "lucide-react";
 
 export default function AdminPage() {
@@ -44,10 +49,16 @@ export default function AdminPage() {
   const { user, isLoading: authLoading } = useAuth();
 
   const loading = authLoading || fantaLoading;
+  // Stesso criterio di "isAdmin" usato nella pagina Aste (creare/chiudere
+  // aste, assegnare manualmente): prima qui i vice-admin non potevano
+  // proprio entrare in Gestione Lega, incoerente col fatto che altrove
+  // hanno già gli stessi poteri del creatore sulle decisioni della lega.
   const isAuthorized =
     !!currentFanta &&
     !!user &&
-    (currentFanta.adminId === user.id || !!user.isDeveloper);
+    (currentFanta.adminId === user.id ||
+      currentFanta.viceAdminIds.includes(user.id) ||
+      !!user.isDeveloper);
 
   // Redirect se non è il creatore né un developer (solo dopo che i dati sono stati caricati)
   useEffect(() => {
@@ -72,10 +83,24 @@ function AdminPageContent({
 }) {
   const { pendingJoinRequests, approveJoinRequest, rejectJoinRequest } =
     useFanta();
+  const { user } = useAuth();
+  // I vice-admin possono entrare in Gestione Lega e toccare le
+  // impostazioni (budget, circuito, pesi punteggio, ecc.), ma non gestire
+  // chi fa parte della lega: aggiungere/togliere vice-admin o cacciare
+  // membri resta una decisione del creatore (o di un dev).
+  const canManageMembers =
+    !!user &&
+    (currentFanta.adminId === user.id || !!user.isDeveloper);
   const [settings, setSettings] = useState({
     ...currentFanta.settings,
     maxPlayersTotal: currentFanta.settings.maxPlayersTotal || 0,
     maxPlayersPerRole: currentFanta.settings.maxPlayersPerRole || {},
+    circuitType: currentFanta.settings.circuitType || CIRCUIT_TYPES[0],
+    maxJolly: currentFanta.settings.maxJolly || 0,
+    scoringWeights: {
+      ...DEFAULT_SCORING_WEIGHTS,
+      ...currentFanta.settings.scoringWeights,
+    },
   });
   const availableRoles = SPORT_TEMPLATES[currentFanta.sportType]?.roles || [];
   const [generalInfo, setGeneralInfo] = useState({
@@ -382,6 +407,139 @@ function AdminPageContent({
                   </div>
                 </div>
 
+                {currentFanta.sportType === "lol" && (
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="circuitType">Circuito</Label>
+                      <Select
+                        value={settings.circuitType}
+                        onValueChange={(value) =>
+                          setSettings({ ...settings, circuitType: value })
+                        }
+                      >
+                        <SelectTrigger id="circuitType">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CIRCUIT_TYPES.map((circuit) => (
+                            <SelectItem key={circuit} value={circuit}>
+                              {circuit}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="maxJolly">Giocatori Jolly Max</Label>
+                      <Input
+                        id="maxJolly"
+                        type="number"
+                        min={0}
+                        value={settings.maxJolly}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            maxJolly: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {currentFanta.sportType === "lol" && (
+                  <div className="space-y-2">
+                    <Label>Pesi Punteggio</Label>
+                    <p className="text-xs text-slate-500">
+                      Da bloccare (solo admin/dev) quando inizieranno le
+                      partite — per ora modificabile anche dai vice-admin
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="wKills" className="text-xs font-normal">
+                          Kill
+                        </Label>
+                        <Input
+                          id="wKills"
+                          type="number"
+                          step="0.5"
+                          value={settings.scoringWeights.kills}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              scoringWeights: {
+                                ...settings.scoringWeights,
+                                kills: Number(e.target.value),
+                              },
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="wDeaths" className="text-xs font-normal">
+                          Morte
+                        </Label>
+                        <Input
+                          id="wDeaths"
+                          type="number"
+                          step="0.5"
+                          value={settings.scoringWeights.deaths}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              scoringWeights: {
+                                ...settings.scoringWeights,
+                                deaths: Number(e.target.value),
+                              },
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="wAssists" className="text-xs font-normal">
+                          Assist
+                        </Label>
+                        <Input
+                          id="wAssists"
+                          type="number"
+                          step="0.5"
+                          value={settings.scoringWeights.assists}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              scoringWeights: {
+                                ...settings.scoringWeights,
+                                assists: Number(e.target.value),
+                              },
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="wWin" className="text-xs font-normal">
+                          Vittoria squadra
+                        </Label>
+                        <Input
+                          id="wWin"
+                          type="number"
+                          step="0.5"
+                          value={settings.scoringWeights.win}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              scoringWeights: {
+                                ...settings.scoringWeights,
+                                win: Number(e.target.value),
+                              },
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {availableRoles.length > 0 && (
                   <div className="space-y-2">
                     <Label>Max Giocatori per Ruolo</Label>
@@ -559,17 +717,24 @@ function AdminPageContent({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Email dell'utente (già membro della lega)"
-                  value={newViceEmail}
-                  onChange={(e) => setNewViceEmail(e.target.value)}
-                  disabled={isAddingVice}
-                />
-                <Button onClick={addViceAdmin} disabled={isAddingVice}>
-                  {isAddingVice ? "..." : "Aggiungi"}
-                </Button>
-              </div>
+              {canManageMembers ? (
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Email dell'utente (già membro della lega)"
+                    value={newViceEmail}
+                    onChange={(e) => setNewViceEmail(e.target.value)}
+                    disabled={isAddingVice}
+                  />
+                  <Button onClick={addViceAdmin} disabled={isAddingVice}>
+                    {isAddingVice ? "..." : "Aggiungi"}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Solo il creatore della lega (o un dev) può aggiungere o
+                  togliere vice-admin.
+                </p>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-slate-300">Vice Admin Attuali:</Label>
@@ -596,13 +761,15 @@ function AdminPageContent({
                               </p>
                             )}
                           </div>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => removeViceAdmin(viceId)}
-                          >
-                            Rimuovi
-                          </Button>
+                          {canManageMembers && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => removeViceAdmin(viceId)}
+                            >
+                              Rimuovi
+                            </Button>
+                          )}
                         </div>
                       );
                     })}
@@ -652,7 +819,7 @@ function AdminPageContent({
                                 ? "Vice Admin"
                                 : "Membro"}
                           </Badge>
-                          {!isCreator && (
+                          {!isCreator && canManageMembers && (
                             <Button
                               variant="destructive"
                               size="sm"
