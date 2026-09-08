@@ -34,6 +34,7 @@ import {
   type TeamGameLog,
 } from "@/lib/leaguepediaApi";
 import type { TeamPick, TeamPickType } from "@/types";
+import { DEFAULT_TEAM_SCORING_WEIGHT } from "@/lib/constants";
 
 const PICK_TYPE_LABELS: Record<TeamPickType, string> = {
   player: "Giocatore",
@@ -139,7 +140,11 @@ export default function StandingsPage() {
   if (!currentFanta) return null;
 
   const circuitMissing = !currentFanta.settings.circuitType;
-  const weights = currentFanta.settings.scoringWeights;
+  const roleWeights = currentFanta.settings.scoringWeights || {};
+  const drillWeights =
+    drillPick?.playerRole ? roleWeights[drillPick.playerRole] : undefined;
+  const teamWeight =
+    currentFanta.settings.teamScoringWeight ?? DEFAULT_TEAM_SCORING_WEIGHT;
 
   return (
     <div className="space-y-6">
@@ -394,11 +399,11 @@ export default function StandingsPage() {
                       </TableHeader>
                       <TableBody>
                         {playerLog.map((game) => {
-                          const points = weights
-                            ? game.kills * weights.kills +
-                              game.deaths * weights.deaths +
-                              game.assists * weights.assists +
-                              (game.win ? weights.win : 0)
+                          const points = drillWeights
+                            ? game.kills * drillWeights.kills +
+                              game.deaths * drillWeights.deaths +
+                              game.assists * drillWeights.assists +
+                              (game.win ? drillWeights.win : 0)
                             : undefined;
                           return (
                             <TableRow key={game.gameId}>
@@ -466,7 +471,7 @@ export default function StandingsPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right font-medium">
-                            {weights && game.win ? weights.win : 0}
+                            {game.win ? teamWeight : 0}
                           </TableCell>
                         </TableRow>
                       ))}

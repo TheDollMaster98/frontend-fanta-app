@@ -24,10 +24,13 @@ import { collection, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { RoleScoringWeightsEditor } from "@/components/RoleScoringWeightsEditor";
 import {
   DEFAULT_FANTA_SETTINGS,
   CIRCUIT_TYPES,
-  DEFAULT_SCORING_WEIGHTS,
+  LOL_ROLES,
+  DEFAULT_ROLE_SCORING_WEIGHTS,
+  DEFAULT_TEAM_SCORING_WEIGHT,
 } from "@/lib/constants";
 import { generateInviteCode } from "@/lib/utils";
 import type { SportType } from "@/types";
@@ -39,7 +42,8 @@ const INITIAL_FORM = {
   sportType: "calcio" as SportType,
   circuitType: "LCK",
   maxJolly: 0,
-  scoringWeights: { ...DEFAULT_SCORING_WEIGHTS },
+  scoringWeights: { ...DEFAULT_ROLE_SCORING_WEIGHTS },
+  teamScoringWeight: DEFAULT_TEAM_SCORING_WEIGHT,
 };
 
 export function CreateFantaDialog() {
@@ -65,6 +69,7 @@ export function CreateFantaDialog() {
               circuitType: formData.circuitType,
               maxJolly: formData.maxJolly,
               scoringWeights: formData.scoringWeights,
+              teamScoringWeight: formData.teamScoringWeight,
             }
           : {}),
       },
@@ -187,95 +192,17 @@ export function CreateFantaDialog() {
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label>Pesi Punteggio *</Label>
-                <p className="text-xs text-slate-500">
-                  Quanti punti valgono le statistiche reali dei giocatori.
-                  Modificabile dopo, ma bloccato a partite iniziate.
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label htmlFor="wKills" className="text-xs font-normal">
-                      Kill
-                    </Label>
-                    <Input
-                      id="wKills"
-                      type="number"
-                      step="0.5"
-                      value={formData.scoringWeights.kills}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          scoringWeights: {
-                            ...formData.scoringWeights,
-                            kills: Number(e.target.value),
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="wDeaths" className="text-xs font-normal">
-                      Morte
-                    </Label>
-                    <Input
-                      id="wDeaths"
-                      type="number"
-                      step="0.5"
-                      value={formData.scoringWeights.deaths}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          scoringWeights: {
-                            ...formData.scoringWeights,
-                            deaths: Number(e.target.value),
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="wAssists" className="text-xs font-normal">
-                      Assist
-                    </Label>
-                    <Input
-                      id="wAssists"
-                      type="number"
-                      step="0.5"
-                      value={formData.scoringWeights.assists}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          scoringWeights: {
-                            ...formData.scoringWeights,
-                            assists: Number(e.target.value),
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="wWin" className="text-xs font-normal">
-                      Vittoria squadra
-                    </Label>
-                    <Input
-                      id="wWin"
-                      type="number"
-                      step="0.5"
-                      value={formData.scoringWeights.win}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          scoringWeights: {
-                            ...formData.scoringWeights,
-                            win: Number(e.target.value),
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
+              <RoleScoringWeightsEditor
+                roles={LOL_ROLES}
+                weights={formData.scoringWeights}
+                teamWeight={formData.teamScoringWeight}
+                onChangeRoleWeights={(scoringWeights) =>
+                  setFormData({ ...formData, scoringWeights })
+                }
+                onChangeTeamWeight={(teamScoringWeight) =>
+                  setFormData({ ...formData, teamScoringWeight })
+                }
+              />
             </>
           )}
         </div>

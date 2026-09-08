@@ -1,4 +1,4 @@
-import { BidPreset, ScoringWeights } from "@/types";
+import { BidPreset, ScoringWeights, RoleScoringWeights } from "@/types";
 
 // Default bid presets
 export const DEFAULT_BID_PRESETS: BidPreset[] = [
@@ -29,12 +29,28 @@ export const CIRCUIT_TYPES = [
 ] as const;
 export const PLAYOFF_CIRCUITS: readonly string[] = ["MSI", "WORLDS"];
 
+// Ruoli LoL, definiti qui (non dentro SPORT_TEMPLATES) perché servono anche
+// a costruire i pesi punteggio di default, uno per ruolo.
+export const LOL_ROLES = ["Top Laner", "Jungler", "Mid Laner", "ADC", "Support"];
+
+// Template usato per popolare ogni ruolo la prima volta: stessi numeri di
+// prima quando i pesi erano un unico set globale. Da qui in poi ogni ruolo
+// ha il proprio set modificabile indipendentemente.
 export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
   kills: 3,
   deaths: -1,
   assists: 1.5,
   win: 2,
 };
+
+export const DEFAULT_ROLE_SCORING_WEIGHTS: RoleScoringWeights =
+  Object.fromEntries(
+    LOL_ROLES.map((role) => [role, { ...DEFAULT_SCORING_WEIGHTS }]),
+  );
+
+// Pesi per le pick "team"/"coach": solo vittoria squadra (niente kill/
+// morti/assist, non sono un giocatore singolo).
+export const DEFAULT_TEAM_SCORING_WEIGHT = 2;
 
 // Default fanta settings
 export const DEFAULT_FANTA_SETTINGS = {
@@ -46,7 +62,8 @@ export const DEFAULT_FANTA_SETTINGS = {
   maxPlayersTotal: 0,
   maxPlayersPerRole: {} as Record<string, number>,
   maxJolly: 0,
-  scoringWeights: DEFAULT_SCORING_WEIGHTS,
+  scoringWeights: DEFAULT_ROLE_SCORING_WEIGHTS,
+  teamScoringWeight: DEFAULT_TEAM_SCORING_WEIGHT,
 };
 
 // Esempi di ruoli per diversi sport/giochi (personalizzabili)
@@ -55,7 +72,7 @@ export const SPORT_TEMPLATES = {
     roles: ["Portiere", "Difensore", "Centrocampista", "Attaccante"],
   },
   lol: {
-    roles: ["Top Laner", "Jungler", "Mid Laner", "ADC", "Support"],
+    roles: LOL_ROLES,
   },
   basket: {
     roles: ["Playmaker", "Guardia", "Ala Piccola", "Ala Grande", "Centro"],

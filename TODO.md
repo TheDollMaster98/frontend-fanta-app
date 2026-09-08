@@ -20,6 +20,15 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
       impostazioni (prima era solo creatore+dev — incoerente con gli altri
       poteri che hanno già altrove nell'app); non possono però gestire
       membri/vice-admin, resta creatore+dev.
+      **Aggiornamento successivo**: `scoringWeights` non è più un unico set
+      globale ma un set per ruolo (`RoleScoringWeights`, chiave = stringa
+      ruolo esatta di `SPORT_TEMPLATES.lol.roles`/`LOL_ROLES`) — kill/morti/
+      assist/vittoria non valgono uguale per Top e Support. Aggiunto anche
+      `teamScoringWeight` separato (solo vittoria) per le pick
+      Squadra/Coach, che non hanno statistiche individuali. Editor
+      condiviso `components/RoleScoringWeightsEditor.tsx` (tab per ruolo +
+      tab Squadra/Coach), usato sia in `CreateFantaDialog` che in Gestione
+      Lega, così non si disallineano.
 - [x] **Step 2 — Punteggio reale + calendario**: nuova pagina "Classifica"
       (solo leghe LoL). `lib/roundRobin.ts` genera il calendario a girone
       all'italiana (metodo del cerchio) tra i membri, salvato in

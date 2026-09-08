@@ -28,12 +28,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import type { Fanta, SportType } from "@/types";
+import { RoleScoringWeightsEditor } from "@/components/RoleScoringWeightsEditor";
 import {
   MIN_COUNTDOWN_SECONDS,
   MAX_COUNTDOWN_SECONDS,
   SPORT_TEMPLATES,
   CIRCUIT_TYPES,
-  DEFAULT_SCORING_WEIGHTS,
+  LOL_ROLES,
+  DEFAULT_ROLE_SCORING_WEIGHTS,
+  DEFAULT_TEAM_SCORING_WEIGHT,
 } from "@/lib/constants";
 import { Copy, UserPlus } from "lucide-react";
 
@@ -95,9 +98,11 @@ function AdminPageContent({
     circuitType: currentFanta.settings.circuitType || CIRCUIT_TYPES[0],
     maxJolly: currentFanta.settings.maxJolly || 0,
     scoringWeights: {
-      ...DEFAULT_SCORING_WEIGHTS,
+      ...DEFAULT_ROLE_SCORING_WEIGHTS,
       ...currentFanta.settings.scoringWeights,
     },
+    teamScoringWeight:
+      currentFanta.settings.teamScoringWeight ?? DEFAULT_TEAM_SCORING_WEIGHT,
   });
   const availableRoles = SPORT_TEMPLATES[currentFanta.sportType]?.roles || [];
   const [generalInfo, setGeneralInfo] = useState({
@@ -421,93 +426,21 @@ function AdminPageContent({
 
                 {currentFanta.sportType === "lol" && (
                   <div className="space-y-2">
-                    <Label>Pesi Punteggio</Label>
                     <p className="text-xs text-slate-500">
                       Da bloccare (solo admin/dev) quando inizieranno le
                       partite — per ora modificabile anche dai vice-admin
                     </p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="space-y-1">
-                        <Label htmlFor="wKills" className="text-xs font-normal">
-                          Kill
-                        </Label>
-                        <Input
-                          id="wKills"
-                          type="number"
-                          step="0.5"
-                          value={settings.scoringWeights.kills}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              scoringWeights: {
-                                ...settings.scoringWeights,
-                                kills: Number(e.target.value),
-                              },
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="wDeaths" className="text-xs font-normal">
-                          Morte
-                        </Label>
-                        <Input
-                          id="wDeaths"
-                          type="number"
-                          step="0.5"
-                          value={settings.scoringWeights.deaths}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              scoringWeights: {
-                                ...settings.scoringWeights,
-                                deaths: Number(e.target.value),
-                              },
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="wAssists" className="text-xs font-normal">
-                          Assist
-                        </Label>
-                        <Input
-                          id="wAssists"
-                          type="number"
-                          step="0.5"
-                          value={settings.scoringWeights.assists}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              scoringWeights: {
-                                ...settings.scoringWeights,
-                                assists: Number(e.target.value),
-                              },
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="wWin" className="text-xs font-normal">
-                          Vittoria squadra
-                        </Label>
-                        <Input
-                          id="wWin"
-                          type="number"
-                          step="0.5"
-                          value={settings.scoringWeights.win}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              scoringWeights: {
-                                ...settings.scoringWeights,
-                                win: Number(e.target.value),
-                              },
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
+                    <RoleScoringWeightsEditor
+                      roles={LOL_ROLES}
+                      weights={settings.scoringWeights}
+                      teamWeight={settings.teamScoringWeight}
+                      onChangeRoleWeights={(scoringWeights) =>
+                        setSettings({ ...settings, scoringWeights })
+                      }
+                      onChangeTeamWeight={(teamScoringWeight) =>
+                        setSettings({ ...settings, teamScoringWeight })
+                      }
+                    />
                   </div>
                 )}
 

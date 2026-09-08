@@ -36,7 +36,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   MIN_COUNTDOWN_SECONDS,
   MAX_COUNTDOWN_SECONDS,
-  DEFAULT_SCORING_WEIGHTS,
+  DEFAULT_TEAM_SCORING_WEIGHT,
 } from "@/lib/constants";
 import { generateRoundRobin } from "@/lib/roundRobin";
 import {
@@ -664,14 +664,18 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   // Ricalcola i punti fantasy di ogni pick in rosa dalle statistiche reali
   // Leaguepedia (kill/morti/assist/vittorie per player/jolly, sole vittorie
   // per team/coach — vedi lib/leaguepediaApi.ts), pesati con gli
-  // scoringWeights della lega. Nessun automatismo: va rilanciato a mano
-  // (bottone admin/dev) quando si vogliono punti aggiornati, non c'è un
-  // cron/Cloud Function che lo fa da solo.
+  // scoringWeights della lega — uno per ruolo (playerRole del pick), più un
+  // peso separato (teamScoringWeight) per le pick team/coach. Nessun
+  // automatismo: va rilanciato a mano (bottone admin/dev) quando si
+  // vogliono punti aggiornati, non c'è un cron/Cloud Function che lo fa da
+  // solo.
   const recalculateScores = async (): Promise<void> => {
     if (!currentFanta) return;
     const circuitType = currentFanta.settings.circuitType;
     if (!circuitType) return;
-    const weights = currentFanta.settings.scoringWeights || DEFAULT_SCORING_WEIGHTS;
+    const roleWeights = currentFanta.settings.scoringWeights || {};
+    const teamWeight =
+      currentFanta.settings.teamScoringWeight ?? DEFAULT_TEAM_SCORING_WEIGHT;
 
     const playerNames = new Set<string>();
     const teamNames = new Set<string>();
@@ -701,7 +705,10 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         let points: number | undefined;
         if (pick.pickType === "player" || pick.pickType === "jolly") {
           const s = playerStats[pick.playerName];
-          if (s) {
+          const weights = pick.playerRole
+            ? roleWeights[pick.playerRole]
+            : undefined;
+          if (s && weights) {
             points =
               s.kills * weights.kills +
               s.deaths * weights.deaths +
@@ -710,10 +717,10 @@ export function FantaProvider({ children }: { children: ReactNode }) {
           }
         } else if (pick.pickType === "team") {
           const s = teamStats[pick.playerName];
-          if (s) points = s.wins * weights.win;
+          if (s) points = s.wins * teamWeight;
         } else if (pick.pickType === "coach" && pick.playerTeam) {
           const s = teamStats[pick.playerTeam];
-          if (s) points = s.wins * weights.win;
+          if (s) points = s.wins * teamWeight;
         }
 
         if (points === undefined) return pick;

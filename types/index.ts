@@ -33,6 +33,14 @@ export interface ScoringWeights {
   win: number; // bonus se la squadra del giocatore vince quella partita
 }
 
+// Pesi punteggio per ruolo (es. "Top Laner", "Jungler", ... — le stesse
+// stringhe di SPORT_TEMPLATES.lol.roles in lib/constants.ts): kill/morti/
+// assist/vittoria non valgono uguale per ogni ruolo, quindi ogni ruolo ha
+// il proprio set. Applicati in base al playerRole reale del pick — vale
+// anche per i jolly, che contano col peso del loro ruolo vero, non un set
+// a parte.
+export type RoleScoringWeights = Record<string, ScoringWeights>;
+
 export interface FantaSettings {
   generalBudget: number; // Budget generale per tutti
   minBid: number; // Puntata minima
@@ -47,9 +55,12 @@ export interface FantaSettings {
   circuitType?: string;
   maxJolly?: number;
   // Pesi per calcolare i punti fantasy dalle statistiche reali dei
-  // giocatori. Bloccati (modificabili solo da admin/dev, non vice) una
-  // volta che le partite del torneo sono iniziate.
-  scoringWeights?: ScoringWeights;
+  // giocatori, uno per ruolo. Bloccati (modificabili solo da admin/dev,
+  // non vice) una volta che le partite del torneo sono iniziate.
+  scoringWeights?: RoleScoringWeights;
+  // Pesi per le pick "team"/"coach": solo vittoria squadra, niente kill/
+  // morti/assist perché non sono un giocatore singolo.
+  teamScoringWeight?: number;
 }
 
 // Ruolo di un membro NELLA LEGA (permessi) — non va confuso col ruolo del
