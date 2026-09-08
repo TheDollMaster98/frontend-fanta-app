@@ -4,6 +4,71 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
+## Revisione sicurezza (giro dedicato)
+
+Su richiesta esplicita, giro mirato a cercare buchi reali nel codice
+(non teorici). Trovati 3 problemi concreti, sistemati tutti:
+
+- [x] **Escalation di privilegi su `isDeveloper`** — il più serio dei tre.
+      `isDeveloper` concede accesso admin universale a OGNI lega (bypassa
+      completamente ruoli/membership, vedi `isFantaAdmin`/
+      `isFantaViceOrAdmin` in `FantaContext.tsx`). Il toggle in
+      Impostazioni era protetto solo nascondendo la checkbox in UI a chi
+      non era già developer — ma le regole Firestore erano "loggato = può
+      scrivere qualsiasi cosa", quindi bastava aprire la console del
+      browser e scrivere `isDeveloper: true` sul proprio documento
+      `users/{uid}` per autopromuoversi admin di ogni lega esistente,
+      anche senza esserne mai stati invitati. **Sistemato**:
+      `firestore.rules` ora ha una regola dedicata su `users/{uid}` che
+      impedisce la transizione false→true da client (resta possibile solo
+      a mano dalla Firebase Console); il toggle libero resta funzionante
+      per chi ce l'ha già avuto almeno una volta. Corretto anche il
+      commento in `AuthContext.tsx` che affermava (erroneamente) che non
+      servisse un guard. **Da fare tu**: questa regola va deployata
+      (`npm run deploy` la include) prima che il fix valga qualcosa — fino
+      ad allora il buco è ancora aperto in produzione.
+- [x] **Injection nelle query Cargo verso Leaguepedia** — diverse funzioni
+      in `lib/leaguepediaApi.ts` (ricerca giocatori, ricerca squadre,
+      roster storico, stats) interpolavano input utente (dalle caselle di
+      ricerca) direttamente dentro una where-clause Cargo (sintassi
+      simile a SQL) senza escape: un carattere `"` nell'input rompeva la
+      stringa e permetteva di iniettare condizioni arbitrarie. Impatto
+      pratico basso (Leaguepedia è un'API di sola lettura su dati
+      pubblici, non c'è niente di nostro da rubare), ma resta un bug di
+      query building vero, non un'opinione — poteva anche produrre query
+      pesanti/moleste contro il server di terzi usando le credenziali del
+      nostro bot. **Sistemato**: nuova `escapeCargoValue()` applicata a
+      ogni stringa interpolata in una where-clause, in tutte le funzioni.
+- [x] **Proxy Leaguepedia aperto a qualsiasi `action`** — `app/api/
+      leaguepedia/route.ts` inoltra qualsiasi query string ricevuta a
+      `lol.fandom.com/api.php`, allegando sempre la sessione autenticata
+      del bot. La route non richiede login all'app: chiunque trovi l'URL
+      pubblico poteva mandare un `action` MediaWiki qualsiasi (non solo
+      `cargoquery`/`query`, gli unici che l'app usa davvero) con le
+      credenziali del bot. Le action che scrivono (edit/delete/block)
+      richiedono comunque POST + CSRF token lato MediaWiki quindi non
+      erano comunque eseguibili da una route GET-only, ma non c'era
+      motivo di lasciare la porta più aperta del necessario — e chiunque
+      poteva comunque tempestare l'endpoint di query costose usando
+      l'identità del bot, rischiando di farlo bannare o rallentare per
+      tutti. **Sistemato**: allowlist esplicita di `action` (solo
+      `cargoquery` e `query`), tutto il resto risponde 400.
+
+**Rischio noto, non toccato** (già accettato in giri precedenti, resta
+valido): `fantas/**` e `proplayers/**` restano su "loggato = può leggere/
+scrivere qualsiasi cosa", senza verificare che sia davvero membro della
+lega che sta toccando. Per un gruppo di amici va bene; se l'app dovesse
+mai crescere o diventare pubblica, questa parte andrebbe rifatta sul
+serio con controlli di membership nelle regole stesse, non solo lato
+client. La route `/api/leaguepedia` resta anche senza rate limiting o
+verifica di login all'app: l'allowlist sulle action chiude il rischio più
+concreto (abuso delle credenziali del bot per azioni arbitrarie), ma
+resta comunque chiamabile da chiunque — se un giorno diventasse un
+problema reale (costi Firebase App Hosting, bot bannato per troppe
+richieste), la soluzione è richiedere un token Firebase Auth valido su
+questa route, non ancora fatto perché non richiesto e perché per un
+gruppo di amici il rischio pratico è basso.
+
 ## Motore fantacampionato — piano a step (in corso)
 
 Il gruppo ha chiesto un sistema molto più completo (punteggi da statistiche

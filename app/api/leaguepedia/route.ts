@@ -68,8 +68,28 @@ async function getLeaguepediaCookie(): Promise<string> {
   return cachedCookie;
 }
 
+// Uniche action MediaWiki che questa app usa davvero (vedi lib/leaguepediaApi.ts:
+// "cargoquery" per tutte le query Cargo, "query" per la ricerca dell'URL
+// immagine giocatore). Questa route non richiede login all'app — chiunque
+// trovi l'URL può chiamarla — ma inoltra ogni richiesta con la sessione
+// autenticata del bot Leaguepedia: senza un allowlist, un action diverso da
+// questi due passerebbe comunque con le credenziali del bot. Le action che
+// modificano dati (edit, delete, block, ecc.) richiedono comunque POST + un
+// CSRF token lato MediaWiki, quindi non sono comunque eseguibili da qui che
+// è GET-only — ma non c'è motivo di lasciare aperto più di quanto serve.
+const ALLOWED_ACTIONS = new Set(["cargoquery", "query"]);
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const action = searchParams.get("action");
+
+  if (!action || !ALLOWED_ACTIONS.has(action)) {
+    return NextResponse.json(
+      { cargoquery: [], fallback: true, reason: "action_not_allowed" },
+      { status: 400 },
+    );
+  }
+
   const queryParams = new URLSearchParams();
 
   searchParams.forEach((value, key) => {

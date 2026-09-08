@@ -1,12 +1,52 @@
 rules_version = '2';
 
 // App privata per un gruppo di amici: chiunque sia autenticato è considerato
-// fidato, quindi non replichiamo qui tutta la logica di membership/ruoli già
-// applicata lato client. L'unico requisito è essere loggati: niente accesso
-// anonimo da chi trova solo il projectId, e niente scadenza a tempo.
+// fidato per fantas/proplayers, quindi non replichiamo lì tutta la logica di
+// membership/ruoli già applicata lato client. L'unico requisito è essere
+// loggati: niente accesso anonimo da chi trova solo il projectId, e niente
+// scadenza a tempo.
+//
+// users/{uid} è l'eccezione: isDeveloper concede accesso admin universale a
+// OGNI lega (bypassa completamente ruoli/membership, vedi FantaContext —
+// isFantaAdmin/isFantaViceOrAdmin sono true se isDeveloper è true, a
+// prescindere dal ruolo reale nella lega). Con la regola generica
+// "loggato = può scrivere qualsiasi cosa" sarebbe bastato aprire la console
+// del browser e scrivere isDeveloper=true sul proprio documento per
+// autopromuoversi admin di ogni lega esistente, anche senza esserne mai
+// stati invitati: è un'escalation di privilegi vera, non un dettaglio.
+// Il campo può essere concesso solo a mano dalla Firebase Console (l'Admin
+// SDK bypassa le regole); da client si può leggerlo, lasciarlo invariato,
+// o spegnerlo/riaccenderlo una volta che è già stato concesso almeno una
+// volta (il toggle libero in Impostazioni, pensato per quel caso).
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
+    match /users/{userId} {
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.get('isDeveloper', false) == false;
+
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && (
+          request.resource.data.get('isDeveloper', false)
+            == resource.data.get('isDeveloper', false)
+          || resource.data.get('isDeveloper', false) == true
+        );
+
+      allow delete: if false;
+    }
+
+    match /fantas/{fantaId} {
+      allow read, write: if request.auth != null;
+
+      match /{subpath=**} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    match /proplayers/{playerId} {
       allow read, write: if request.auth != null;
     }
   }

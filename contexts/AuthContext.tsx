@@ -178,9 +178,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push("/");
   };
 
-  // La UI che espone questo toggle (Impostazioni) decide chi può vederlo;
-  // qui non serve un guard aggiuntivo, altrimenti disattivarlo blocca anche
-  // il poterlo riattivare nella stessa sessione.
+  // Nascondere il toggle in UI a chi non è già developer NON basta come
+  // controllo: chiunque può chiamare updateDoc direttamente dalla console
+  // del browser bypassando questo componente. Il guard vero è in
+  // firestore.rules su users/{uid}: da false a true il campo può essere
+  // scritto solo a mano dalla Firebase Console, mai da qui — questa
+  // funzione può solo lasciarlo invariato o, una volta già true almeno una
+  // volta, spegnerlo/riaccenderlo liberamente (da cui il "true" non
+  // rifiutato qui: se il valore non doveva salire, ci pensa la regola).
   const setIsDeveloper = async (value: boolean) => {
     if (!auth.currentUser) return;
     await updateDoc(doc(db, "users", auth.currentUser.uid), {

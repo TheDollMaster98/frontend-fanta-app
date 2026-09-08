@@ -154,6 +154,19 @@ export interface LeaguepediaPlayer {
 // Riga grezza restituita dalle Cargo query di Leaguepedia (campi dinamici, sempre stringhe).
 type CargoRecord = Record<string, string>;
 
+/**
+ * Escape minimo per interpolare stringhe (spesso input utente da una
+ * casella di ricerca) dentro una where-clause Cargo, che ha una sintassi
+ * simile a SQL: senza, una " nell'input chiude la stringa in anticipo e
+ * permette di iniettare condizioni Cargo arbitrarie. Leaguepedia è
+ * un'API di sola lettura su dati pubblici, quindi l'impatto pratico è
+ * limitato (query strane/pesanti contro il loro server, non furto di dati
+ * nostri), ma resta un bug di query building da chiudere, non un'opinione.
+ */
+function escapeCargoValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 function normalizeRole(role?: string): string {
   if (!role) return "";
   return role.trim().toLowerCase();
@@ -293,7 +306,7 @@ export async function searchPlayers(
     fields:
       "P.Player, P.Name, P.Country, P.Birthdate, P.Residency, P.Role, P.Team",
     where: normalizedSearch
-      ? `P.Player LIKE "%${normalizedSearch}%" OR P.Name LIKE "%${normalizedSearch}%"`
+      ? `P.Player LIKE "%${escapeCargoValue(normalizedSearch)}%" OR P.Name LIKE "%${escapeCargoValue(normalizedSearch)}%"`
       : undefined,
     limit,
     order_by: "P.Player",
@@ -337,7 +350,7 @@ export async function getPlayersByLeague(
         "P.Player, P.Name, P.Country, P.Birthdate, P.Residency, P.Role, P.Team, T.Name=League",
       where: isAllPlayers
         ? undefined
-        : `(T.Name LIKE "%${league}%" OR T.League LIKE "%${league}%")`,
+        : `(T.Name LIKE "%${escapeCargoValue(league)}%" OR T.League LIKE "%${escapeCargoValue(league)}%")`,
       join_on:
         "T.OverviewPage=TP.OverviewPage, TP.Player=PR.AllName, PR.OverviewPage=P.OverviewPage",
       order_by: "P.Player",
@@ -384,8 +397,8 @@ export async function getTeamRosterHistory(filters: {
   if (!team && !year && !worldsOnly) return [];
 
   const whereClauses: string[] = [];
-  if (team) whereClauses.push(`TP.Team LIKE "%${team}%"`);
-  if (year) whereClauses.push(`T.Year="${year}"`);
+  if (team) whereClauses.push(`TP.Team LIKE "%${escapeCargoValue(team)}%"`);
+  if (year) whereClauses.push(`T.Year="${escapeCargoValue(year)}"`);
   if (worldsOnly) whereClauses.push(`T.Name LIKE "%World Championship%"`);
 
   const results = await cargoQuery({
@@ -421,9 +434,9 @@ export async function getPlayerStats(
   playerName: string,
   tournamentName?: string,
 ): Promise<LeaguepediaPlayerStats[]> {
-  let whereClause = `PR.AllName="${playerName}"`;
+  let whereClause = `PR.AllName="${escapeCargoValue(playerName)}"`;
   if (tournamentName) {
-    whereClause += ` AND T.Name="${tournamentName}"`;
+    whereClause += ` AND T.Name="${escapeCargoValue(tournamentName)}"`;
   }
 
   const results: CargoRecord[] = [];
@@ -509,7 +522,7 @@ export async function getTeamsByRegion(
   const results = await cargoQuery({
     tables: "Teams=T",
     fields: "T.Name, T.Region",
-    where: `T.Region LIKE "%${region}%"`,
+    where: `T.Region LIKE "%${escapeCargoValue(region)}%"`,
     limit: 100,
   });
 
@@ -536,7 +549,7 @@ export async function getPlayerImage(
     const results = await cargoQuery({
       tables: "PlayerImages=PI, Tournaments=T",
       fields: "PI.FileName",
-      where: `Link="${playerName}"`,
+      where: `Link="${escapeCargoValue(playerName)}"`,
       join_on: "PI.Tournament=T.OverviewPage",
       order_by: "PI.SortDate DESC, T.DateStart DESC",
       limit: 1,
@@ -595,7 +608,7 @@ export async function searchTeams(
     tables: "Teams=T",
     fields: "T.Name, T.Short, T.Region, T.IsDisbanded",
     where: normalizedSearch
-      ? `T.Name LIKE "%${normalizedSearch}%" OR T.Short LIKE "%${normalizedSearch}%"`
+      ? `T.Name LIKE "%${escapeCargoValue(normalizedSearch)}%" OR T.Short LIKE "%${escapeCargoValue(normalizedSearch)}%"`
       : undefined,
     order_by: "T.Name",
     limit,
@@ -639,7 +652,7 @@ export async function getFantasyPlayerStats(
   if (names.length === 0) return stats;
 
   for (const group of chunk(names, 30)) {
-    const nameList = group.map((n) => `"${n.replace(/"/g, '\\"')}"`).join(",");
+    const nameList = group.map((n) => `"${escapeCargoValue(n)}"`).join(",");
     const results: CargoRecord[] = [];
     const pageSize = 500;
     let offset = 0;
@@ -649,7 +662,7 @@ export async function getFantasyPlayerStats(
         tables: "ScoreboardPlayers=SP, ScoreboardGames=SG, Tournaments=T, PlayerRedirects=PR",
         fields:
           "PR.AllName=QueryName, SP.Team, SP.Kills, SP.Deaths, SP.Assists, SG.WinTeam",
-        where: `PR.AllName IN (${nameList}) AND (T.Name LIKE "%${circuitType}%" OR T.League LIKE "%${circuitType}%")`,
+        where: `PR.AllName IN (${nameList}) AND (T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")`,
         join_on:
           "SP.GameId=SG.GameId, SG.OverviewPage=T.OverviewPage, SP.Link=PR.AllName",
         limit: pageSize,
@@ -694,7 +707,7 @@ export async function getFantasyTeamStats(
   if (names.length === 0) return stats;
 
   for (const group of chunk(names, 30)) {
-    const nameList = group.map((n) => `"${n.replace(/"/g, '\\"')}"`).join(",");
+    const nameList = group.map((n) => `"${escapeCargoValue(n)}"`).join(",");
     const results: CargoRecord[] = [];
     const pageSize = 500;
     let offset = 0;
@@ -703,7 +716,7 @@ export async function getFantasyTeamStats(
       const page = await cargoQuery({
         tables: "ScoreboardGames=SG, Tournaments=T",
         fields: "SG.WinTeam, SG.LossTeam",
-        where: `(SG.WinTeam IN (${nameList}) OR SG.LossTeam IN (${nameList})) AND (T.Name LIKE "%${circuitType}%" OR T.League LIKE "%${circuitType}%")`,
+        where: `(SG.WinTeam IN (${nameList}) OR SG.LossTeam IN (${nameList})) AND (T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")`,
         join_on: "SG.OverviewPage=T.OverviewPage",
         limit: pageSize,
         offset,
@@ -757,7 +770,7 @@ export async function getPlayerGameLog(
     tables: "ScoreboardPlayers=SP, ScoreboardGames=SG, Tournaments=T, PlayerRedirects=PR",
     fields:
       "SG.GameId, SG.DateTime_UTC, T.Name=Tournament, SP.Team, SP.Champion, SP.Kills, SP.Deaths, SP.Assists, SG.WinTeam",
-    where: `PR.AllName="${name.replace(/"/g, '\\"')}" AND (T.Name LIKE "%${circuitType}%" OR T.League LIKE "%${circuitType}%")`,
+    where: `PR.AllName="${escapeCargoValue(name)}" AND (T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")`,
     join_on:
       "SP.GameId=SG.GameId, SG.OverviewPage=T.OverviewPage, SP.Link=PR.AllName",
     order_by: "SG.DateTime_UTC DESC",
@@ -795,12 +808,12 @@ export async function getTeamGameLog(
 ): Promise<TeamGameLog[]> {
   const name = teamName.trim();
   if (!name) return [];
-  const escaped = name.replace(/"/g, '\\"');
+  const escaped = escapeCargoValue(name);
 
   const results = await cargoQuery({
     tables: "ScoreboardGames=SG, Tournaments=T",
     fields: "SG.GameId, SG.DateTime_UTC, T.Name=Tournament, SG.WinTeam, SG.LossTeam",
-    where: `(SG.WinTeam="${escaped}" OR SG.LossTeam="${escaped}") AND (T.Name LIKE "%${circuitType}%" OR T.League LIKE "%${circuitType}%")`,
+    where: `(SG.WinTeam="${escaped}" OR SG.LossTeam="${escaped}") AND (T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")`,
     join_on: "SG.OverviewPage=T.OverviewPage",
     order_by: "SG.DateTime_UTC DESC",
     limit: 200,
