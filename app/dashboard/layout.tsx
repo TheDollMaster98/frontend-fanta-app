@@ -64,7 +64,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   // Aggiungi "Importa LoL" solo per leghe di tipo lol
   if (currentFanta?.sportType === "lol") {
-    navigation.splice(2, 0, {
+    navigation.splice(3, 0, {
       name: "Importa LoL",
       href: "/dashboard/import-lol",
       icon: Users,
@@ -78,7 +78,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     user &&
     (currentFanta.adminId === user.id || user.isDeveloper)
   ) {
-    navigation.splice(1, 0, {
+    navigation.splice(4, 0, {
       name: "Gestione",
       href: "/dashboard/admin",
       icon: Crown,
