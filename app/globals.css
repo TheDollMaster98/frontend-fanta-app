@@ -123,3 +123,31 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Scrollbar coerente col tema scuro (bg-slate-900/border-slate-700 usati in
+   tutta l'app), al posto di quella chiara di sistema che stonava dentro
+   dialog e liste scrollabili (es. CreateFantaDialog, ricerca player/team). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 #0f172a; /* thumb: slate-600, track: slate-900 */
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #0f172a; /* slate-900 */
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #475569; /* slate-600 */
+  border-radius: 8px;
+  border: 2px solid #0f172a; /* slate-900, crea l'effetto "bordo smussato" */
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #64748b; /* slate-500 */
+}
