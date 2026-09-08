@@ -71,12 +71,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     });
   }
 
-  // Mostra "Gestione" se l'utente è il creatore del fanta corrente
-  // oppure un developer (accesso universale)
+  // Mostra "Gestione" a chi può davvero entrarci: creatore, vice-admin o
+  // developer (vedi isAuthorized in app/dashboard/admin/page.tsx — senza
+  // i vice-admin qui, potevano aprire la pagina digitando l'URL ma non
+  // la vedevano mai in sidebar).
   if (
     currentFanta &&
     user &&
-    (currentFanta.adminId === user.id || user.isDeveloper)
+    (currentFanta.adminId === user.id ||
+      currentFanta.viceAdminIds.includes(user.id) ||
+      user.isDeveloper)
   ) {
     navigation.splice(4, 0, {
       name: "Gestione",
