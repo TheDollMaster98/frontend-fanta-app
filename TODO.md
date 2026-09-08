@@ -37,12 +37,17 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
       il calendario mostra solo chi affronta chi, senza calcolare
       vittoria/sconfitta di turno. Nessun automatismo: il ricalcolo va
       rilanciato a mano, non c'è un cron/Cloud Function che lo fa da solo.
-- [ ] **Step 3 — Drill-down**: parzialmente coperto in anticipo dalla
-      pagina Classifica (click su un membro mostra il dettaglio pick per
-      pick con i punti), ma manca il livello sotto: click su un giocatore
-      per vedere le partite reali giocate e quanti punti ha fatto in
-      ognuna. Serve salvare i dati partita per partita, non solo il totale
-      aggregato come ora.
+- [x] **Step 3 — Drill-down**: nella pagina Classifica, click su un membro
+      apre la rosa con i punti di ogni pick; click su un pick apre il log
+      partita per partita, caricato al volo da Leaguepedia (non salvato,
+      non prefetchato per tutta la rosa — solo quando si apre il
+      dettaglio). Per player/jolly: `getPlayerGameLog` in
+      `lib/leaguepediaApi.ts` (data, torneo, champion, K/D/A, vittoria/
+      sconfitta, punti calcolati partita per partita con gli
+      scoringWeights della lega). Per team/coach: `getTeamGameLog` (data,
+      torneo, avversario, vittoria/sconfitta, punti). Per il coach usa le
+      partite della squadra allenata (`playerTeam`), coerente con come
+      viene già calcolato il suo punteggio totale.
 - [x] **Step 4 — Draft composto**: `TeamPick.pickType` ora è
       `player | jolly | team | coach` (`types/index.ts`). In "Crea Nuova
       Asta" (solo leghe LoL) si sceglie il tipo di oggetto: Giocatore

@@ -11,15 +11,29 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Trophy, RefreshCw, CalendarDays } from "lucide-react";
+import { Trophy, RefreshCw, CalendarDays, ChevronRight } from "lucide-react";
 import { useFanta, type FantaMemberProfile } from "@/contexts/FantaContext";
-import type { TeamPickType } from "@/types";
+import {
+  getPlayerGameLog,
+  getTeamGameLog,
+  type PlayerGameLog,
+  type TeamGameLog,
+} from "@/lib/leaguepediaApi";
+import type { TeamPick, TeamPickType } from "@/types";
 
 const PICK_TYPE_LABELS: Record<TeamPickType, string> = {
   player: "Giocatore",
@@ -27,6 +41,14 @@ const PICK_TYPE_LABELS: Record<TeamPickType, string> = {
   team: "Squadra",
   coach: "Coach",
 };
+
+function formatGameDate(raw: string): string {
+  if (!raw) return "N/D";
+  const parsed = new Date(raw.replace(" ", "T") + "Z");
+  return Number.isNaN(parsed.getTime())
+    ? raw
+    : parsed.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
 
 export default function StandingsPage() {
   const {
@@ -45,6 +67,14 @@ export default function StandingsPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
+
+  // Drill-down step 3: click su un pick della rosa -> log partita per
+  // partita (data, avversario/champion, stats, punti). Caricato al volo
+  // solo quando si apre, non prefetchato per tutta la rosa.
+  const [drillPick, setDrillPick] = useState<TeamPick | null>(null);
+  const [playerLog, setPlayerLog] = useState<PlayerGameLog[]>([]);
+  const [teamLog, setTeamLog] = useState<TeamGameLog[]>([]);
+  const [isLoadingLog, setIsLoadingLog] = useState(false);
 
   const handleGenerateCalendar = async () => {
     setIsGenerating(true);
@@ -74,9 +104,42 @@ export default function StandingsPage() {
     }
   };
 
+  const openDrillDown = async (pick: TeamPick) => {
+    if (!currentFanta?.settings.circuitType) return;
+    setDrillPick(pick);
+    setPlayerLog([]);
+    setTeamLog([]);
+    setIsLoadingLog(true);
+    try {
+      if (pick.pickType === "player" || pick.pickType === "jolly") {
+        const log = await getPlayerGameLog(
+          pick.playerName,
+          currentFanta.settings.circuitType,
+        );
+        setPlayerLog(log);
+      } else {
+        // coach: le partite sono quelle della squadra allenata (playerTeam)
+        const teamName =
+          pick.pickType === "coach" ? pick.playerTeam : pick.playerName;
+        if (teamName) {
+          const log = await getTeamGameLog(
+            teamName,
+            currentFanta.settings.circuitType,
+          );
+          setTeamLog(log);
+        }
+      }
+    } catch (error) {
+      console.error("Errore nel caricamento del log partite:", error);
+    } finally {
+      setIsLoadingLog(false);
+    }
+  };
+
   if (!currentFanta) return null;
 
   const circuitMissing = !currentFanta.settings.circuitType;
+  const weights = currentFanta.settings.scoringWeights;
 
   return (
     <div className="space-y-6">
@@ -128,7 +191,7 @@ export default function StandingsPage() {
           <CardDescription className="text-slate-400">
             Somma dei punti fantasy di ogni pick in rosa (kill/morti/assist/
             vittorie per giocatori e jolly, vittorie per squadra/coach).
-            Clicca un membro per il dettaglio.
+            Clicca un membro per il dettaglio, poi un pick per le partite.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -223,6 +286,7 @@ export default function StandingsPage() {
         </CardContent>
       </Card>
 
+      {/* Dettaglio membro: rosa con i punti di ogni pick */}
       <Dialog
         open={Boolean(selectedMember)}
         onOpenChange={(open) => !open && setSelectedMember(null)}
@@ -245,7 +309,8 @@ export default function StandingsPage() {
                     .map((pick) => (
                       <div
                         key={pick.id}
-                        className="flex items-center justify-between p-2 border border-slate-700 rounded-lg"
+                        className="flex items-center justify-between p-2 border border-slate-700 rounded-lg cursor-pointer hover:border-slate-600 transition-colors"
+                        onClick={() => openDrillDown(pick)}
                       >
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary">
@@ -258,9 +323,12 @@ export default function StandingsPage() {
                             <Badge variant="outline">{pick.playerRole}</Badge>
                           )}
                         </div>
-                        <span className="font-semibold text-green-400">
-                          {pick.points !== undefined ? pick.points : "—"}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-green-400">
+                            {pick.points !== undefined ? pick.points : "—"}
+                          </span>
+                          <ChevronRight className="h-4 w-4 text-slate-500" />
+                        </div>
                       </div>
                     ))}
                   <div className="flex items-center justify-between pt-2 border-t border-slate-700">
@@ -272,6 +340,138 @@ export default function StandingsPage() {
                       )}
                     </span>
                   </div>
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Drill-down: partite reali di un singolo pick, con punti calcolati
+          partita per partita (non solo il totale già in rosa) */}
+      <Dialog
+        open={Boolean(drillPick)}
+        onOpenChange={(open) => !open && setDrillPick(null)}
+      >
+        <DialogContent className="max-w-2xl">
+          {drillPick && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-slate-100">
+                  {drillPick.playerName}
+                </DialogTitle>
+                <DialogDescription>
+                  {PICK_TYPE_LABELS[drillPick.pickType]}
+                  {drillPick.pickType === "coach" && drillPick.playerTeam
+                    ? ` — squadra allenata: ${drillPick.playerTeam}`
+                    : ""}
+                  {" — partite nel circuito "}
+                  {currentFanta.settings.circuitType || "N/D"}
+                </DialogDescription>
+              </DialogHeader>
+
+              {isLoadingLog ? (
+                <p className="text-sm text-slate-400">Caricamento partite...</p>
+              ) : drillPick.pickType === "player" ||
+                drillPick.pickType === "jolly" ? (
+                playerLog.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    Nessuna partita trovata per questo giocatore in questo
+                    circuito.
+                  </p>
+                ) : (
+                  <div className="max-h-96 overflow-y-auto rounded-md border border-slate-700">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Data</TableHead>
+                          <TableHead>Torneo</TableHead>
+                          <TableHead>Champion</TableHead>
+                          <TableHead>K/D/A</TableHead>
+                          <TableHead>Esito</TableHead>
+                          <TableHead className="text-right">Punti</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {playerLog.map((game) => {
+                          const points = weights
+                            ? game.kills * weights.kills +
+                              game.deaths * weights.deaths +
+                              game.assists * weights.assists +
+                              (game.win ? weights.win : 0)
+                            : undefined;
+                          return (
+                            <TableRow key={game.gameId}>
+                              <TableCell className="text-sm">
+                                {formatGameDate(game.date)}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {game.tournament}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {game.champion || "N/D"}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {game.kills}/{game.deaths}/{game.assists}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={game.win ? "default" : "outline"}>
+                                  {game.win ? "Vittoria" : "Sconfitta"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {points !== undefined
+                                  ? Math.round(points * 100) / 100
+                                  : "—"}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )
+              ) : teamLog.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  Nessuna partita trovata per questa squadra in questo
+                  circuito.
+                </p>
+              ) : (
+                <div className="max-h-96 overflow-y-auto rounded-md border border-slate-700">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Torneo</TableHead>
+                        <TableHead>Avversario</TableHead>
+                        <TableHead>Esito</TableHead>
+                        <TableHead className="text-right">Punti</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {teamLog.map((game) => (
+                        <TableRow key={game.gameId}>
+                          <TableCell className="text-sm">
+                            {formatGameDate(game.date)}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {game.tournament}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {game.opponent || "N/D"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={game.win ? "default" : "outline"}>
+                              {game.win ? "Vittoria" : "Sconfitta"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {weights && game.win ? weights.win : 0}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </>

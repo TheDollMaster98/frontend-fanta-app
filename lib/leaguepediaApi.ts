@@ -727,3 +727,93 @@ export async function getFantasyTeamStats(
 
   return stats;
 }
+
+export interface PlayerGameLog {
+  gameId: string;
+  date: string; // DateTime_UTC grezzo da Leaguepedia
+  tournament: string;
+  team: string;
+  champion: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  win: boolean;
+}
+
+/**
+ * Log partita per partita di un giocatore in un circuito (drill-down
+ * step 3): stesso dato aggregato da getFantasyPlayerStats, ma riga per
+ * riga invece che sommato, per poter mostrare "in questa partita ha fatto
+ * X kill, Y punti".
+ */
+export async function getPlayerGameLog(
+  playerName: string,
+  circuitType: string,
+): Promise<PlayerGameLog[]> {
+  const name = playerName.trim();
+  if (!name) return [];
+
+  const results = await cargoQuery({
+    tables: "ScoreboardPlayers=SP, ScoreboardGames=SG, Tournaments=T, PlayerRedirects=PR",
+    fields:
+      "SG.GameId, SG.DateTime_UTC, T.Name=Tournament, SP.Team, SP.Champion, SP.Kills, SP.Deaths, SP.Assists, SG.WinTeam",
+    where: `PR.AllName="${name.replace(/"/g, '\\"')}" AND (T.Name LIKE "%${circuitType}%" OR T.League LIKE "%${circuitType}%")`,
+    join_on:
+      "SP.GameId=SG.GameId, SG.OverviewPage=T.OverviewPage, SP.Link=PR.AllName",
+    order_by: "SG.DateTime_UTC DESC",
+    limit: 200,
+  });
+
+  return results.map((r) => ({
+    gameId: r.GameId || "",
+    date: r.DateTime_UTC || "",
+    tournament: r.Tournament || "",
+    team: r.Team || "",
+    champion: r.Champion || "",
+    kills: parseInt(r.Kills || "0"),
+    deaths: parseInt(r.Deaths || "0"),
+    assists: parseInt(r.Assists || "0"),
+    win: !!r.Team && !!r.WinTeam && r.Team === r.WinTeam,
+  }));
+}
+
+export interface TeamGameLog {
+  gameId: string;
+  date: string;
+  tournament: string;
+  opponent: string;
+  win: boolean;
+}
+
+/**
+ * Log partita per partita di una squadra in un circuito (drill-down dei
+ * pick "team"/"coach" — per il coach si usa la squadra che allena).
+ */
+export async function getTeamGameLog(
+  teamName: string,
+  circuitType: string,
+): Promise<TeamGameLog[]> {
+  const name = teamName.trim();
+  if (!name) return [];
+  const escaped = name.replace(/"/g, '\\"');
+
+  const results = await cargoQuery({
+    tables: "ScoreboardGames=SG, Tournaments=T",
+    fields: "SG.GameId, SG.DateTime_UTC, T.Name=Tournament, SG.WinTeam, SG.LossTeam",
+    where: `(SG.WinTeam="${escaped}" OR SG.LossTeam="${escaped}") AND (T.Name LIKE "%${circuitType}%" OR T.League LIKE "%${circuitType}%")`,
+    join_on: "SG.OverviewPage=T.OverviewPage",
+    order_by: "SG.DateTime_UTC DESC",
+    limit: 200,
+  });
+
+  return results.map((r) => {
+    const win = r.WinTeam === name;
+    return {
+      gameId: r.GameId || "",
+      date: r.DateTime_UTC || "",
+      tournament: r.Tournament || "",
+      opponent: (win ? r.LossTeam : r.WinTeam) || "",
+      win,
+    };
+  });
+}
