@@ -31,14 +31,16 @@ export interface ScoringWeights {
   deaths: number;
   assists: number;
   win: number; // bonus se la squadra del giocatore vince quella partita
-  // csPer50/visionPer10: punti ogni 50 CS e ogni 10 di Vision Score.
-  // ATTENZIONE — non ancora applicati al calcolo reale in
-  // FantaContext.recalculateScores: servono i nomi esatti dei campi
-  // Leaguepedia (ScoreboardPlayers) per CS e Vision Score, non ancora
-  // confermati. Il campo si salva e si mostra in UI, ma oggi non produce
-  // punti finché quei nomi non sono verificati (vedi TODO.md).
+  // csPer50/visionPer10/pentakill: punti ogni 50 CS, ogni 10 di Vision
+  // Score, e bonus per ogni pentakill segnata. ATTENZIONE — non ancora
+  // applicati al calcolo reale in FantaContext.recalculateScores: servono
+  // i nomi esatti dei campi Leaguepedia (ScoreboardPlayers) per CS, Vision
+  // Score e Pentakills, non ancora confermati. Il campo si salva e si
+  // mostra in UI, ma oggi non produce punti finché quei nomi non sono
+  // verificati (vedi TODO.md).
   csPer50: number;
   visionPer10: number;
+  pentakill: number;
 }
 
 // Pesi punteggio per ruolo (es. "Top Laner", "Jungler", ... — le stesse

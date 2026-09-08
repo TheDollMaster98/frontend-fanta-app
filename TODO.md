@@ -42,6 +42,11 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
       Bloccato in attesa dei cargofields di `ScoreboardPlayers` (CS,
       Vision Score) e di `ScoreboardGames` al completo (nomi esatti dei
       campi obiettivo) — richiesti all'utente, non ancora ricevuti.
+      **Terzo aggiornamento**: aggiunto `pentakill` a `ScoringWeights` (per
+      ruolo, stesso trattamento di kill/morti/assist — non un valore
+      unico globale). Stesso pallino giallo degli altri campi nuovi: non
+      ho conferma che `ScoreboardPlayers` esponga un campo Pentakills, non
+      applicato al calcolo reale finché non è verificato.
 - [x] **Step 2 — Punteggio reale + calendario**: nuova pagina "Classifica"
       (solo leghe LoL). `lib/roundRobin.ts` genera il calendario a girone
       all'italiana (metodo del cerchio) tra i membri, salvato in

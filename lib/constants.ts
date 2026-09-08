@@ -39,10 +39,10 @@ export const PLAYOFF_CIRCUITS: readonly string[] = ["MSI", "WORLDS"];
 export const LOL_ROLES = ["Top Laner", "Jungler", "Mid Laner", "ADC", "Support"];
 
 // Template usato per popolare ogni ruolo la prima volta: stessi numeri di
-// prima quando i pesi erano un unico set globale, più csPer50/visionPer10 a
-// 0 (nessun valore di default sensato finché non sono attivi — vedi
-// l'avvertenza su ScoringWeights in types/index.ts). Da qui in poi ogni
-// ruolo ha il proprio set modificabile indipendentemente.
+// prima quando i pesi erano un unico set globale, più csPer50/visionPer10/
+// pentakill a 0 (nessun valore di default sensato finché non sono attivi —
+// vedi l'avvertenza su ScoringWeights in types/index.ts). Da qui in poi
+// ogni ruolo ha il proprio set modificabile indipendentemente.
 export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
   kills: 3,
   deaths: -1,
@@ -50,6 +50,7 @@ export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
   win: 2,
   csPer50: 0,
   visionPer10: 0,
+  pentakill: 0,
 };
 
 export const DEFAULT_ROLE_SCORING_WEIGHTS: RoleScoringWeights =

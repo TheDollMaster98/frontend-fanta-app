@@ -13,13 +13,15 @@ const EMPTY_WEIGHTS: ScoringWeights = {
   win: 0,
   csPer50: 0,
   visionPer10: 0,
+  pentakill: 0,
 };
 const TEAM_TAB = "__team__";
 
 // Campi non ancora collegati a un calcolo reale: il peso si salva e si
 // mostra, ma FantaContext.recalculateScores non li applica finché non ho
-// nomi di campo Leaguepedia confermati per CS/Vision Score (ScoreboardPlayers)
-// e obiettivi di squadra (ScoreboardGames). Vedi types/index.ts e TODO.md.
+// nomi di campo Leaguepedia confermati per CS/Vision Score/Pentakills
+// (ScoreboardPlayers) e obiettivi di squadra (ScoreboardGames). Vedi
+// types/index.ts e TODO.md.
 const PLAYER_FIELDS: {
   key: keyof ScoringWeights;
   label: string;
@@ -31,6 +33,7 @@ const PLAYER_FIELDS: {
   { key: "win", label: "Vittoria (bonus se la squadra vince)" },
   { key: "csPer50", label: "Ogni 50 CS", pending: true },
   { key: "visionPer10", label: "Ogni 10 Vision Score", pending: true },
+  { key: "pentakill", label: "Pentakill", pending: true },
 ];
 
 const TEAM_FIELDS: {
