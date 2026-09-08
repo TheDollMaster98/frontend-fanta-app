@@ -57,10 +57,12 @@ import {
   getPlayersByLeague,
   getPlayerImage,
   getPlayerStats,
+  searchTeams,
   type LeaguepediaPlayer,
   type LeaguepediaPlayerStats,
+  type LeaguepediaTeam,
 } from "@/lib/leaguepediaApi";
-import type { Auction, Bid } from "@/types";
+import type { Auction, Bid, TeamPickType } from "@/types";
 import {
   collection,
   query,
@@ -72,6 +74,13 @@ import { db } from "@/lib/firebase";
 import { Flame, Save, Ban, Lock } from "lucide-react";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
+
+const PICK_TYPE_LABELS: Record<TeamPickType, string> = {
+  player: "Giocatore",
+  jolly: "Jolly",
+  team: "Squadra",
+  coach: "Coach",
+};
 
 export default function AuctionsPage() {
   const {
@@ -175,13 +184,24 @@ export default function AuctionsPage() {
   const maxPlayersTotal = currentFanta?.settings.maxPlayersTotal || 0;
   const isRosterFull =
     maxPlayersTotal > 0 && myRoster.length >= maxPlayersTotal;
-  const roleLimit = activeAuction?.playerRole
-    ? currentFanta?.settings.maxPlayersPerRole?.[activeAuction.playerRole]
-    : undefined;
+  const activePickType: TeamPickType = activeAuction?.pickType || "player";
+  const roleLimit =
+    activePickType === "player" && activeAuction?.playerRole
+      ? currentFanta?.settings.maxPlayersPerRole?.[activeAuction.playerRole]
+      : undefined;
   const isRoleFull =
     !!roleLimit &&
-    myRoster.filter((p) => p.playerRole === activeAuction?.playerRole)
-      .length >= roleLimit;
+    myRoster.filter(
+      (p) => p.pickType === "player" && p.playerRole === activeAuction?.playerRole,
+    ).length >= roleLimit;
+  const maxJolly = currentFanta?.settings.maxJolly || 0;
+  const isTeamPickTaken =
+    activePickType === "team" && myRoster.some((p) => p.pickType === "team");
+  const isCoachPickTaken =
+    activePickType === "coach" && myRoster.some((p) => p.pickType === "coach");
+  const isJollyFull =
+    activePickType === "jolly" &&
+    myRoster.filter((p) => p.pickType === "jolly").length >= maxJolly;
   const myBudget = user ? getUserBudget(user.id) : 0;
   const openSlots = maxPlayersTotal > 0 ? maxPlayersTotal - myRoster.length : 0;
   const maxAffordableBid =
@@ -206,6 +226,13 @@ export default function AuctionsPage() {
     null,
   );
 
+  // Ricerca squadre Leaguepedia per il pick "Squadra" del draft composto
+  // (step 4): stesso pattern della ricerca giocatori, ma su Teams invece
+  // che su Players/TournamentPlayers.
+  const [auctionTeams, setAuctionTeams] = useState<LeaguepediaTeam[]>([]);
+  const [auctionTeamSearch, setAuctionTeamSearch] = useState("");
+  const [isLoadingAuctionTeams, setIsLoadingAuctionTeams] = useState(false);
+
   const isAdmin = !!user && !!currentFanta && isFantaViceOrAdmin;
 
   // Carica dati precompilati da localStorage (da pagina import), una sola volta al mount
@@ -223,6 +250,7 @@ export default function AuctionsPage() {
   });
 
   const [newAuction, setNewAuction] = useState({
+    pickType: "player" as TeamPickType,
     auctionFormat: "free",
     league: "LCK",
     playerName: "",
@@ -234,6 +262,7 @@ export default function AuctionsPage() {
       currentFanta?.settings.defaultCountdown || MIN_COUNTDOWN_SECONDS,
     ...prefilledAuction,
   });
+  const maxJollySetting = currentFanta?.settings.maxJolly || 0;
 
   // Ruoli disponibili in base al tipo di sport della lega corrente
   const availableRoles = currentFanta
@@ -272,6 +301,30 @@ export default function AuctionsPage() {
     };
   }, [currentFanta?.sportType, selectedAuctionLeague]);
 
+  // Ricerca squadre con debounce: solo quando si sta creando un'asta di
+  // tipo "Squadra", altrimenti niente chiamate inutili all'API.
+  useEffect(() => {
+    if (currentFanta?.sportType !== "lol" || newAuction.pickType !== "team") {
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingAuctionTeams(true);
+    const timeout = setTimeout(() => {
+      searchTeams(auctionTeamSearch).then((teams) => {
+        if (!cancelled) {
+          setAuctionTeams(teams);
+          setIsLoadingAuctionTeams(false);
+        }
+      });
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [currentFanta?.sportType, newAuction.pickType, auctionTeamSearch]);
+
   // Da qui in giù le azioni scrivono su Firestore tramite il context: sono
   // condivise in tempo reale con chiunque altro abbia la pagina aperta,
   // inclusa l'assegnazione del giocatore al vincitore alla chiusura (vedi
@@ -280,8 +333,9 @@ export default function AuctionsPage() {
     if (!currentFanta || !user || !newAuction.playerName) return;
 
     createAuctionInFirestore({
+      pickType: newAuction.pickType,
       playerName: newAuction.playerName,
-      playerRole: newAuction.playerRole,
+      playerRole: newAuction.pickType === "coach" ? undefined : newAuction.playerRole,
       playerTeam: newAuction.playerTeam,
       auctionFormat:
         newAuction.auctionFormat === "free"
@@ -296,7 +350,9 @@ export default function AuctionsPage() {
     setSelectedAuctionPlayerImage(null);
     setSelectedAuctionPlayerStats([]);
     setAuctionPlayerSearch("");
+    setAuctionTeamSearch("");
     setNewAuction({
+      pickType: "player",
       auctionFormat: "free",
       league: "LCK",
       playerName: "",
@@ -368,6 +424,49 @@ export default function AuctionsPage() {
               </DialogHeader>
               <div className="space-y-4">
                 {currentFanta?.sportType === "lol" && (
+                  <div className="space-y-2">
+                    <Label>Tipo di oggetto</Label>
+                    <Select
+                      value={newAuction.pickType}
+                      onValueChange={(value: TeamPickType) => {
+                        setSelectedAuctionPlayer(null);
+                        setSelectedAuctionPlayerImage(null);
+                        setSelectedAuctionPlayerStats([]);
+                        setAuctionPlayerSearch("");
+                        setAuctionTeamSearch("");
+                        setNewAuction({
+                          ...newAuction,
+                          pickType: value,
+                          playerName: "",
+                          playerRole: "",
+                          playerTeam: "",
+                        });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="player">Giocatore (ruolo)</SelectItem>
+                        <SelectItem value="jolly" disabled={maxJollySetting <= 0}>
+                          Jolly (nessun vincolo di ruolo)
+                          {maxJollySetting <= 0 ? " — disattivato dalla lega" : ""}
+                        </SelectItem>
+                        <SelectItem value="team">Squadra</SelectItem>
+                        <SelectItem value="coach">Coach</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-slate-500">
+                      Il draft composto è squadra + coach + 5 giocatori di
+                      ruolo{maxJollySetting > 0 ? ` + fino a ${maxJollySetting} jolly` : ""}
+                      : ogni pezzo si compra con un&apos;asta separata.
+                    </p>
+                  </div>
+                )}
+
+                {currentFanta?.sportType === "lol" &&
+                  (newAuction.pickType === "player" ||
+                    newAuction.pickType === "jolly") && (
                   <div className="space-y-3 rounded-md border border-slate-700 p-4">
                     <div className="space-y-2">
                       <Label>Formato asta</Label>
@@ -654,6 +753,96 @@ export default function AuctionsPage() {
                   </div>
                 )}
 
+                {currentFanta?.sportType === "lol" &&
+                  newAuction.pickType === "team" && (
+                  <div className="space-y-2 rounded-md border border-slate-700 p-4">
+                    <Label>Squadra Leaguepedia</Label>
+                    <Input
+                      value={auctionTeamSearch}
+                      onChange={(e) => setAuctionTeamSearch(e.target.value)}
+                      placeholder="Cerca per nome o sigla..."
+                      className="mb-2"
+                    />
+                    <Select
+                      value={newAuction.playerName}
+                      onValueChange={(value) => {
+                        const team = auctionTeams.find((t) => t.name === value);
+                        if (!team) return;
+                        setNewAuction({
+                          ...newAuction,
+                          playerName: team.name,
+                          playerTeam: team.region,
+                          description: team.short
+                            ? `Sigla: ${team.short} — Regione: ${team.region || "N/D"}`
+                            : `Regione: ${team.region || "N/D"}`,
+                        });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={
+                            isLoadingAuctionTeams
+                              ? "Caricamento squadre..."
+                              : "Seleziona squadra"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-80">
+                        {auctionTeams.length === 0 ? (
+                          <div className="px-2 py-4 text-sm text-slate-500">
+                            Nessuna squadra trovata
+                          </div>
+                        ) : (
+                          auctionTeams.map((team) => (
+                            <SelectItem key={team.name} value={team.name}>
+                              {team.name}
+                              {team.region ? ` - ${team.region}` : ""}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {currentFanta?.sportType === "lol" &&
+                  newAuction.pickType === "coach" && (
+                  <div className="space-y-3 rounded-md border border-slate-700 p-4">
+                    <p className="text-xs text-slate-500">
+                      Leaguepedia non ha una tabella coach utilizzabile: nome
+                      e squadra allenata si inseriscono a mano.
+                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="coachName">Nome Coach *</Label>
+                      <Input
+                        id="coachName"
+                        value={newAuction.playerName}
+                        onChange={(e) =>
+                          setNewAuction({
+                            ...newAuction,
+                            playerName: e.target.value,
+                          })
+                        }
+                        placeholder="Es: kkOma"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="coachTeam">Squadra Allenata</Label>
+                      <Input
+                        id="coachTeam"
+                        value={newAuction.playerTeam}
+                        onChange={(e) =>
+                          setNewAuction({
+                            ...newAuction,
+                            playerTeam: e.target.value,
+                          })
+                        }
+                        placeholder="Es: T1 — serve per calcolare i punti (vittorie della squadra)"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid md:grid-cols-2 gap-4">
                   {currentFanta?.sportType !== "lol" && (
                     <div className="space-y-2">
@@ -674,74 +863,83 @@ export default function AuctionsPage() {
                     </div>
                   )}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="playerRole">Ruolo</Label>
-                    {currentFanta?.sportType === "lol" ? (
+                  {currentFanta?.sportType === "lol" &&
+                    (newAuction.pickType === "player" ||
+                      newAuction.pickType === "jolly") && (
+                    <div className="space-y-2">
+                      <Label htmlFor="playerRole">Ruolo</Label>
                       <Input
                         id="playerRole"
                         value={newAuction.playerRole}
                         disabled
                         placeholder="Seleziona un player Leaguepedia sopra"
                       />
-                    ) : availableRoles.length > 0 ? (
-                      <Select
-                        value={newAuction.playerRole}
-                        onValueChange={(value) =>
-                          setNewAuction({
-                            ...newAuction,
-                            playerRole: value,
-                          })
-                        }
-                      >
-                        <SelectTrigger id="playerRole">
-                          <SelectValue placeholder="Seleziona ruolo" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableRoles.map((role) => (
-                            <SelectItem key={role} value={role}>
-                              {role}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input
-                        id="playerRole"
-                        value={newAuction.playerRole}
-                        onChange={(e) =>
-                          setNewAuction({
-                            ...newAuction,
-                            playerRole: e.target.value,
-                          })
-                        }
-                        placeholder="Es: Mid Laner, Attaccante, Point Guard..."
-                      />
-                    )}
-                    <p className="text-sm text-slate-500">
-                      {currentFanta?.sportType === "lol"
-                        ? "Popolato automaticamente da Leaguepedia"
-                        : availableRoles.length > 0
+                    </div>
+                  )}
+
+                  {currentFanta?.sportType !== "lol" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="playerRole">Ruolo</Label>
+                      {availableRoles.length > 0 ? (
+                        <Select
+                          value={newAuction.playerRole}
+                          onValueChange={(value) =>
+                            setNewAuction({
+                              ...newAuction,
+                              playerRole: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger id="playerRole">
+                            <SelectValue placeholder="Seleziona ruolo" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableRoles.map((role) => (
+                              <SelectItem key={role} value={role}>
+                                {role}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          id="playerRole"
+                          value={newAuction.playerRole}
+                          onChange={(e) =>
+                            setNewAuction({
+                              ...newAuction,
+                              playerRole: e.target.value,
+                            })
+                          }
+                          placeholder="Es: Mid Laner, Attaccante, Point Guard..."
+                        />
+                      )}
+                      <p className="text-sm text-slate-500">
+                        {availableRoles.length > 0
                           ? `Ruoli disponibili per ${currentFanta?.sportType}`
                           : "Inserisci un ruolo personalizzato"}
-                    </p>
-                  </div>
+                      </p>
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="playerTeam">Squadra/Team</Label>
-                  <Input
-                    id="playerTeam"
-                    value={newAuction.playerTeam}
-                    disabled={currentFanta?.sportType === "lol"}
-                    onChange={(e) =>
-                      setNewAuction({
-                        ...newAuction,
-                        playerTeam: e.target.value,
-                      })
-                    }
-                    placeholder="Es: T1, Juventus, Lakers..."
-                  />
-                </div>
+                {newAuction.pickType !== "coach" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="playerTeam">Squadra/Team</Label>
+                    <Input
+                      id="playerTeam"
+                      value={newAuction.playerTeam}
+                      disabled={currentFanta?.sportType === "lol"}
+                      onChange={(e) =>
+                        setNewAuction({
+                          ...newAuction,
+                          playerTeam: e.target.value,
+                        })
+                      }
+                      placeholder="Es: T1, Juventus, Lakers..."
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="description">Descrizione</Label>
@@ -825,6 +1023,9 @@ export default function AuctionsPage() {
                 <h3 className="text-2xl font-bold">
                   {activeAuction.playerName}
                 </h3>
+                <Badge variant="secondary" className="mt-2 mr-2">
+                  {PICK_TYPE_LABELS[activeAuction.pickType || "player"]}
+                </Badge>
                 {activeAuction.playerRole && (
                   <Badge className="mt-2">{activeAuction.playerRole}</Badge>
                 )}
@@ -926,6 +1127,22 @@ export default function AuctionsPage() {
                   Hai già {roleLimit} giocatori nel ruolo &quot;
                   {activeAuction.playerRole}&quot;: limite raggiunto per
                   questo ruolo.
+                </p>
+              ) : isTeamPickTaken ? (
+                <p className="text-sm text-slate-500">
+                  Hai già una squadra in rosa: nel draft composto se ne può
+                  avere una sola.
+                </p>
+              ) : isCoachPickTaken ? (
+                <p className="text-sm text-slate-500">
+                  Hai già un coach in rosa: nel draft composto se ne può
+                  avere uno solo.
+                </p>
+              ) : isJollyFull ? (
+                <p className="text-sm text-slate-500">
+                  {maxJolly > 0
+                    ? `Hai già ${maxJolly} jolly: limite raggiunto.`
+                    : "I jolly sono disattivati in questa lega."}
                 </p>
               ) : maxBid !== undefined && activeAuction.currentPrice >= maxBid ? (
                 <p className="text-sm text-slate-500">
@@ -1111,7 +1328,8 @@ export default function AuctionsPage() {
                       {auction.playerName}
                     </h3>
                     <p className="text-sm text-slate-400">
-                      Prezzo: {auction.currentPrice}€
+                      {PICK_TYPE_LABELS[auction.pickType || "player"]} - Prezzo:{" "}
+                      {auction.currentPrice}€
                       {auction.highestBidderId &&
                         ` - ${getMemberName(auction.highestBidderId, auction.highestBidderName)}`}
                     </p>

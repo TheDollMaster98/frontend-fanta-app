@@ -17,6 +17,7 @@ import {
   updateDoc,
   deleteDoc,
   getDoc,
+  getDocs,
   documentId,
   onSnapshot,
   query,
@@ -32,15 +33,26 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
-import { MIN_COUNTDOWN_SECONDS, MAX_COUNTDOWN_SECONDS } from "@/lib/constants";
+import {
+  MIN_COUNTDOWN_SECONDS,
+  MAX_COUNTDOWN_SECONDS,
+  DEFAULT_SCORING_WEIGHTS,
+} from "@/lib/constants";
+import { generateRoundRobin } from "@/lib/roundRobin";
+import {
+  getFantasyPlayerStats,
+  getFantasyTeamStats,
+} from "@/lib/leaguepediaApi";
 import type {
   Fanta,
   FantaMember,
   MemberRole,
   TeamPick,
+  TeamPickType,
   HistoryEntry,
   JoinRequest,
   Auction,
+  CalendarRound,
 } from "@/types";
 
 const DEFAULT_TEAM_NAME = "I Campioni";
@@ -58,6 +70,13 @@ interface MembershipDoc extends FantaMember {
 export interface FantaMemberProfile extends MembershipDoc {
   name: string;
   email: string;
+}
+
+export interface StandingsEntry {
+  userId: string;
+  name: string;
+  teamName: string;
+  totalPoints: number;
 }
 
 interface FantaContextType {
@@ -91,6 +110,12 @@ interface FantaContextType {
   // Storico acquisti: immutabile, resta anche se un'asta viene riaperta
   history: HistoryEntry[];
 
+  // Calendario a girone all'italiana e punteggi reali (step 2)
+  calendar: CalendarRound[];
+  standings: StandingsEntry[];
+  generateCalendar: () => Promise<void>;
+  recalculateScores: () => Promise<void>;
+
   // Scoperta leghe e richieste di ingresso
   discoverableFantas: Fanta[];
   myJoinRequests: JoinRequest[];
@@ -104,6 +129,7 @@ interface FantaContextType {
   createAuction: (
     auction: Pick<
       Auction,
+      | "pickType"
       | "playerName"
       | "playerRole"
       | "playerTeam"
@@ -176,6 +202,7 @@ function mapAuctionDoc(id: string, data: Record<string, unknown>): Auction {
   return {
     id,
     fantaId: data.fantaId,
+    pickType: (data.pickType as TeamPickType) || "player",
     playerName: data.playerName,
     playerRole: data.playerRole,
     playerTeam: data.playerTeam,
@@ -212,6 +239,17 @@ function mapJoinRequestDoc(
   } as JoinRequest;
 }
 
+function mapCalendarRoundDoc(
+  id: string,
+  data: Record<string, unknown>,
+): CalendarRound {
+  return {
+    id,
+    roundNumber: (data.roundNumber as number) ?? 0,
+    fixtures: (data.fixtures as CalendarRound["fixtures"]) || [],
+  };
+}
+
 function mapHistoryDoc(id: string, data: Record<string, unknown>): HistoryEntry {
   return {
     id,
@@ -245,6 +283,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   >([]);
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [calendar, setCalendar] = useState<CalendarRound[]>([]);
   const [memberProfiles, setMemberProfiles] = useState<
     Record<string, { name: string; email: string }>
   >({});
@@ -571,6 +610,148 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, [currentFanta]);
 
+  // Ascolta il calendario a girone all'italiana del fanta attualmente
+  // selezionato: generato una volta dall'admin/dev con generateCalendar,
+  // non si rigenera da solo.
+  useEffect(() => {
+    if (!currentFanta) {
+      setCalendar([]);
+      return;
+    }
+
+    const calendarQuery = query(
+      collection(db, "fantas", currentFanta.id, "calendar"),
+      orderBy("roundNumber", "asc"),
+    );
+
+    const unsubscribe = onSnapshot(calendarQuery, (snapshot) => {
+      setCalendar(
+        snapshot.docs.map((docSnap) =>
+          mapCalendarRoundDoc(docSnap.id, docSnap.data()),
+        ),
+      );
+    });
+
+    return unsubscribe;
+  }, [currentFanta]);
+
+  // Genera (o rigenera da capo) il calendario a girone all'italiana tra i
+  // membri della lega corrente, col metodo del cerchio: cancella i turni
+  // precedenti prima di scrivere i nuovi, altrimenti si accumulerebbero.
+  const generateCalendar = async (): Promise<void> => {
+    if (!currentFanta) return;
+    const userIds = fantaMembers.map((m) => m.userId);
+    const rounds = generateRoundRobin(userIds);
+
+    const calendarCollection = collection(
+      db,
+      "fantas",
+      currentFanta.id,
+      "calendar",
+    );
+    const existing = await getDocs(calendarCollection);
+    const batch = writeBatch(db);
+    existing.docs.forEach((d) => batch.delete(d.ref));
+    rounds.forEach((fixtures, index) => {
+      batch.set(doc(calendarCollection), {
+        roundNumber: index + 1,
+        fixtures,
+      });
+    });
+    await batch.commit();
+  };
+
+  // Ricalcola i punti fantasy di ogni pick in rosa dalle statistiche reali
+  // Leaguepedia (kill/morti/assist/vittorie per player/jolly, sole vittorie
+  // per team/coach — vedi lib/leaguepediaApi.ts), pesati con gli
+  // scoringWeights della lega. Nessun automatismo: va rilanciato a mano
+  // (bottone admin/dev) quando si vogliono punti aggiornati, non c'è un
+  // cron/Cloud Function che lo fa da solo.
+  const recalculateScores = async (): Promise<void> => {
+    if (!currentFanta) return;
+    const circuitType = currentFanta.settings.circuitType;
+    if (!circuitType) return;
+    const weights = currentFanta.settings.scoringWeights || DEFAULT_SCORING_WEIGHTS;
+
+    const playerNames = new Set<string>();
+    const teamNames = new Set<string>();
+    fantaMembers.forEach((m) => {
+      m.team.forEach((pick) => {
+        if (pick.pickType === "player" || pick.pickType === "jolly") {
+          playerNames.add(pick.playerName);
+        } else if (pick.pickType === "team") {
+          teamNames.add(pick.playerName);
+        } else if (pick.pickType === "coach" && pick.playerTeam) {
+          teamNames.add(pick.playerTeam);
+        }
+      });
+    });
+
+    const [playerStats, teamStats] = await Promise.all([
+      getFantasyPlayerStats(Array.from(playerNames), circuitType),
+      getFantasyTeamStats(Array.from(teamNames), circuitType),
+    ]);
+
+    const batch = writeBatch(db);
+    let hasWrites = false;
+
+    fantaMembers.forEach((m) => {
+      let changed = false;
+      const updatedTeam = m.team.map((pick) => {
+        let points: number | undefined;
+        if (pick.pickType === "player" || pick.pickType === "jolly") {
+          const s = playerStats[pick.playerName];
+          if (s) {
+            points =
+              s.kills * weights.kills +
+              s.deaths * weights.deaths +
+              s.assists * weights.assists +
+              s.wins * weights.win;
+          }
+        } else if (pick.pickType === "team") {
+          const s = teamStats[pick.playerName];
+          if (s) points = s.wins * weights.win;
+        } else if (pick.pickType === "coach" && pick.playerTeam) {
+          const s = teamStats[pick.playerTeam];
+          if (s) points = s.wins * weights.win;
+        }
+
+        if (points === undefined) return pick;
+        const rounded = Math.round(points * 100) / 100;
+        if (rounded !== pick.points) changed = true;
+        return { ...pick, points: rounded };
+      });
+
+      if (changed) {
+        hasWrites = true;
+        batch.update(
+          doc(db, "fantas", currentFanta.id, "members", m.userId),
+          { team: updatedTeam },
+        );
+      }
+    });
+
+    if (hasWrites) await batch.commit();
+  };
+
+  // Classifica: somma dei punti di ogni pick in rosa, per membro. Non è
+  // (ancora) un confronto diretto giornata per giornata contro l'avversario
+  // del calendario: manca una mappatura affidabile tra "giornata fantasy" e
+  // data reale delle partite pro su Leaguepedia — vedi il commento su
+  // CalendarRound in types/index.ts.
+  const standings: StandingsEntry[] = useMemo(
+    () =>
+      [...fantaMembers]
+        .map((m) => ({
+          userId: m.userId,
+          name: m.name,
+          teamName: m.teamName,
+          totalPoints: m.team.reduce((sum, p) => sum + (p.points || 0), 0),
+        }))
+        .sort((a, b) => b.totalPoints - a.totalPoints),
+    [fantaMembers],
+  );
+
   const createAuction: FantaContextType["createAuction"] = (auction) => {
     if (!currentFanta || !user) return;
     addDoc(collection(db, "fantas", currentFanta.id, "auctions"), {
@@ -639,13 +820,32 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       const data = snap.data();
       if (data.status !== "active") return;
 
-      const role = data.playerRole as string | undefined;
-      const roleLimit = role ? maxPlayersPerRole[role] : undefined;
-      if (
-        roleLimit &&
-        myRoster.filter((p) => p.playerRole === role).length >= roleLimit
-      ) {
-        return;
+      const pickType = (data.pickType as TeamPickType) || "player";
+      if (pickType === "player") {
+        const role = data.playerRole as string | undefined;
+        const roleLimit = role ? maxPlayersPerRole[role] : undefined;
+        if (
+          roleLimit &&
+          myRoster.filter((p) => p.pickType === "player" && p.playerRole === role)
+            .length >= roleLimit
+        ) {
+          return;
+        }
+      } else if (pickType === "team") {
+        // Al massimo una squadra in rosa: è il draft composto (step 4),
+        // non un'asta di più squadre.
+        if (myRoster.some((p) => p.pickType === "team")) return;
+      } else if (pickType === "coach") {
+        if (myRoster.some((p) => p.pickType === "coach")) return;
+      } else if (pickType === "jolly") {
+        // maxJolly usa la convenzione "0 = nessuno" (non "0 = illimitato"
+        // come maxPlayersTotal/maxPlayersPerRole): 0 blocca subito i jolly.
+        const maxJolly = currentFanta.settings.maxJolly || 0;
+        if (
+          myRoster.filter((p) => p.pickType === "jolly").length >= maxJolly
+        ) {
+          return;
+        }
       }
 
       const newPrice = (data.currentPrice as number) + amount;
@@ -737,7 +937,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
           userName: (winnerName as string) || "Utente",
           pick: {
             id: auctionId,
-            pickType: "player",
+            pickType: (data.pickType as TeamPickType) || "player",
             playerName: data.playerName,
             playerRole: data.playerRole,
             playerTeam: data.playerTeam,
@@ -944,6 +1144,10 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         removeViceAdmin,
         removeMember,
         history,
+        calendar,
+        standings,
+        generateCalendar,
+        recalculateScores,
         discoverableFantas,
         myJoinRequests,
         pendingJoinRequests,

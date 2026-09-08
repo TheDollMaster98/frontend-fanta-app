@@ -30,7 +30,14 @@ import {
 import { Trash2 } from "lucide-react";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
-import type { TeamPick } from "@/types";
+import type { TeamPick, TeamPickType } from "@/types";
+
+const PICK_TYPE_LABELS: Record<TeamPickType, string> = {
+  player: "Giocatore",
+  jolly: "Jolly",
+  team: "Squadra",
+  coach: "Coach",
+};
 
 export default function TeamPage() {
   const {
@@ -152,12 +159,14 @@ export default function TeamPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Tipo</TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead>Ruolo</TableHead>
                   <TableHead>Squadra</TableHead>
                   <TableHead className="text-right">
                     Prezzo di Acquisto
                   </TableHead>
+                  <TableHead className="text-right">Punti</TableHead>
                   <TableHead className="text-right">Data Acquisto</TableHead>
                   <TableHead className="text-right">Azioni</TableHead>
                 </TableRow>
@@ -165,6 +174,11 @@ export default function TeamPage() {
               <TableBody>
                 {players.map((player) => (
                   <TableRow key={player.id}>
+                    <TableCell>
+                      <Badge variant="secondary">
+                        {PICK_TYPE_LABELS[player.pickType]}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="font-medium">
                       {player.playerName}
                     </TableCell>
@@ -176,6 +190,9 @@ export default function TeamPage() {
                     <TableCell>{player.playerTeam}</TableCell>
                     <TableCell className="text-right font-semibold">
                       {player.purchasePrice}€
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {player.points !== undefined ? player.points : "—"}
                     </TableCell>
                     <TableCell className="text-right text-sm text-slate-400">
                       {new Date(player.acquiredAt).toLocaleDateString("it-IT")}

@@ -20,17 +20,44 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
       impostazioni (prima era solo creatore+dev — incoerente con gli altri
       poteri che hanno già altrove nell'app); non possono però gestire
       membri/vice-admin, resta creatore+dev.
-- [ ] **Step 2 — Punteggio reale + calendario**: campi `ScoreboardGames`
-      ricevuti (`DateTime_UTC`, `WinTeam`/`LossTeam`, obiettivi solo a
-      livello squadra) — sbloccato, ma non ancora implementato (calendario
-      round-robin, calcolo punti, pagina classifica).
-- [ ] **Step 3 — Drill-down**: dipende dallo Step 2.
-- [ ] **Step 4 — Draft composto**: campi tabella `Teams` ricevuti (Name,
-      OverviewPage, Short, Region, Image, IsDisbanded, RenamedTo) —
-      ricerca squadra sbloccata. Tabella coach su Leaguepedia non trovata:
-      per ora il coach resterà probabilmente testo libero, da confermare.
-      Non ancora implementato.
-- [ ] **Step 5 — Doppia fase**: dipende da Step 2 e 4.
+- [x] **Step 2 — Punteggio reale + calendario**: nuova pagina "Classifica"
+      (solo leghe LoL). `lib/roundRobin.ts` genera il calendario a girone
+      all'italiana (metodo del cerchio) tra i membri, salvato in
+      `fantas/{id}/calendar`. `lib/leaguepediaApi.ts` ha
+      `getFantasyPlayerStats`/`getFantasyTeamStats`: interrogano
+      ScoreboardPlayers+ScoreboardGames per kill/morti/assist/vittorie
+      reali, filtrate per `circuitType` della lega. Il bottone admin/dev
+      "Ricalcola Punteggi" applica gli `scoringWeights` della lega e scrive
+      `points` su ogni pick in rosa (`TeamPick.points`); "Genera
+      Calendario" rigenera da capo i turni. **Limite onesto, non
+      nascosto**: la classifica è per punteggio totale cumulato, NON per
+      confronto diretto punti-contro-punti a ogni turno del calendario —
+      manca una mappatura affidabile tra "turno fantasy" e data reale
+      delle partite pro (Leaguepedia non la offre in modo diretto), quindi
+      il calendario mostra solo chi affronta chi, senza calcolare
+      vittoria/sconfitta di turno. Nessun automatismo: il ricalcolo va
+      rilanciato a mano, non c'è un cron/Cloud Function che lo fa da solo.
+- [ ] **Step 3 — Drill-down**: parzialmente coperto in anticipo dalla
+      pagina Classifica (click su un membro mostra il dettaglio pick per
+      pick con i punti), ma manca il livello sotto: click su un giocatore
+      per vedere le partite reali giocate e quanti punti ha fatto in
+      ognuna. Serve salvare i dati partita per partita, non solo il totale
+      aggregato come ora.
+- [x] **Step 4 — Draft composto**: `TeamPick.pickType` ora è
+      `player | jolly | team | coach` (`types/index.ts`). In "Crea Nuova
+      Asta" (solo leghe LoL) si sceglie il tipo di oggetto: Giocatore
+      (ruolo, invariato), Jolly (stesso player-search, senza vincolo di
+      ruolo, tetto `maxJolly` — **occhio**: `maxJolly` usa la convenzione
+      "0 = nessuno", diversa da `maxPlayersTotal`/`maxPlayersPerRole` dove
+      "0 = illimitato"), Squadra (ricerca Leaguepedia via nuova
+      `searchTeams()` sulla tabella `Teams`), Coach (nome + squadra
+      allenata inseriti a mano — **confermato**: Leaguepedia non ha una
+      tabella coach utilizzabile, resta testo libero come previsto).
+      `FantaContext.placeBid` blocca un secondo pick "team" o "coach" per
+      lo stesso membro (uno solo di ciascuno) e i jolly oltre il tetto.
+- [ ] **Step 5 — Doppia fase**: dipende da Step 2 e 4. Step 4 è pronto;
+      step 2 ha solo la fase singola (nessuna logica di
+      girone→eliminazione ancora).
 - [ ] **Step 6 — Statistiche extra (MVP/CS/obiettivi)**: da verificare se
       Leaguepedia le ha davvero, non scontato.
 

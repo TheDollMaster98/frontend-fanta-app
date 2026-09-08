@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFanta } from "@/contexts/FantaContext";
-import { Home, Crown, Zap, Users, Settings } from "lucide-react";
+import { Home, Crown, Zap, Users, Settings, Trophy } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -63,21 +63,32 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { name: "Impostazioni", href: "/dashboard/settings", icon: Settings },
   ];
 
-  // Aggiungi "Importa LoL" solo per leghe di tipo lol
+  // Aggiungi "Importa LoL" e "Classifica" solo per leghe di tipo lol: il
+  // motore di punteggio reale (step 2) interroga Leaguepedia, che ha senso
+  // solo per questo sport.
   if (currentFanta?.sportType === "lol") {
     navigation.splice(3, 0, {
       name: "Importa LoL",
       href: "/dashboard/import-lol",
       icon: Users,
     });
+    navigation.splice(4, 0, {
+      name: "Classifica",
+      href: "/dashboard/standings",
+      icon: Trophy,
+    });
   }
 
   // Mostra "Gestione" a chi può davvero entrarci: creatore, vice-admin o
   // developer (vedi isAuthorized in app/dashboard/admin/page.tsx — senza
   // i vice-admin qui, potevano aprire la pagina digitando l'URL ma non
-  // la vedevano mai in sidebar).
+  // la vedevano mai in sidebar). Inserito subito prima di "Impostazioni",
+  // qualunque sia la sua posizione (dipende da quali voci lol sono presenti).
   if (currentFanta && user && isFantaViceOrAdmin) {
-    navigation.splice(4, 0, {
+    const settingsIndex = navigation.findIndex(
+      (item) => item.href === "/dashboard/settings",
+    );
+    navigation.splice(settingsIndex, 0, {
       name: "Gestione",
       href: "/dashboard/admin",
       icon: Crown,

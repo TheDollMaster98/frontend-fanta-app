@@ -56,18 +56,33 @@ export interface FantaSettings {
 // giocatore pro comprato (es. "Mid Laner"), che vive su TeamPick.playerRole.
 export type MemberRole = "admin" | "vice" | "membro";
 
-// Un acquisto in rosa: un giocatore pro (o, dallo step 4, una squadra/coach)
-// comprato all'asta da un membro. pickType distingue di che tipo di slot
-// si tratta quando il draft composto sarà pronto.
+// Un acquisto in rosa: un giocatore pro, una squadra, un coach o uno slot
+// jolly, comprato all'asta da un membro. Il draft composto (step 4) è
+// "squadra + coach + 5 player di ruolo + jolly opzionali": ogni pezzo è
+// acquistato con un'asta separata, pickType dice di che pezzo si tratta.
+// - "player": playerName/playerRole/playerTeam sono il giocatore pro.
+// - "jolly": stesso shape di "player", ma non vincolato al limite per
+//   ruolo — conta invece sul tetto maxJolly della lega.
+// - "team": playerName è il nome della squadra pro (playerRole assente).
+// - "coach": playerName è il nome del coach, inserito a mano (Leaguepedia
+//   non espone una tabella coach utilizzabile).
+export type TeamPickType = "player" | "jolly" | "team" | "coach";
+
 export interface TeamPick {
   id: string;
-  pickType: "player" | "jolly";
+  pickType: TeamPickType;
   playerName: string;
-  playerRole?: string; // ruolo del giocatore pro, es. "Mid Laner"
-  playerTeam?: string; // squadra pro reale, es. "T1"
+  playerRole?: string; // ruolo del giocatore pro, es. "Mid Laner" (solo player/jolly)
+  playerTeam?: string; // squadra pro reale, es. "T1" (solo player/jolly)
   purchasePrice: number;
   auctionId?: string;
   acquiredAt: Date;
+  // Punti fantasy calcolati dalle statistiche reali (step 2): assente finché
+  // non gira almeno una volta "Ricalcola Punteggi", poi aggiornato ad ogni
+  // ricalcolo. Per pickType "team"/"coach" sono punti-vittoria della
+  // squadra; per "player"/"jolly" derivano da kill/morti/assist/vittorie
+  // pesati con gli scoringWeights della lega.
+  points?: number;
 }
 
 // fantas/{fantaId}/members/{userId}
@@ -119,6 +134,7 @@ export type AuctionStatus = "pending" | "active" | "closing" | "closed";
 export interface Auction {
   id: string;
   fantaId: string;
+  pickType: TeamPickType; // cosa si sta aggiudicando: giocatore/jolly/squadra/coach
   playerName: string;
   playerRole?: string;
   playerTeam?: string;
@@ -166,6 +182,25 @@ export interface JoinRequest {
   userEmail: string;
   status: JoinRequestStatus;
   createdAt: Date;
+}
+
+// Calendario a girone all'italiana (round-robin) tra i membri della lega:
+// fantas/{fantaId}/calendar/{id}. Generato una volta dall'admin/dev con il
+// metodo del cerchio; awayUserId assente = turno di riposo (numero dispari
+// di membri). Il risultato del confronto diretto (chi ha totalizzato più
+// punti fantasy in quel turno) non è ancora calcolato: serve prima una
+// mappatura affidabile giornata-fantasy ↔ data reale delle partite pro, che
+// Leaguepedia non offre in modo diretto — per ora la classifica è per
+// punteggio totale, non per punti-partita da confronto diretto.
+export interface RoundFixture {
+  homeUserId: string;
+  awayUserId: string | null;
+}
+
+export interface CalendarRound {
+  id: string;
+  roundNumber: number;
+  fixtures: RoundFixture[];
 }
 
 // Context types for state management

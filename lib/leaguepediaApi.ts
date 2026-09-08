@@ -200,6 +200,7 @@ export interface LeaguepediaTeam {
   name: string;
   region: string;
   logo?: string;
+  short?: string;
 }
 
 export interface LeaguepediaPlayerStats {
@@ -571,4 +572,158 @@ export async function getPlayerImage(
     console.error("Errore nel recupero immagine:", error);
     return null;
   }
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Cerca squadre pro per nome (draft composto, pick "Squadra"). Nessun
+ * fallback locale: se Leaguepedia non risponde, l'admin può comunque
+ * inserire il nome a mano nell'asta (come già succede per il coach).
+ */
+export async function searchTeams(
+  searchTerm: string,
+  limit = 20,
+): Promise<LeaguepediaTeam[]> {
+  const normalizedSearch = searchTerm.trim();
+
+  const results = await cargoQuery({
+    tables: "Teams=T",
+    fields: "T.Name, T.Short, T.Region, T.IsDisbanded",
+    where: normalizedSearch
+      ? `T.Name LIKE "%${normalizedSearch}%" OR T.Short LIKE "%${normalizedSearch}%"`
+      : undefined,
+    order_by: "T.Name",
+    limit,
+  });
+
+  return results
+    .filter((r) => !["1", "true", "yes"].includes((r.IsDisbanded || "").trim().toLowerCase()))
+    .map((r) => ({
+      name: r.Name || "",
+      region: r.Region || "",
+      short: r.Short || "",
+    }))
+    .filter((t) => t.name);
+}
+
+export interface FantasyPlayerStats {
+  kills: number;
+  deaths: number;
+  assists: number;
+  wins: number;
+  gamesPlayed: number;
+}
+
+/**
+ * Statistiche reali (kill/morti/assist/vittorie) di una lista di giocatori
+ * in un circuito, aggregate da ScoreboardPlayers+ScoreboardGames. La
+ * formula punti (pesi kill/morti/assist/vittoria) resta fuori da qui: la
+ * applica il chiamante con gli scoringWeights della lega, così questa
+ * funzione non deve sapere nulla delle impostazioni di una lega specifica.
+ * Nomi in batch da 30 per non costruire where-clause troppo lunghe.
+ */
+export async function getFantasyPlayerStats(
+  playerNames: string[],
+  circuitType: string,
+): Promise<Record<string, FantasyPlayerStats>> {
+  const names = Array.from(new Set(playerNames.map((n) => n.trim()).filter(Boolean)));
+  const stats: Record<string, FantasyPlayerStats> = {};
+  names.forEach((n) => {
+    stats[n] = { kills: 0, deaths: 0, assists: 0, wins: 0, gamesPlayed: 0 };
+  });
+  if (names.length === 0) return stats;
+
+  for (const group of chunk(names, 30)) {
+    const nameList = group.map((n) => `"${n.replace(/"/g, '\\"')}"`).join(",");
+    const results: CargoRecord[] = [];
+    const pageSize = 500;
+    let offset = 0;
+
+    while (true) {
+      const page = await cargoQuery({
+        tables: "ScoreboardPlayers=SP, ScoreboardGames=SG, Tournaments=T, PlayerRedirects=PR",
+        fields:
+          "PR.AllName=QueryName, SP.Team, SP.Kills, SP.Deaths, SP.Assists, SG.WinTeam",
+        where: `PR.AllName IN (${nameList}) AND (T.Name LIKE "%${circuitType}%" OR T.League LIKE "%${circuitType}%")`,
+        join_on:
+          "SP.GameId=SG.GameId, SG.OverviewPage=T.OverviewPage, SP.Link=PR.AllName",
+        limit: pageSize,
+        offset,
+      });
+
+      results.push(...page);
+      if (page.length < pageSize) break;
+      offset += pageSize;
+    }
+
+    results.forEach((r) => {
+      const key = r.QueryName;
+      const stat = stats[key];
+      if (!stat) return;
+      stat.kills += parseInt(r.Kills || "0");
+      stat.deaths += parseInt(r.Deaths || "0");
+      stat.assists += parseInt(r.Assists || "0");
+      stat.gamesPlayed += 1;
+      if (r.Team && r.WinTeam && r.Team === r.WinTeam) stat.wins += 1;
+    });
+  }
+
+  return stats;
+}
+
+/**
+ * Vittorie/partite di una lista di squadre in un circuito. Unica statistica
+ * di squadra usabile via Leaguepedia per il punteggio fantasy: obiettivi e
+ * MVP non sono disponibili a livello di singola squadra/giocatore in
+ * ScoreboardGames (verificato a mano con l'utente, vedi step 6 nel TODO).
+ */
+export async function getFantasyTeamStats(
+  teamNames: string[],
+  circuitType: string,
+): Promise<Record<string, { wins: number; gamesPlayed: number }>> {
+  const names = Array.from(new Set(teamNames.map((n) => n.trim()).filter(Boolean)));
+  const stats: Record<string, { wins: number; gamesPlayed: number }> = {};
+  names.forEach((n) => {
+    stats[n] = { wins: 0, gamesPlayed: 0 };
+  });
+  if (names.length === 0) return stats;
+
+  for (const group of chunk(names, 30)) {
+    const nameList = group.map((n) => `"${n.replace(/"/g, '\\"')}"`).join(",");
+    const results: CargoRecord[] = [];
+    const pageSize = 500;
+    let offset = 0;
+
+    while (true) {
+      const page = await cargoQuery({
+        tables: "ScoreboardGames=SG, Tournaments=T",
+        fields: "SG.WinTeam, SG.LossTeam",
+        where: `(SG.WinTeam IN (${nameList}) OR SG.LossTeam IN (${nameList})) AND (T.Name LIKE "%${circuitType}%" OR T.League LIKE "%${circuitType}%")`,
+        join_on: "SG.OverviewPage=T.OverviewPage",
+        limit: pageSize,
+        offset,
+      });
+
+      results.push(...page);
+      if (page.length < pageSize) break;
+      offset += pageSize;
+    }
+
+    results.forEach((r) => {
+      if (r.WinTeam && stats[r.WinTeam]) {
+        stats[r.WinTeam].wins += 1;
+        stats[r.WinTeam].gamesPlayed += 1;
+      }
+      if (r.LossTeam && stats[r.LossTeam]) {
+        stats[r.LossTeam].gamesPlayed += 1;
+      }
+    });
+  }
+
+  return stats;
 }
