@@ -30,7 +30,7 @@ import {
   CIRCUIT_TYPES,
   LOL_ROLES,
   DEFAULT_ROLE_SCORING_WEIGHTS,
-  DEFAULT_TEAM_SCORING_WEIGHT,
+  DEFAULT_TEAM_SCORING_WEIGHTS,
 } from "@/lib/constants";
 import { generateInviteCode } from "@/lib/utils";
 import type { SportType } from "@/types";
@@ -43,7 +43,7 @@ const INITIAL_FORM = {
   circuitType: "LCK",
   maxJolly: 0,
   scoringWeights: { ...DEFAULT_ROLE_SCORING_WEIGHTS },
-  teamScoringWeight: DEFAULT_TEAM_SCORING_WEIGHT,
+  teamScoringWeights: { ...DEFAULT_TEAM_SCORING_WEIGHTS },
 };
 
 export function CreateFantaDialog() {
@@ -69,7 +69,7 @@ export function CreateFantaDialog() {
               circuitType: formData.circuitType,
               maxJolly: formData.maxJolly,
               scoringWeights: formData.scoringWeights,
-              teamScoringWeight: formData.teamScoringWeight,
+              teamScoringWeights: formData.teamScoringWeights,
             }
           : {}),
       },
@@ -195,12 +195,12 @@ export function CreateFantaDialog() {
               <RoleScoringWeightsEditor
                 roles={LOL_ROLES}
                 weights={formData.scoringWeights}
-                teamWeight={formData.teamScoringWeight}
+                teamWeights={formData.teamScoringWeights}
                 onChangeRoleWeights={(scoringWeights) =>
                   setFormData({ ...formData, scoringWeights })
                 }
-                onChangeTeamWeight={(teamScoringWeight) =>
-                  setFormData({ ...formData, teamScoringWeight })
+                onChangeTeamWeights={(teamScoringWeights) =>
+                  setFormData({ ...formData, teamScoringWeights })
                 }
               />
             </>

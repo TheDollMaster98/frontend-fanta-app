@@ -4,40 +4,88 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import type { RoleScoringWeights, ScoringWeights } from "@/types";
+import type { RoleScoringWeights, ScoringWeights, TeamScoringWeights } from "@/types";
 
-const EMPTY_WEIGHTS: ScoringWeights = { kills: 0, deaths: 0, assists: 0, win: 0 };
+const EMPTY_WEIGHTS: ScoringWeights = {
+  kills: 0,
+  deaths: 0,
+  assists: 0,
+  win: 0,
+  csPer50: 0,
+  visionPer10: 0,
+};
 const TEAM_TAB = "__team__";
+
+// Campi non ancora collegati a un calcolo reale: il peso si salva e si
+// mostra, ma FantaContext.recalculateScores non li applica finché non ho
+// nomi di campo Leaguepedia confermati per CS/Vision Score (ScoreboardPlayers)
+// e obiettivi di squadra (ScoreboardGames). Vedi types/index.ts e TODO.md.
+const PLAYER_FIELDS: {
+  key: keyof ScoringWeights;
+  label: string;
+  pending?: boolean;
+}[] = [
+  { key: "kills", label: "Kill" },
+  { key: "deaths", label: "Morte" },
+  { key: "assists", label: "Assist" },
+  { key: "win", label: "Vittoria (bonus se la squadra vince)" },
+  { key: "csPer50", label: "Ogni 50 CS", pending: true },
+  { key: "visionPer10", label: "Ogni 10 Vision Score", pending: true },
+];
+
+const TEAM_FIELDS: {
+  key: keyof TeamScoringWeights;
+  label: string;
+  pending?: boolean;
+}[] = [
+  { key: "tower", label: "Torre", pending: true },
+  { key: "dragon", label: "Drago (elementale)", pending: true },
+  { key: "voidGrub", label: "Void Grub", pending: true },
+  { key: "riftHerald", label: "Rift Herald", pending: true },
+  { key: "inhibitor", label: "Inibitore", pending: true },
+  { key: "atakhan", label: "Atakhan", pending: true },
+  { key: "baron", label: "Barone", pending: true },
+  { key: "kill", label: "Kill" },
+  { key: "death", label: "Morte" },
+  { key: "assist", label: "Assist" },
+  { key: "csPer100", label: "Ogni 100 CS", pending: true },
+  { key: "win", label: "Vittoria" },
+  { key: "goldPer10k", label: "Ogni 10k oro", pending: true },
+];
 
 interface RoleScoringWeightsEditorProps {
   roles: string[];
   weights: RoleScoringWeights;
-  teamWeight: number;
+  teamWeights: TeamScoringWeights;
   onChangeRoleWeights: (weights: RoleScoringWeights) => void;
-  onChangeTeamWeight: (value: number) => void;
+  onChangeTeamWeights: (weights: TeamScoringWeights) => void;
 }
 
-// Editor dei pesi punteggio, uno per ruolo (kill/morti/assist/vittoria non
-// valgono uguale per Top e Support) più un set separato per le pick
-// "Squadra"/"Coach" (solo vittoria, non hanno statistiche individuali).
-// Usato sia in CreateFantaDialog (creazione lega) sia in Gestione Lega
-// (modifica), stesso componente per non disallinearli.
+// Editor dei pesi punteggio, uno per ruolo (kill/morti/assist/vittoria/CS/
+// vision non valgono uguale per Top e Support) più un set separato per le
+// pick "Squadra"/"Coach" (obiettivi di partita, non statistiche
+// individuali). Usato sia in CreateFantaDialog (creazione lega) sia in
+// Gestione Lega (modifica), stesso componente per non disallinearli.
 export function RoleScoringWeightsEditor({
   roles,
   weights,
-  teamWeight,
+  teamWeights,
   onChangeRoleWeights,
-  onChangeTeamWeight,
+  onChangeTeamWeights,
 }: RoleScoringWeightsEditorProps) {
   const [activeTab, setActiveTab] = useState<string>(roles[0] || TEAM_TAB);
   const isTeamTab = activeTab === TEAM_TAB;
   const activeWeights: ScoringWeights = weights[activeTab] || EMPTY_WEIGHTS;
 
-  const updateField = (field: keyof ScoringWeights, value: number) => {
+  const updateRoleField = (field: keyof ScoringWeights, value: number) => {
     onChangeRoleWeights({
       ...weights,
       [activeTab]: { ...activeWeights, [field]: value },
     });
+  };
+
+  const updateTeamField = (field: keyof TeamScoringWeights, value: number) => {
+    onChangeTeamWeights({ ...teamWeights, [field]: value });
   };
 
   return (
@@ -46,7 +94,10 @@ export function RoleScoringWeightsEditor({
       <p className="text-xs text-slate-500">
         Quanti punti valgono le statistiche reali, un set per ruolo (kill/
         morti/assist non valgono uguale ovunque) più uno per le pick
-        Squadra/Coach. Modificabile dopo, ma bloccato a partite iniziate.
+        Squadra/Coach. Modificabile dopo, ma bloccato a partite iniziate. I
+        campi con <span className="text-amber-500">●</span> si salvano ma
+        non contano ancora nel calcolo punti: in attesa di conferma dei nomi
+        campo su Leaguepedia.
       </p>
       <div className="flex flex-wrap gap-1">
         {roles.map((role) => (
@@ -71,72 +122,40 @@ export function RoleScoringWeightsEditor({
       </div>
 
       {isTeamTab ? (
-        <div className="space-y-1 max-w-xs">
-          <Label htmlFor="wTeamWin" className="text-xs font-normal">
-            Vittoria Squadra/Coach
-          </Label>
-          <Input
-            id="wTeamWin"
-            type="number"
-            step="0.5"
-            value={teamWeight}
-            onChange={(e) => onChangeTeamWeight(Number(e.target.value))}
-          />
-          <p className="text-xs text-slate-500">
-            Punti per ogni vittoria della squadra scelta (o della squadra
-            allenata, per il coach).
-          </p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {TEAM_FIELDS.map(({ key, label, pending }) => (
+            <div key={key} className="space-y-1">
+              <Label htmlFor={`wTeam-${key}`} className="text-xs font-normal">
+                {label}
+                {pending && <span className="text-amber-500"> ●</span>}
+              </Label>
+              <Input
+                id={`wTeam-${key}`}
+                type="number"
+                step="0.5"
+                value={teamWeights[key]}
+                onChange={(e) => updateTeamField(key, Number(e.target.value))}
+              />
+            </div>
+          ))}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label htmlFor="wKills" className="text-xs font-normal">
-              Kill
-            </Label>
-            <Input
-              id="wKills"
-              type="number"
-              step="0.5"
-              value={activeWeights.kills}
-              onChange={(e) => updateField("kills", Number(e.target.value))}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="wDeaths" className="text-xs font-normal">
-              Morte
-            </Label>
-            <Input
-              id="wDeaths"
-              type="number"
-              step="0.5"
-              value={activeWeights.deaths}
-              onChange={(e) => updateField("deaths", Number(e.target.value))}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="wAssists" className="text-xs font-normal">
-              Assist
-            </Label>
-            <Input
-              id="wAssists"
-              type="number"
-              step="0.5"
-              value={activeWeights.assists}
-              onChange={(e) => updateField("assists", Number(e.target.value))}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="wWin" className="text-xs font-normal">
-              Vittoria (bonus se la squadra vince)
-            </Label>
-            <Input
-              id="wWin"
-              type="number"
-              step="0.5"
-              value={activeWeights.win}
-              onChange={(e) => updateField("win", Number(e.target.value))}
-            />
-          </div>
+          {PLAYER_FIELDS.map(({ key, label, pending }) => (
+            <div key={key} className="space-y-1">
+              <Label htmlFor={`w-${key}`} className="text-xs font-normal">
+                {label}
+                {pending && <span className="text-amber-500"> ●</span>}
+              </Label>
+              <Input
+                id={`w-${key}`}
+                type="number"
+                step="0.5"
+                value={activeWeights[key]}
+                onChange={(e) => updateRoleField(key, Number(e.target.value))}
+              />
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -34,7 +34,7 @@ import {
   type TeamGameLog,
 } from "@/lib/leaguepediaApi";
 import type { TeamPick, TeamPickType } from "@/types";
-import { DEFAULT_TEAM_SCORING_WEIGHT } from "@/lib/constants";
+import { DEFAULT_TEAM_SCORING_WEIGHTS } from "@/lib/constants";
 
 const PICK_TYPE_LABELS: Record<TeamPickType, string> = {
   player: "Giocatore",
@@ -143,8 +143,8 @@ export default function StandingsPage() {
   const roleWeights = currentFanta.settings.scoringWeights || {};
   const drillWeights =
     drillPick?.playerRole ? roleWeights[drillPick.playerRole] : undefined;
-  const teamWeight =
-    currentFanta.settings.teamScoringWeight ?? DEFAULT_TEAM_SCORING_WEIGHT;
+  const teamWeights =
+    currentFanta.settings.teamScoringWeights || DEFAULT_TEAM_SCORING_WEIGHTS;
 
   return (
     <div className="space-y-6">
@@ -471,7 +471,7 @@ export default function StandingsPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right font-medium">
-                            {game.win ? teamWeight : 0}
+                            {game.win ? teamWeights.win : 0}
                           </TableCell>
                         </TableRow>
                       ))}

@@ -36,7 +36,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   MIN_COUNTDOWN_SECONDS,
   MAX_COUNTDOWN_SECONDS,
-  DEFAULT_TEAM_SCORING_WEIGHT,
+  DEFAULT_TEAM_SCORING_WEIGHTS,
 } from "@/lib/constants";
 import { generateRoundRobin } from "@/lib/roundRobin";
 import {
@@ -665,17 +665,20 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   // Leaguepedia (kill/morti/assist/vittorie per player/jolly, sole vittorie
   // per team/coach — vedi lib/leaguepediaApi.ts), pesati con gli
   // scoringWeights della lega — uno per ruolo (playerRole del pick), più un
-  // peso separato (teamScoringWeight) per le pick team/coach. Nessun
+  // set separato (teamScoringWeights) per le pick team/coach. Nessun
   // automatismo: va rilanciato a mano (bottone admin/dev) quando si
   // vogliono punti aggiornati, non c'è un cron/Cloud Function che lo fa da
-  // solo.
+  // solo. NOTA: CS/Vision Score (player) e obiettivi/CS/oro (team) NON
+  // vengono ancora calcolati qui — solo kill/morti/assist/vittoria, gli
+  // unici campi Leaguepedia confermati. Vedi l'avvertenza su ScoringWeights
+  // e TeamScoringWeights in types/index.ts.
   const recalculateScores = async (): Promise<void> => {
     if (!currentFanta) return;
     const circuitType = currentFanta.settings.circuitType;
     if (!circuitType) return;
     const roleWeights = currentFanta.settings.scoringWeights || {};
-    const teamWeight =
-      currentFanta.settings.teamScoringWeight ?? DEFAULT_TEAM_SCORING_WEIGHT;
+    const teamWeights =
+      currentFanta.settings.teamScoringWeights || DEFAULT_TEAM_SCORING_WEIGHTS;
 
     const playerNames = new Set<string>();
     const teamNames = new Set<string>();
@@ -717,10 +720,10 @@ export function FantaProvider({ children }: { children: ReactNode }) {
           }
         } else if (pick.pickType === "team") {
           const s = teamStats[pick.playerName];
-          if (s) points = s.wins * teamWeight;
+          if (s) points = s.wins * teamWeights.win;
         } else if (pick.pickType === "coach" && pick.playerTeam) {
           const s = teamStats[pick.playerTeam];
-          if (s) points = s.wins * teamWeight;
+          if (s) points = s.wins * teamWeights.win;
         }
 
         if (points === undefined) return pick;

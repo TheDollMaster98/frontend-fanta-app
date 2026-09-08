@@ -31,15 +31,49 @@ export interface ScoringWeights {
   deaths: number;
   assists: number;
   win: number; // bonus se la squadra del giocatore vince quella partita
+  // csPer50/visionPer10: punti ogni 50 CS e ogni 10 di Vision Score.
+  // ATTENZIONE — non ancora applicati al calcolo reale in
+  // FantaContext.recalculateScores: servono i nomi esatti dei campi
+  // Leaguepedia (ScoreboardPlayers) per CS e Vision Score, non ancora
+  // confermati. Il campo si salva e si mostra in UI, ma oggi non produce
+  // punti finché quei nomi non sono verificati (vedi TODO.md).
+  csPer50: number;
+  visionPer10: number;
 }
 
 // Pesi punteggio per ruolo (es. "Top Laner", "Jungler", ... — le stesse
 // stringhe di SPORT_TEMPLATES.lol.roles in lib/constants.ts): kill/morti/
-// assist/vittoria non valgono uguale per ogni ruolo, quindi ogni ruolo ha
-// il proprio set. Applicati in base al playerRole reale del pick — vale
-// anche per i jolly, che contano col peso del loro ruolo vero, non un set
-// a parte.
+// assist/vittoria/CS/vision non valgono uguale per ogni ruolo, quindi ogni
+// ruolo ha il proprio set. Applicati in base al playerRole reale del pick
+// — vale anche per i jolly, che contano col peso del loro ruolo vero, non
+// un set a parte.
 export type RoleScoringWeights = Record<string, ScoringWeights>;
+
+// Pesi per le pick "team"/"coach": la squadra (o quella allenata dal
+// coach) non è un giocatore singolo, quindi ha un set di statistiche
+// completamente diverso — obiettivi di partita invece di kill/morti/
+// assist individuali. Stessa avvertenza di ScoringWeights: tower/dragon/
+// voidGrub/riftHerald/inhibitor/atakhan/csPer100/goldPer10k NON sono
+// ancora applicati al calcolo reale, servono i nomi esatti dei campi
+// Leaguepedia (ScoreboardGames) per gli obiettivi — non ancora confermati.
+// kill/death/assist/win/csPer100 restano 0 di default: sono qui per
+// completezza (rispecchiano lo schema a cui si è ispirata la lega), ma un
+// pick "team" non ha kill/morti/assist propri — solo obiettivi e vittoria.
+export interface TeamScoringWeights {
+  win: number;
+  tower: number;
+  dragon: number; // dragone elementale
+  voidGrub: number;
+  riftHerald: number;
+  inhibitor: number;
+  atakhan: number;
+  baron: number;
+  kill: number;
+  death: number;
+  assist: number;
+  csPer100: number;
+  goldPer10k: number;
+}
 
 export interface FantaSettings {
   generalBudget: number; // Budget generale per tutti
@@ -58,9 +92,9 @@ export interface FantaSettings {
   // giocatori, uno per ruolo. Bloccati (modificabili solo da admin/dev,
   // non vice) una volta che le partite del torneo sono iniziate.
   scoringWeights?: RoleScoringWeights;
-  // Pesi per le pick "team"/"coach": solo vittoria squadra, niente kill/
-  // morti/assist perché non sono un giocatore singolo.
-  teamScoringWeight?: number;
+  // Pesi per le pick "team"/"coach": obiettivi di partita + vittoria,
+  // niente kill/morti/assist perché non sono un giocatore singolo.
+  teamScoringWeights?: TeamScoringWeights;
 }
 
 // Ruolo di un membro NELLA LEGA (permessi) — non va confuso col ruolo del

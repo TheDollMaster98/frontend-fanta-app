@@ -1,4 +1,9 @@
-import { BidPreset, ScoringWeights, RoleScoringWeights } from "@/types";
+import {
+  BidPreset,
+  ScoringWeights,
+  RoleScoringWeights,
+  TeamScoringWeights,
+} from "@/types";
 
 // Default bid presets
 export const DEFAULT_BID_PRESETS: BidPreset[] = [
@@ -34,13 +39,17 @@ export const PLAYOFF_CIRCUITS: readonly string[] = ["MSI", "WORLDS"];
 export const LOL_ROLES = ["Top Laner", "Jungler", "Mid Laner", "ADC", "Support"];
 
 // Template usato per popolare ogni ruolo la prima volta: stessi numeri di
-// prima quando i pesi erano un unico set globale. Da qui in poi ogni ruolo
-// ha il proprio set modificabile indipendentemente.
+// prima quando i pesi erano un unico set globale, più csPer50/visionPer10 a
+// 0 (nessun valore di default sensato finché non sono attivi — vedi
+// l'avvertenza su ScoringWeights in types/index.ts). Da qui in poi ogni
+// ruolo ha il proprio set modificabile indipendentemente.
 export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
   kills: 3,
   deaths: -1,
   assists: 1.5,
   win: 2,
+  csPer50: 0,
+  visionPer10: 0,
 };
 
 export const DEFAULT_ROLE_SCORING_WEIGHTS: RoleScoringWeights =
@@ -48,9 +57,27 @@ export const DEFAULT_ROLE_SCORING_WEIGHTS: RoleScoringWeights =
     LOL_ROLES.map((role) => [role, { ...DEFAULT_SCORING_WEIGHTS }]),
   );
 
-// Pesi per le pick "team"/"coach": solo vittoria squadra (niente kill/
-// morti/assist, non sono un giocatore singolo).
-export const DEFAULT_TEAM_SCORING_WEIGHT = 2;
+// Pesi per le pick "team"/"coach": stessa struttura del "Mock Draft" preso
+// come riferimento (tower/dragon/void grub/rift herald/inhibitor/atakhan/
+// baron + kill/death/assist/CS/win/gold). Solo gli obiettivi hanno un
+// default diverso da 0: kill/death/assist/CS/win restano 0 perché un pick
+// "team" non ha statistiche individuali, sono lì solo per rispecchiare lo
+// schema del riferimento — modificabili comunque se un giorno servono.
+export const DEFAULT_TEAM_SCORING_WEIGHTS: TeamScoringWeights = {
+  win: 0,
+  tower: 0.5,
+  dragon: 1,
+  voidGrub: 0.5,
+  riftHerald: 0.75,
+  inhibitor: 0.75,
+  atakhan: 1,
+  baron: 2,
+  kill: 0,
+  death: 0,
+  assist: 0,
+  csPer100: 0,
+  goldPer10k: 0,
+};
 
 // Default fanta settings
 export const DEFAULT_FANTA_SETTINGS = {
@@ -63,7 +90,7 @@ export const DEFAULT_FANTA_SETTINGS = {
   maxPlayersPerRole: {} as Record<string, number>,
   maxJolly: 0,
   scoringWeights: DEFAULT_ROLE_SCORING_WEIGHTS,
-  teamScoringWeight: DEFAULT_TEAM_SCORING_WEIGHT,
+  teamScoringWeights: DEFAULT_TEAM_SCORING_WEIGHTS,
 };
 
 // Esempi di ruoli per diversi sport/giochi (personalizzabili)

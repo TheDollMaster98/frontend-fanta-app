@@ -36,7 +36,7 @@ import {
   CIRCUIT_TYPES,
   LOL_ROLES,
   DEFAULT_ROLE_SCORING_WEIGHTS,
-  DEFAULT_TEAM_SCORING_WEIGHT,
+  DEFAULT_TEAM_SCORING_WEIGHTS,
 } from "@/lib/constants";
 import { Copy, UserPlus } from "lucide-react";
 
@@ -101,8 +101,10 @@ function AdminPageContent({
       ...DEFAULT_ROLE_SCORING_WEIGHTS,
       ...currentFanta.settings.scoringWeights,
     },
-    teamScoringWeight:
-      currentFanta.settings.teamScoringWeight ?? DEFAULT_TEAM_SCORING_WEIGHT,
+    teamScoringWeights: {
+      ...DEFAULT_TEAM_SCORING_WEIGHTS,
+      ...currentFanta.settings.teamScoringWeights,
+    },
   });
   const availableRoles = SPORT_TEMPLATES[currentFanta.sportType]?.roles || [];
   const [generalInfo, setGeneralInfo] = useState({
@@ -433,12 +435,12 @@ function AdminPageContent({
                     <RoleScoringWeightsEditor
                       roles={LOL_ROLES}
                       weights={settings.scoringWeights}
-                      teamWeight={settings.teamScoringWeight}
+                      teamWeights={settings.teamScoringWeights}
                       onChangeRoleWeights={(scoringWeights) =>
                         setSettings({ ...settings, scoringWeights })
                       }
-                      onChangeTeamWeight={(teamScoringWeight) =>
-                        setSettings({ ...settings, teamScoringWeight })
+                      onChangeTeamWeights={(teamScoringWeights) =>
+                        setSettings({ ...settings, teamScoringWeights })
                       }
                     />
                   </div>

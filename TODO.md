@@ -23,12 +23,25 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
       **Aggiornamento successivo**: `scoringWeights` non è più un unico set
       globale ma un set per ruolo (`RoleScoringWeights`, chiave = stringa
       ruolo esatta di `SPORT_TEMPLATES.lol.roles`/`LOL_ROLES`) — kill/morti/
-      assist/vittoria non valgono uguale per Top e Support. Aggiunto anche
-      `teamScoringWeight` separato (solo vittoria) per le pick
-      Squadra/Coach, che non hanno statistiche individuali. Editor
+      assist/vittoria non valgono uguale per Top e Support. Editor
       condiviso `components/RoleScoringWeightsEditor.tsx` (tab per ruolo +
       tab Squadra/Coach), usato sia in `CreateFantaDialog` che in Gestione
       Lega, così non si disallineano.
+      **Secondo aggiornamento** (schema ripreso da un tool di riferimento
+      mostrato dall'utente): aggiunti `csPer50`/`visionPer10` a
+      `ScoringWeights` (per ruolo) e sostituito il vecchio
+      `teamScoringWeight` (un numero) con `teamScoringWeights`
+      (`TeamScoringWeights`: tower/dragon/voidGrub/riftHerald/inhibitor/
+      atakhan/baron/kill/death/assist/csPer100/win/goldPer10k — stessi
+      campi del tool di riferimento). **Attenzione, non è un dettaglio**:
+      questi campi nuovi (CS, Vision Score, tutti gli obiettivi di
+      squadra, oro) si SALVANO e si mostrano in UI (marcati con ● in
+      giallo nell'editor) ma NON entrano ancora nel calcolo punti reale —
+      `FantaContext.recalculateScores` continua a usare solo kill/morti/
+      assist/vittoria, gli unici campi Leaguepedia confermati finora.
+      Bloccato in attesa dei cargofields di `ScoreboardPlayers` (CS,
+      Vision Score) e di `ScoreboardGames` al completo (nomi esatti dei
+      campi obiettivo) — richiesti all'utente, non ancora ricevuti.
 - [x] **Step 2 — Punteggio reale + calendario**: nuova pagina "Classifica"
       (solo leghe LoL). `lib/roundRobin.ts` genera il calendario a girone
       all'italiana (metodo del cerchio) tra i membri, salvato in
