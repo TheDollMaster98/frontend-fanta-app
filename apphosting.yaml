@@ -19,6 +19,17 @@ env:
     availability:
       - RUNTIME
 
+  # Chiave API non ufficiale di lolesports.com (esports-api.lolesports.com /
+  # feed.lolesports.com), usata solo lato server. Non è una credenziale
+  # personale: è il valore pubblico che lolesports.com stesso spedisce a
+  # ogni browser che lo visita, documentato in chiaro nello swagger della
+  # community (vickz84259/lolesports-api-docs) — per questo qui in chiaro
+  # e non su Secret Manager, stesso trattamento di LEAGUEPEDIA_USERNAME.
+  - variable: LOLESPORTS_API_KEY
+    value: "0TvQnueqKa5mxJntVWt0w4LpLfEkrV1Ta8rQBb9Z"
+    availability:
+      - RUNTIME
+
   # Config Firebase client-side (pubblica, inlineata nel bundle al build).
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
     value: "AIzaSyA1PBLdsSE8e_hSWhUkFPsgrO4liwzBKgQ"
