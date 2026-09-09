@@ -129,20 +129,68 @@ un'altra ipotesi shippata direttamente in produzione.
       modo atteso, il confronto fallisce sempre. Da confermare con test
       reali, non supposizioni.
 
-**Rischio noto, non toccato** (già accettato in giri precedenti, resta
-valido): `fantas/**` e `proplayers/**` restano su "loggato = può leggere/
+**Rischio noto, non toccato** — aggiornato dopo il fix sotto:
+`proplayers/**` e la maggior parte di `fantas/**` (create/delete ovunque,
+`history`/`calendar`/`joinRequests`) restano su "loggato = può leggere/
 scrivere qualsiasi cosa", senza verificare che sia davvero membro della
-lega che sta toccando. Per un gruppo di amici va bene; se l'app dovesse
-mai crescere o diventare pubblica, questa parte andrebbe rifatta sul
-serio con controlli di membership nelle regole stesse, non solo lato
-client. La route `/api/leaguepedia` resta anche senza rate limiting o
-verifica di login all'app: l'allowlist sulle action chiude il rischio più
-concreto (abuso delle credenziali del bot per azioni arbitrarie), ma
-resta comunque chiamabile da chiunque — se un giorno diventasse un
-problema reale (costi Firebase App Hosting, bot bannato per troppe
-richieste), la soluzione è richiedere un token Firebase Auth valido su
-questa route, non ancora fatto perché non richiesto e perché per un
-gruppo di amici il rischio pratico è basso.
+lega che sta toccando. `auctions`/`members`/`draft` ora hanno controlli
+mirati (vedi sezione "Lock mercato lato regole" sotto) ma SOLO per il
+blocco a mercato chiuso, non per la membership in generale: un non-membro
+autenticato può ancora, ad es., leggere le aste di una lega a cui non
+appartiene, o (a mercato aperto) scrivere dati arbitrari se conosce gli
+id giusti. Per un gruppo di amici va bene; se l'app dovesse mai crescere
+o diventare pubblica, andrebbe rifatta sul serio con controlli di
+membership su OGNI operazione, non solo sul lock. La route
+`/api/leaguepedia` resta anche senza rate limiting o verifica di login
+all'app: l'allowlist sulle action chiude il rischio più concreto (abuso
+delle credenziali del bot per azioni arbitrarie), ma resta comunque
+chiamabile da chiunque — se un giorno diventasse un problema reale (costi
+Firebase App Hosting, bot bannato per troppe richieste), la soluzione è
+richiedere un token Firebase Auth valido su questa route, non ancora
+fatto perché non richiesto e perché per un gruppo di amici il rischio
+pratico è basso.
+
+## Lock mercato lato regole (9/9, testato con l'emulatore)
+
+Il blocco di "Avvia Stagione" (`settings.seasonStarted`) era solo
+client-side: bottoni nascosti, ma niente lo impediva davvero da console
+del browser. Su richiesta esplicita, spostato anche in `firestore.rules`
+per `fantas/{fantaId}/auctions`, `members`, `draft` — **questa volta
+testato per davvero** con l'emulatore Firestore locale
+(`firebase emulators:exec` + `@firebase/rules-unit-testing`, 21 casi,
+tutti verdi) PRIMA di scrivere il file vero, non solo letto a mente come
+la volta che ha rotto il login. `users/{uid}` non è stato toccato
+(resta identico alla versione di rollback): quel bug resta aperto e
+separato, vedi sopra.
+
+Cosa bloccano le nuove regole a mercato chiuso, per i membri normali
+(admin/vice restano sempre operativi):
+- `auctions`: `create` sempre negato (niente nuove aste); `update` negato
+  solo se cambia `currentPrice` (= un'offerta vera — avvio/pausa/
+  chiusura/annullamento/assegnazione manuale non toccano quel campo,
+  restano permessi).
+- `members/{uid}`: `update` negato solo se il campo `team` si accorcia
+  (rimozione di un pick). La CRESCITA di `team` resta permessa a
+  qualsiasi membro autenticato, non solo al proprietario o all'admin:
+  è necessario, perché la chiusura di un'asta o l'assegnazione di una
+  pick di draft possono arrivare dal browser di un membro qualsiasi
+  (nessun cron/Cloud Function in quest'app — vedi i commenti in
+  `FantaContext.tsx`), non solo da chi vince o da chi amministra.
+  **Test di regressione dedicato per questo esatto punto**, proprio
+  perché bloccarlo per sbaglio avrebbe rotto l'assegnazione automatica.
+- `draft/{docId}`: `create` sempre negato (niente nuovi draft); `update`
+  negato solo se chi scrive è esattamente l'utente il cui turno è quello
+  corrente (calcolato in regola con la stessa logica a serpentina di
+  `lib/draft.ts#getDraftTurnUserId`) — uno skip per timeout innescato da
+  un client diverso resta permesso, stesso motivo di sopra.
+
+Residuo noto, accettato consapevolmente (non quello che è stato chiesto
+di bloccare oggi, e non sposta soldi/punti): un membro smaliziato
+potrebbe ancora sovrascrivere l'intero documento `draft/state` via
+console (es. resettarne l'ordine) — la regola blocca la pick del proprio
+turno, non una riscrittura totale del documento. Se un giorno serve
+chiuderlo, si aggiunge un controllo su `order` che non cambia rispetto a
+`resource.data`, testato con lo stesso metodo prima di deployare.
 
 ## Motore fantacampionato — piano a step (in corso)
 

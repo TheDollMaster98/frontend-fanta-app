@@ -5,18 +5,165 @@ rules_version = '2';
 // applicata lato client. L'unico requisito è essere loggati: niente accesso
 // anonimo da chi trova solo il projectId, e niente scadenza a tempo.
 //
-// ATTENZIONE: rollback di emergenza (9/9) da una versione più stretta che
-// bloccava isDeveloper (vedi commit 43d8d81) perché in produzione dava
-// permission-denied su TUTTI i listener, non solo su users/{uid} — causa
-// esatta non ancora isolata (il sospetto principale è come Firestore
-// combina più `match` sullo stesso path quando uno ha `get()` con default,
-// ma non è ancora confermato). Finché non trovo il bug la escalation
-// isDeveloper (autopromozione ad admin scrivendo isDeveloper=true dalla
-// console del browser) è di nuovo aperta: vedi TODO.md.
+// ATTENZIONE (9/9): la versione precedente aveva una regola più stretta su
+// users/{uid} che ha rotto il login in produzione (causa non isolata prima
+// del rollback — vedi TODO.md). Questa volta users/{uid} resta IDENTICO
+// alla versione di rollback (blanket, invariato) apposta per non toccare
+// quel codice non ancora capito: le uniche regole nuove sono sotto
+// fantas/{fantaId}, testate con l'emulatore Firestore (@firebase/
+// rules-unit-testing) PRIMA del deploy, non solo lette a mente.
+//
+// NOTA IMPORTANTE su come Firestore combina più `match` sullo stesso path:
+// se un wildcard generico (es. {subpath=**}) copre anche un path già
+// gestito da una regola più specifica, l'accesso è concesso se ALMENO UNA
+// delle due condizioni è vera (OR, non "vince la più specifica"). Per
+// questo qui sotto NON esiste un {subpath=**} generico sotto fantas/{id}:
+// ogni sottocollezione è elencata a mano, altrimenti il blocco su
+// auctions/members/draft verrebbe vanificato dal wildcard.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
+
+    match /users/{userId} {
       allow read, write: if request.auth != null;
+    }
+
+    match /proplayers/{playerId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /fantas/{fantaId} {
+      allow read, write: if request.auth != null;
+
+      // true se la lega ha il mercato chiuso (bottone "Avvia Stagione" in
+      // Gestione Lega). Assente/false = mercato aperto (default per le
+      // leghe create prima di questo campo).
+      function seasonStarted() {
+        return get(/databases/$(database)/documents/fantas/$(fantaId))
+          .data.settings.get('seasonStarted', false) == true;
+      }
+
+      // Ruolo di chi sta scrivendo IN QUESTA lega (non il ruolo di un
+      // pick/giocatore pro, tutt'altra cosa). Se l'utente non è membro di
+      // questa lega, get() fallisce e la funzione chiamante valuta false
+      // (comportamento documentato di Firestore Rules: un get()/exists()
+      // che fallisce nega, non va in errore verso il client).
+      function isAdminOrVice() {
+        let role = get(
+          /databases/$(database)/documents/fantas/$(fantaId)/members/$(request.auth.uid)
+        ).data.role;
+        return role == 'admin' || role == 'vice';
+      }
+
+      match /members/{memberId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null;
+        allow delete: if request.auth != null;
+
+        // Il team di un membro cresce quando un'asta si chiude o parte una
+        // pick di draft — scritture che possono arrivare dal browser di
+        // QUALSIASI membro connesso (nessun cron/Cloud Function in
+        // quest'app, vedi i commenti in FantaContext.tsx), non solo
+        // dall'admin o dal proprietario. Bloccare quello romperebbe
+        // l'assegnazione automatica. L'unica cosa che blocchiamo a mercato
+        // chiuso è un membro normale che TOGLIE un proprio giocatore
+        // (team che si accorcia): admin/vice restano liberi di farlo per
+        // sistemare rose.
+        function isTeamShrinking() {
+          return ('team' in request.resource.data) && ('team' in resource.data)
+            && request.resource.data.team.size() < resource.data.team.size();
+        }
+
+        allow update: if request.auth != null && (
+          !seasonStarted()
+          || isAdminOrVice()
+          || !isTeamShrinking()
+        );
+      }
+
+      match /auctions/{auctionId} {
+        allow read: if request.auth != null;
+        allow delete: if request.auth != null;
+
+        // Niente nuove aste una volta chiuso il mercato: per chiunque,
+        // admin incluso (non ha senso aprirne di nuove a stagione iniziata;
+        // chi deve sistemare qualcosa usa l'assegnazione manuale su aste
+        // già esistenti, non serve crearne altre).
+        allow create: if request.auth != null && !seasonStarted();
+
+        // currentPrice cambia SOLO con un'offerta (placeBid): avvio/pausa/
+        // chiusura/annullamento/assegnazione manuale di un'asta non lo
+        // toccano mai, quindi restano sempre permessi. Un'offerta vera a
+        // mercato chiuso è permessa solo ad admin/vice.
+        function isPriceChange() {
+          return request.resource.data.currentPrice != resource.data.currentPrice;
+        }
+
+        allow update: if request.auth != null && (
+          !seasonStarted()
+          || isAdminOrVice()
+          || !isPriceChange()
+        );
+
+        match /bids/{bidId} {
+          allow read, write: if request.auth != null;
+        }
+      }
+
+      match /draft/{docId} {
+        allow read: if request.auth != null;
+        allow delete: if request.auth != null;
+
+        // Niente nuovi draft una volta chiuso il mercato (stesso
+        // ragionamento delle aste).
+        allow create: if request.auth != null && !seasonStarted();
+
+        // Turno atteso ricavato dagli stessi dati usati lato client
+        // (lib/draft.ts#getDraftTurnUserId): a giro pari l'ordine è in
+        // avanti, a giro dispari invertito. Se il documento non ha ancora
+        // un ordine (stato iniziale teorico) l'espressione fallisce e la
+        // funzione chiamante nega, comportamento accettabile qui.
+        function expectedTurnUserId() {
+          let order = resource.data.order;
+          let slotIndex = resource.data.currentSlotIndex;
+          let turnIndex = resource.data.currentTurnIndex;
+          let forward = slotIndex % 2 == 0;
+          return forward
+            ? order[turnIndex]
+            : order[order.size() - 1 - turnIndex];
+        }
+
+        // Blocchiamo solo il caso preciso "l'utente di turno sta facendo
+        // la propria pick": uno skip per timeout innescato da un client
+        // qualsiasi (non necessariamente l'utente di turno) resta
+        // permesso, altrimenti romperebbe lo stesso meccanismo "nessun
+        // cron" già usato per le aste. Residuo noto, accettato: un membro
+        // smaliziato potrebbe comunque riscrivere l'intero documento
+        // draft/state (es. resettare l'ordine) via console del browser;
+        // non è quello che l'utente ha chiesto di bloccare oggi e non
+        // sposta soldi/punti, solo fastidio risolvibile a mano da admin.
+        function isSelfPickAttempt() {
+          return resource.data.status == 'active'
+            && request.auth.uid == expectedTurnUserId();
+        }
+
+        allow update: if request.auth != null && (
+          !seasonStarted()
+          || isAdminOrVice()
+          || !isSelfPickAttempt()
+        );
+      }
+
+      match /history/{entryId} {
+        allow read, write: if request.auth != null;
+      }
+
+      match /calendar/{roundId} {
+        allow read, write: if request.auth != null;
+      }
+
+      match /joinRequests/{requestId} {
+        allow read, write: if request.auth != null;
+      }
     }
   }
 }
