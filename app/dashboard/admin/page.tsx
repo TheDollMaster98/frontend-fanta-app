@@ -302,7 +302,9 @@ function AdminPageContent({
                 Impostazioni Generali
               </CardTitle>
               <CardDescription className="text-slate-400">
-                Configura budget, puntate e countdown per le aste
+                {settings.draftMode === "snake"
+                  ? "Configura il timer per scelta e i limiti rosa del draft"
+                  : "Configura budget, puntate e countdown per le aste"}
               </CardDescription>
             </CardHeader>
             <CardContent>
