@@ -84,11 +84,13 @@ service cloud.firestore {
         allow read: if request.auth != null;
         allow delete: if request.auth != null;
 
-        // Niente nuove aste una volta chiuso il mercato: per chiunque,
-        // admin incluso (non ha senso aprirne di nuove a stagione iniziata;
-        // chi deve sistemare qualcosa usa l'assegnazione manuale su aste
-        // già esistenti, non serve crearne altre).
-        allow create: if request.auth != null && !seasonStarted();
+        // Creare un'asta è già un'azione admin/vice lato UI (bottone "Crea
+        // Nuova Asta"): lo stesso vincolo va imposto anche qui, altrimenti
+        // un membro normale potrebbe crearne una da console del browser.
+        // Niente nuove aste comunque una volta chiuso il mercato, admin
+        // incluso (chi deve sistemare qualcosa usa l'assegnazione manuale
+        // su aste già esistenti, non serve crearne altre).
+        allow create: if request.auth != null && !seasonStarted() && isAdminOrVice();
 
         // currentPrice cambia SOLO con un'offerta (placeBid): avvio/pausa/
         // chiusura/annullamento/assegnazione manuale di un'asta non lo
@@ -113,9 +115,10 @@ service cloud.firestore {
         allow read: if request.auth != null;
         allow delete: if request.auth != null;
 
-        // Niente nuovi draft una volta chiuso il mercato (stesso
-        // ragionamento delle aste).
-        allow create: if request.auth != null && !seasonStarted();
+        // Avviare un draft è già un'azione admin/vice lato UI, stesso
+        // discorso delle aste: solo admin/vice possono crearlo, e comunque
+        // mai a mercato chiuso.
+        allow create: if request.auth != null && !seasonStarted() && isAdminOrVice();
 
         // Turno atteso ricavato dagli stessi dati usati lato client
         // (lib/draft.ts#getDraftTurnUserId): a giro pari l'ordine è in
@@ -132,24 +135,34 @@ service cloud.firestore {
             : order[order.size() - 1 - turnIndex];
         }
 
-        // Blocchiamo solo il caso preciso "l'utente di turno sta facendo
-        // la propria pick": uno skip per timeout innescato da un client
-        // qualsiasi (non necessariamente l'utente di turno) resta
+        // Blocca il caso "l'utente di turno sta facendo la propria pick"
+        // quando il mercato è chiuso: uno skip per timeout innescato da un
+        // client qualsiasi (non necessariamente l'utente di turno) resta
         // permesso, altrimenti romperebbe lo stesso meccanismo "nessun
-        // cron" già usato per le aste. Residuo noto, accettato: un membro
-        // smaliziato potrebbe comunque riscrivere l'intero documento
-        // draft/state (es. resettare l'ordine) via console del browser;
-        // non è quello che l'utente ha chiesto di bloccare oggi e non
-        // sposta soldi/punti, solo fastidio risolvibile a mano da admin.
+        // cron" già usato per le aste.
         function isSelfPickAttempt() {
           return resource.data.status == 'active'
             && request.auth.uid == expectedTurnUserId();
         }
 
+        // L'ordine dei turni si scrive una volta sola, all'avvio del
+        // draft (startDraft, già ristretto ad admin/vice sopra): nessuna
+        // pick o skip legittimi lo toccano mai, quindi un cambio di
+        // `order` fuori da un create è sempre e solo un reset totale del
+        // draft. Va permesso ad admin/vice (possono aver bisogno di
+        // rifarlo da capo) ma mai a un membro normale, a prescindere dal
+        // mercato — non è la stessa cosa del lock stagione, è integrità
+        // dei dati.
+        function isOrderChange() {
+          return request.resource.data.order != resource.data.order;
+        }
+
         allow update: if request.auth != null && (
-          !seasonStarted()
-          || isAdminOrVice()
-          || !isSelfPickAttempt()
+          isAdminOrVice()
+          || (
+            !isOrderChange()
+            && (!seasonStarted() || !isSelfPickAttempt())
+          )
         );
       }
 

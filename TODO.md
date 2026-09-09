@@ -165,10 +165,13 @@ separato, vedi sopra.
 
 Cosa bloccano le nuove regole a mercato chiuso, per i membri normali
 (admin/vice restano sempre operativi):
-- `auctions`: `create` sempre negato (niente nuove aste); `update` negato
-  solo se cambia `currentPrice` (= un'offerta vera — avvio/pausa/
-  chiusura/annullamento/assegnazione manuale non toccano quel campo,
-  restano permessi).
+- `auctions`: `create` sempre negato, per chiunque incluso admin/vice a
+  mercato chiuso (niente nuove aste) — e comunque, a prescindere dal
+  mercato, riservato ad admin/vice: un membro normale non può crearne
+  una nemmeno a mercato aperto, stesso vincolo già imposto in UI.
+  `update` negato solo se cambia `currentPrice` (= un'offerta vera —
+  avvio/pausa/chiusura/annullamento/assegnazione manuale non toccano
+  quel campo, restano permessi).
 - `members/{uid}`: `update` negato solo se il campo `team` si accorcia
   (rimozione di un pick). La CRESCITA di `team` resta permessa a
   qualsiasi membro autenticato, non solo al proprietario o all'admin:
@@ -178,19 +181,23 @@ Cosa bloccano le nuove regole a mercato chiuso, per i membri normali
   `FantaContext.tsx`), non solo da chi vince o da chi amministra.
   **Test di regressione dedicato per questo esatto punto**, proprio
   perché bloccarlo per sbaglio avrebbe rotto l'assegnazione automatica.
-- `draft/{docId}`: `create` sempre negato (niente nuovi draft); `update`
-  negato solo se chi scrive è esattamente l'utente il cui turno è quello
-  corrente (calcolato in regola con la stessa logica a serpentina di
-  `lib/draft.ts#getDraftTurnUserId`) — uno skip per timeout innescato da
-  un client diverso resta permesso, stesso motivo di sopra.
-
-Residuo noto, accettato consapevolmente (non quello che è stato chiesto
-di bloccare oggi, e non sposta soldi/punti): un membro smaliziato
-potrebbe ancora sovrascrivere l'intero documento `draft/state` via
-console (es. resettarne l'ordine) — la regola blocca la pick del proprio
-turno, non una riscrittura totale del documento. Se un giorno serve
-chiuderlo, si aggiunge un controllo su `order` che non cambia rispetto a
-`resource.data`, testato con lo stesso metodo prima di deployare.
+- `draft/{docId}`: `create` sempre riservato ad admin/vice (mai a
+  mercato chiuso, stesso discorso delle aste). `update` negato se
+  chi scrive è esattamente l'utente il cui turno è quello corrente
+  (calcolato in regola con la stessa logica a serpentina di
+  `lib/draft.ts#getDraftTurnUserId`) e il mercato è chiuso — uno skip
+  per timeout innescato da un client diverso resta permesso, stesso
+  motivo di sopra. **Aggiornamento (stesso giorno)**: bloccato anche il
+  reset totale del draft — il campo `order` (l'ordine dei turni) può
+  essere scritto solo in fase di creazione da admin/vice; qualunque
+  `update` successivo che lo cambia è negato a chiunque non sia
+  admin/vice, a prescindere dal mercato (non è un problema di lock
+  stagione, è integrità dei dati: `order` non cambia mai in una pick o
+  skip legittimi). Chiudeva un residuo che avevo lasciato aperto la
+  prima volta ("un membro smaliziato potrebbe riscrivere l'intero
+  documento draft/state") — richiesto esplicitamente, sistemato con lo
+  stesso metodo (emulatore prima, 26 casi totali tutti verdi, non
+  21 come alla prima versione di questo fix).
 
 ## Motore fantacampionato — piano a step (in corso)
 
