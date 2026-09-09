@@ -39,7 +39,7 @@ import { Plus } from "lucide-react";
 const INITIAL_FORM = {
   name: "",
   description: "",
-  sportType: "calcio" as SportType,
+  sportType: "lol" as SportType,
   circuitType: "LCK",
   maxJolly: 0,
   scoringWeights: { ...DEFAULT_ROLE_SCORING_WEIGHTS },
@@ -122,8 +122,8 @@ export function CreateFantaDialog() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="calcio">Calcio</SelectItem>
                 <SelectItem value="lol">League of Legends</SelectItem>
+                <SelectItem value="calcio">Calcio</SelectItem>
                 <SelectItem value="basket">Basket</SelectItem>
                 <SelectItem value="custom">Personalizzato</SelectItem>
               </SelectContent>

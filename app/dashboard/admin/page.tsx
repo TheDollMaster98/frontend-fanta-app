@@ -66,7 +66,9 @@ export default function AdminPage() {
     return null;
   }
 
-  return <AdminPageContent currentFanta={currentFanta} updateFanta={updateFanta} />;
+  return (
+    <AdminPageContent currentFanta={currentFanta} updateFanta={updateFanta} />
+  );
 }
 
 function AdminPageContent({
@@ -166,7 +168,9 @@ function AdminPageContent({
       const foundMember = members.find((m) => m.userId === foundId);
 
       if (!foundMember) {
-        alert("Questo utente deve prima entrare nella lega (invito o richiesta)");
+        alert(
+          "Questo utente deve prima entrare nella lega (invito o richiesta)",
+        );
         return;
       }
       if (foundMember.role === "vice") {
@@ -254,8 +258,8 @@ function AdminPageContent({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="calcio">Calcio</SelectItem>
                       <SelectItem value="lol">League of Legends</SelectItem>
+                      <SelectItem value="calcio">Calcio</SelectItem>
                       <SelectItem value="basket">Basket</SelectItem>
                       <SelectItem value="custom">Personalizzato</SelectItem>
                     </SelectContent>
@@ -429,8 +433,8 @@ function AdminPageContent({
                 {currentFanta.sportType === "lol" && (
                   <div className="space-y-2">
                     <p className="text-xs text-slate-500">
-                      Da bloccare (solo admin/dev) quando inizieranno le
-                      partite — per ora modificabile anche dai vice-admin
+                      Da bloccare (solo admin/dev) quando inizieranno le partite
+                      — per ora modificabile anche dai vice-admin
                     </p>
                     <RoleScoringWeightsEditor
                       roles={LOL_ROLES}
@@ -469,7 +473,9 @@ function AdminPageContent({
                             value={settings.maxPlayersPerRole[role] ?? ""}
                             onChange={(e) => {
                               const value = e.target.value;
-                              const nextPerRole = { ...settings.maxPlayersPerRole };
+                              const nextPerRole = {
+                                ...settings.maxPlayersPerRole,
+                              };
                               if (value === "") {
                                 delete nextPerRole[role];
                               } else {
@@ -713,7 +719,15 @@ function AdminPageContent({
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge variant={isCreator ? "default" : isVice ? "secondary" : "outline"}>
+                          <Badge
+                            variant={
+                              isCreator
+                                ? "default"
+                                : isVice
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                          >
                             {isCreator
                               ? "Creatore"
                               : isVice
