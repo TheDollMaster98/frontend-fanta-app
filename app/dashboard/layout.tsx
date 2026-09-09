@@ -4,7 +4,7 @@ import { ReactNode, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -142,6 +142,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     className="relative h-10 w-10 rounded-full"
                   >
                     <Avatar>
+                      {user.photoURL && (
+                        <AvatarImage src={user.photoURL} alt={user.name} />
+                      )}
                       <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
                     </Avatar>
                   </Button>

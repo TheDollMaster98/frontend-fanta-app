@@ -29,7 +29,8 @@ import {
   serverTimestamp,
   Timestamp,
 } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { auth, db, storage } from "@/lib/firebase";
 import type { User } from "@/types";
 
 interface AuthContextType {
@@ -41,6 +42,7 @@ interface AuthContextType {
   setIsDeveloper: (value: boolean) => Promise<void>;
   updateUserProfile: (name: string) => Promise<void>;
   updateUserEmail: (email: string) => Promise<void>;
+  updateUserPhoto: (file: File) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
   isLoading: boolean;
 }
@@ -86,10 +88,23 @@ async function loadOrCreateUserProfile(
     // corrente, non quello congelato al momento della creazione.
     const authEmail = firebaseUser.email || data.email;
     const authName = firebaseUser.displayName || data.name;
-    if (authEmail !== data.email || authName !== data.name) {
+    // Il photoURL invece NON si riallinea a quello di Auth una volta che
+    // l'utente ne ha caricato uno suo (updateUserPhoto scrive su entrambi):
+    // altrimenti un login Google con foto vecchia/assente sovrascriverebbe
+    // ogni volta l'avatar caricato a mano. Si aggiorna da Auth solo se su
+    // Firestore non c'è ancora nulla (es. primo login Google).
+    const authPhoto = data.photoURL || firebaseUser.photoURL || undefined;
+    if (
+      authEmail !== data.email ||
+      authName !== data.name ||
+      (!data.photoURL && firebaseUser.photoURL)
+    ) {
       updateDoc(ref, {
         email: authEmail,
         name: authName,
+        ...(!data.photoURL && firebaseUser.photoURL
+          ? { photoURL: firebaseUser.photoURL }
+          : {}),
         updatedAt: serverTimestamp(),
       });
     }
@@ -97,6 +112,7 @@ async function loadOrCreateUserProfile(
       id: firebaseUser.uid,
       email: authEmail,
       name: authName,
+      photoURL: authPhoto,
       isDeveloper: data.isDeveloper ?? false,
       createdAt: toDate(data.createdAt),
       updatedAt: toDate(data.updatedAt),
@@ -109,6 +125,10 @@ async function loadOrCreateUserProfile(
     isDeveloper: false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    // Niente firebaseUser.photoURL || undefined qui: Firestore rifiuta un
+    // campo undefined esplicito in setDoc, quindi il campo va omesso del
+    // tutto quando non c'è una foto (es. registrazione email/password).
+    ...(firebaseUser.photoURL ? { photoURL: firebaseUser.photoURL } : {}),
   };
   await setDoc(ref, profile);
 
@@ -116,6 +136,7 @@ async function loadOrCreateUserProfile(
     id: firebaseUser.uid,
     email: profile.email,
     name: profile.name,
+    photoURL: firebaseUser.photoURL || undefined,
     isDeveloper: profile.isDeveloper,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -205,6 +226,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((prev) => (prev ? { ...prev, name } : prev));
   };
 
+  // Percorso fisso users/{uid}/avatar (non uno per upload): ogni nuova
+  // foto sovrascrive la precedente, niente file orfani ad accumularsi su
+  // Storage. storage.rules limita già la scrittura al proprio uid.
+  const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+  const updateUserPhoto = async (file: File) => {
+    if (!auth.currentUser) return;
+    if (!file.type.startsWith("image/")) {
+      throw new Error("Il file deve essere un'immagine");
+    }
+    if (file.size > MAX_PHOTO_BYTES) {
+      throw new Error("Immagine troppo grande (max 5MB)");
+    }
+
+    const photoRef = ref(storage, `users/${auth.currentUser.uid}/avatar`);
+    await uploadBytes(photoRef, file);
+    const photoURL = await getDownloadURL(photoRef);
+
+    await updateProfile(auth.currentUser, { photoURL });
+    await updateDoc(doc(db, "users", auth.currentUser.uid), {
+      photoURL,
+      updatedAt: serverTimestamp(),
+    });
+    setUser((prev) => (prev ? { ...prev, photoURL } : prev));
+  };
+
   const updateUserEmail = async (email: string) => {
     if (!auth.currentUser) return;
     try {
@@ -239,6 +285,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsDeveloper,
         updateUserProfile,
         updateUserEmail,
+        updateUserPhoto,
         changePassword,
         isLoading,
       }}

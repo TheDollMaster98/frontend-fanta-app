@@ -126,17 +126,17 @@ export default function TeamPage() {
         {!isSnakeDraft && (
           <CardContent>
             <div className="grid md:grid-cols-3 gap-4">
-              <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                <p className="text-sm text-slate-400">Budget Totale</p>
-                <p className="text-2xl font-bold text-slate-100">{budget}€</p>
+              <div className="bg-slate-800 p-4 rounded-lg border border-green-900/50">
+                <p className="text-sm text-slate-400">Rimanente</p>
+                <p className="text-2xl font-bold text-green-400">{remaining}€</p>
               </div>
               <div className="bg-slate-800 p-4 rounded-lg border border-red-900/50">
                 <p className="text-sm text-slate-400">Speso</p>
                 <p className="text-2xl font-bold text-red-400">{spent}€</p>
               </div>
-              <div className="bg-slate-800 p-4 rounded-lg border border-green-900/50">
-                <p className="text-sm text-slate-400">Rimanente</p>
-                <p className="text-2xl font-bold text-green-400">{remaining}€</p>
+              <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <p className="text-sm text-slate-400">Budget Totale</p>
+                <p className="text-2xl font-bold text-slate-100">{budget}€</p>
               </div>
             </div>
           </CardContent>

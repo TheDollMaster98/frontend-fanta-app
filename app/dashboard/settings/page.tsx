@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
@@ -34,8 +35,14 @@ export default function SettingsPage() {
     updateTeamName,
     getMemberCount,
   } = useFanta();
-  const { user, setIsDeveloper, updateUserProfile, updateUserEmail, changePassword } =
-    useAuth();
+  const {
+    user,
+    setIsDeveloper,
+    updateUserProfile,
+    updateUserEmail,
+    updateUserPhoto,
+    changePassword,
+  } = useAuth();
   // Una volta visto come developer in questa sessione, il controllo resta
   // visibile anche se lo disattivi: così puoi riattivarlo senza dover
   // passare da Firestore Console. Un reload rivaluta lo stato vero.
@@ -46,6 +53,8 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
+  const [photoMessage, setPhotoMessage] = useState("");
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   const [teamName, setTeamName] = useState(
     user ? getTeamName(user.id) : "",
@@ -123,6 +132,28 @@ export default function SettingsPage() {
     }
   };
 
+  // Upload immediato alla scelta del file, non legato al form "Salva
+  // Modifiche" sotto: è un'azione a sé, coerente con come funzionano i
+  // selettori file nativi (scegli = fatto), senza un secondo click.
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setPhotoMessage("");
+    setIsUploadingPhoto(true);
+    try {
+      await updateUserPhoto(file);
+      setPhotoMessage("Foto profilo aggiornata");
+    } catch (error) {
+      setPhotoMessage(
+        error instanceof Error ? error.message : "Errore durante il caricamento",
+      );
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
   const handleTeamUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (user && teamName.trim()) {
@@ -158,6 +189,35 @@ export default function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              <div className="flex items-center gap-4 pb-4">
+                <Avatar className="h-16 w-16">
+                  {user?.photoURL && (
+                    <AvatarImage src={user.photoURL} alt={user.name} />
+                  )}
+                  <AvatarFallback className="text-xl">
+                    {user?.name.charAt(0)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="space-y-1">
+                  <Label htmlFor="photo" className="cursor-pointer">
+                    <span className="inline-flex h-9 items-center rounded-md border border-slate-700 px-3 text-sm hover:bg-slate-800">
+                      {isUploadingPhoto ? "Caricamento..." : "Cambia foto"}
+                    </span>
+                  </Label>
+                  <input
+                    id="photo"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={isUploadingPhoto}
+                    onChange={handlePhotoChange}
+                  />
+                  {photoMessage && (
+                    <p className="text-xs text-slate-500">{photoMessage}</p>
+                  )}
+                </div>
+              </div>
+              <Separator className="mb-4" />
               <form onSubmit={handleProfileUpdate} className="space-y-4">
                 {profileMessage && (
                   <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">

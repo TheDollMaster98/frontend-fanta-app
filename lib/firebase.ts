@@ -2,6 +2,7 @@ import { getApp, getApps, initializeApp } from "firebase/app";
 import { type Analytics, isSupported, getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -18,6 +19,7 @@ const firebaseConfig = {
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 
 // getAnalytics richiede `window` e IndexedDB, quindi va inizializzato
 // solo lato client e solo se il browser lo supporta.
