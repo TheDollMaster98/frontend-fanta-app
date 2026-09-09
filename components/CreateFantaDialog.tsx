@@ -48,6 +48,7 @@ const INITIAL_FORM = {
   teamScoringWeights: { ...DEFAULT_TEAM_SCORING_WEIGHTS },
   draftMode: "auction" as DraftMode,
   draftPickSeconds: MIN_COUNTDOWN_SECONDS,
+  defaultCountdown: MIN_COUNTDOWN_SECONDS,
 };
 
 export function CreateFantaDialog() {
@@ -70,6 +71,7 @@ export function CreateFantaDialog() {
         ...DEFAULT_FANTA_SETTINGS,
         draftMode: formData.draftMode,
         draftPickSeconds: formData.draftPickSeconds,
+        defaultCountdown: formData.defaultCountdown,
         ...(isLol
           ? {
               circuitType: formData.circuitType,
@@ -172,7 +174,7 @@ export function CreateFantaDialog() {
             </div>
           </div>
 
-          {formData.draftMode === "snake" && (
+          {formData.draftMode === "snake" ? (
             <div className="space-y-2">
               <Label htmlFor="draftPickSeconds">
                 Tempo per scelta (secondi)
@@ -194,6 +196,29 @@ export function CreateFantaDialog() {
                 Tra {MIN_COUNTDOWN_SECONDS}s e {MAX_COUNTDOWN_SECONDS}s. Se
                 scade, il turno viene saltato e va assegnato a mano
                 dall&apos;admin.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="defaultCountdown">
+                Countdown Asta Default (secondi)
+              </Label>
+              <Input
+                id="defaultCountdown"
+                type="number"
+                min={MIN_COUNTDOWN_SECONDS}
+                max={MAX_COUNTDOWN_SECONDS}
+                value={formData.defaultCountdown}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    defaultCountdown: Number(e.target.value),
+                  })
+                }
+              />
+              <p className="text-xs text-slate-500">
+                Tra {MIN_COUNTDOWN_SECONDS}s e {MAX_COUNTDOWN_SECONDS}s.
+                Cambiabile in seguito da Gestione Lega.
               </p>
             </div>
           )}
