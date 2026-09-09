@@ -99,6 +99,8 @@ function AdminPageContent({
     maxPlayersPerRole: currentFanta.settings.maxPlayersPerRole || {},
     circuitType: currentFanta.settings.circuitType || CIRCUIT_TYPES[0],
     maxJolly: currentFanta.settings.maxJolly || 0,
+    draftPickSeconds:
+      currentFanta.settings.draftPickSeconds || MIN_COUNTDOWN_SECONDS,
     scoringWeights: {
       ...DEFAULT_ROLE_SCORING_WEIGHTS,
       ...currentFanta.settings.scoringWeights,
@@ -135,6 +137,13 @@ function AdminPageContent({
         defaultCountdown: Math.min(
           MAX_COUNTDOWN_SECONDS,
           Math.max(MIN_COUNTDOWN_SECONDS, settings.defaultCountdown),
+        ),
+        draftPickSeconds: Math.min(
+          MAX_COUNTDOWN_SECONDS,
+          Math.max(
+            MIN_COUNTDOWN_SECONDS,
+            settings.draftPickSeconds ?? MIN_COUNTDOWN_SECONDS,
+          ),
         ),
       },
     });
@@ -298,76 +307,107 @@ function AdminPageContent({
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSettingsUpdate} className="space-y-4">
+                <p className="text-xs text-slate-500">
+                  Modalità: {settings.draftMode === "snake" ? "Draft a turni (snake)" : "Asta live"}
+                  {" "}— decisa alla creazione della lega, non cambiabile da qui.
+                </p>
                 <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="generalBudget">Budget Generale (€)</Label>
-                    <Input
-                      id="generalBudget"
-                      type="number"
-                      value={settings.generalBudget}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          generalBudget: Number(e.target.value),
-                        })
-                      }
-                      min={0}
-                    />
-                  </div>
+                  {settings.draftMode === "snake" ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="draftPickSeconds">
+                        Tempo per scelta nel Draft (secondi)
+                      </Label>
+                      <Input
+                        id="draftPickSeconds"
+                        type="number"
+                        value={settings.draftPickSeconds ?? MIN_COUNTDOWN_SECONDS}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            draftPickSeconds: Number(e.target.value),
+                          })
+                        }
+                        min={MIN_COUNTDOWN_SECONDS}
+                        max={MAX_COUNTDOWN_SECONDS}
+                      />
+                      <p className="text-xs text-slate-500">
+                        Tra {MIN_COUNTDOWN_SECONDS}s e {MAX_COUNTDOWN_SECONDS}s.
+                        Se scade, il turno viene saltato e va assegnato a mano.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="generalBudget">Budget Generale (€)</Label>
+                        <Input
+                          id="generalBudget"
+                          type="number"
+                          value={settings.generalBudget}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              generalBudget: Number(e.target.value),
+                            })
+                          }
+                          min={0}
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="defaultCountdown">
-                      Countdown Default (secondi)
-                    </Label>
-                    <Input
-                      id="defaultCountdown"
-                      type="number"
-                      value={settings.defaultCountdown}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          defaultCountdown: Number(e.target.value),
-                        })
-                      }
-                      min={MIN_COUNTDOWN_SECONDS}
-                      max={MAX_COUNTDOWN_SECONDS}
-                    />
-                    <p className="text-xs text-slate-500">
-                      Tra {MIN_COUNTDOWN_SECONDS}s e {MAX_COUNTDOWN_SECONDS}s
-                    </p>
-                  </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="defaultCountdown">
+                          Countdown Default (secondi)
+                        </Label>
+                        <Input
+                          id="defaultCountdown"
+                          type="number"
+                          value={settings.defaultCountdown}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              defaultCountdown: Number(e.target.value),
+                            })
+                          }
+                          min={MIN_COUNTDOWN_SECONDS}
+                          max={MAX_COUNTDOWN_SECONDS}
+                        />
+                        <p className="text-xs text-slate-500">
+                          Tra {MIN_COUNTDOWN_SECONDS}s e {MAX_COUNTDOWN_SECONDS}s
+                        </p>
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="minBid">Puntata Minima (€)</Label>
-                    <Input
-                      id="minBid"
-                      type="number"
-                      value={settings.minBid}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          minBid: Number(e.target.value),
-                        })
-                      }
-                      min={1}
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="minBid">Puntata Minima (€)</Label>
+                        <Input
+                          id="minBid"
+                          type="number"
+                          value={settings.minBid}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              minBid: Number(e.target.value),
+                            })
+                          }
+                          min={1}
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="maxBid">Puntata Massima (€)</Label>
-                    <Input
-                      id="maxBid"
-                      type="number"
-                      value={settings.maxBid}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          maxBid: Number(e.target.value),
-                        })
-                      }
-                      min={settings.minBid}
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="maxBid">Puntata Massima (€)</Label>
+                        <Input
+                          id="maxBid"
+                          type="number"
+                          value={settings.maxBid}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              maxBid: Number(e.target.value),
+                            })
+                          }
+                          min={settings.minBid}
+                        />
+                      </div>
+                    </>
+                  )}
 
                   <div className="space-y-2">
                     <Label htmlFor="maxPlayersTotal">

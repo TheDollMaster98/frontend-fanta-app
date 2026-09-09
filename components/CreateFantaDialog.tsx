@@ -31,9 +31,11 @@ import {
   LOL_ROLES,
   DEFAULT_ROLE_SCORING_WEIGHTS,
   DEFAULT_TEAM_SCORING_WEIGHTS,
+  MIN_COUNTDOWN_SECONDS,
+  MAX_COUNTDOWN_SECONDS,
 } from "@/lib/constants";
 import { generateInviteCode } from "@/lib/utils";
-import type { SportType } from "@/types";
+import type { DraftMode, SportType } from "@/types";
 import { Plus } from "lucide-react";
 
 const INITIAL_FORM = {
@@ -44,6 +46,8 @@ const INITIAL_FORM = {
   maxJolly: 0,
   scoringWeights: { ...DEFAULT_ROLE_SCORING_WEIGHTS },
   teamScoringWeights: { ...DEFAULT_TEAM_SCORING_WEIGHTS },
+  draftMode: "auction" as DraftMode,
+  draftPickSeconds: MIN_COUNTDOWN_SECONDS,
 };
 
 export function CreateFantaDialog() {
@@ -64,6 +68,8 @@ export function CreateFantaDialog() {
       sportType: formData.sportType,
       settings: {
         ...DEFAULT_FANTA_SETTINGS,
+        draftMode: formData.draftMode,
+        draftPickSeconds: formData.draftPickSeconds,
         ...(isLol
           ? {
               circuitType: formData.circuitType,
@@ -132,6 +138,55 @@ export function CreateFantaDialog() {
               I ruoli disponibili cambieranno in base al tipo selezionato
             </p>
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="draftMode">Modalità *</Label>
+            <Select
+              value={formData.draftMode}
+              onValueChange={(value: DraftMode) =>
+                setFormData({ ...formData, draftMode: value })
+              }
+            >
+              <SelectTrigger id="draftMode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auction">Asta live</SelectItem>
+                <SelectItem value="snake">Draft a turni (snake)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500">
+              {formData.draftMode === "auction"
+                ? "Un membro alla volta (admin/vice) mette all'asta un giocatore/squadra/coach, tutti rilanciano in tempo reale, vince chi offre di più."
+                : "Nessuna asta né budget: si sceglie a turno in un ordine casuale che si inverte a ogni giro (1→N, N→1, 1→N...), un ruolo fisso per giro."}
+            </p>
+          </div>
+
+          {formData.draftMode === "snake" && (
+            <div className="space-y-2">
+              <Label htmlFor="draftPickSeconds">
+                Tempo per scelta (secondi)
+              </Label>
+              <Input
+                id="draftPickSeconds"
+                type="number"
+                min={MIN_COUNTDOWN_SECONDS}
+                max={MAX_COUNTDOWN_SECONDS}
+                value={formData.draftPickSeconds}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    draftPickSeconds: Number(e.target.value),
+                  })
+                }
+              />
+              <p className="text-xs text-slate-500">
+                Tra {MIN_COUNTDOWN_SECONDS}s e {MAX_COUNTDOWN_SECONDS}s. Se
+                scade, il turno viene saltato e va assegnato a mano
+                dall&apos;admin.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="description">Descrizione (opzionale)</Label>

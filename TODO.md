@@ -4,6 +4,42 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
+## Draft a turni (snake), alternativa all'asta live
+
+Su richiesta: una seconda modalità di lega, scelta alla creazione
+(`settings.draftMode`, "auction" default o "snake", non cambiabile dopo —
+stessa filosofia di `sportType`) e non più modificabile da Impostazioni.
+Niente budget/offerte: si sceglie a turno in un ordine generato a caso
+all'avvio (Fisher-Yates) che si inverte a ogni giro (1→N, N→1, 1→N, ...);
+un giro = un ruolo fisso uguale per tutti (squadra, coach, poi un giro per
+ruolo LoL, poi un giro per ogni jolly). Timer configurabile per scelta
+(`draftPickSeconds`, stessi limiti min/max del countdown asta): se scade,
+il turno passa al successivo e finisce in una lista "da assegnare a mano"
+che admin/vice possono completare in qualsiasi momento, senza bloccare il
+resto del draft.
+- `lib/draft.ts`: `buildDraftSlots` (sequenza slot da sportType/maxJolly),
+  `getDraftTurnUserId` (chi tocca, con l'inversione a serpentina),
+  `advanceDraftTurn` (turno/giro successivo).
+- `fantas/{fantaId}/draft/state`: documento singolo, stesso pattern
+  real-time delle aste (`FantaContext.draftState`, `startDraft`,
+  `makeDraftPick`, `skipDraftTurn`, `fillPendingDraftAssignment`). La
+  transazione sul documento di stato impedisce che due client avanzino lo
+  stesso turno insieme; la scrittura sulla rosa del membro resta separata
+  (stesso compromesso non-atomico già accettato per `finalizeAuction`).
+  Le pick del draft hanno `purchasePrice: 0` (nessuna economia).
+- `components/DraftPanel.tsx`: sostituisce l'intera UI aste in
+  `app/dashboard/auctions/page.tsx` quando `draftMode === "snake"` (stessa
+  pagina/nav, contenuto diverso — la voce sidebar diventa "Draft").
+  Ricerca player Leaguepedia filtrata per il ruolo dello slot corrente,
+  squadre via `searchTeams`, coach a mano (nessuna tabella Leaguepedia
+  utilizzabile, stessa nota già presente per le aste).
+- **Non ancora testato dal vivo** (nessun ambiente di test con più utenti
+  in questa sessione): la logica è stata verificata solo staticamente
+  (`tsc`/`lint`/`build` puliti). Da provare con la lega vera prima di
+  fidarsi ciecamente, in particolare: la transazione di turno sotto race
+  reale (due che cliccano insieme), e il conteggio corretto dei giri con
+  jolly > 0.
+
 ## Revisione sicurezza (giro dedicato)
 
 Su richiesta esplicita, giro mirato a cercare buchi reali nel codice

@@ -92,6 +92,8 @@ export const DEFAULT_FANTA_SETTINGS = {
   maxJolly: 0,
   scoringWeights: DEFAULT_ROLE_SCORING_WEIGHTS,
   teamScoringWeights: DEFAULT_TEAM_SCORING_WEIGHTS,
+  draftMode: "auction" as const,
+  draftPickSeconds: MIN_COUNTDOWN_SECONDS,
 };
 
 // Esempi di ruoli per diversi sport/giochi (personalizzabili)

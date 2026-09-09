@@ -58,7 +58,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   const navigation = [
     { name: "Le Mie Leghe", href: "/dashboard", icon: Home },
-    { name: "Aste Live", href: "/dashboard/auctions", icon: Zap },
+    {
+      name: currentFanta?.settings.draftMode === "snake" ? "Draft" : "Aste Live",
+      href: "/dashboard/auctions",
+      icon: Zap,
+    },
     { name: "Team", href: "/dashboard/team", icon: Users },
     { name: "Impostazioni", href: "/dashboard/settings", icon: Settings },
   ];

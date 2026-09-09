@@ -44,6 +44,7 @@ import {
   getFantasyTeamStats,
 } from "@/lib/leaguepediaApi";
 import { totalPickPoints } from "@/lib/scoring";
+import { buildDraftSlots, getDraftTurnUserId, advanceDraftTurn } from "@/lib/draft";
 import type {
   Fanta,
   FantaMember,
@@ -56,6 +57,8 @@ import type {
   CalendarRound,
   ManualPlayerStats,
   ManualTeamStats,
+  DraftState,
+  PendingDraftAssignment,
 } from "@/types";
 
 const DEFAULT_TEAM_NAME = "I Campioni";
@@ -163,6 +166,22 @@ interface FantaContextType {
     userId: string,
     userName: string,
   ) => void;
+
+  // Draft a turni (settings.draftMode === "snake"), condiviso in tempo
+  // reale come le aste: null finché non è mai stato avviato (non esiste
+  // ancora il documento fantas/{id}/draft/state).
+  draftState: DraftState | null;
+  startDraft: () => void;
+  makeDraftPick: (input: {
+    playerName: string;
+    playerRole?: string;
+    playerTeam?: string;
+  }) => void;
+  skipDraftTurn: (options?: { force?: boolean }) => void;
+  fillPendingDraftAssignment: (
+    pending: PendingDraftAssignment,
+    input: { playerName: string; playerTeam?: string },
+  ) => void;
 }
 
 const FantaContext = createContext<FantaContextType | undefined>(undefined);
@@ -263,6 +282,22 @@ function mapCalendarRoundDoc(
   };
 }
 
+function mapDraftStateDoc(data: Record<string, unknown>): DraftState {
+  return {
+    status: (data.status as DraftState["status"]) || "not_started",
+    order: (data.order as string[]) || [],
+    currentSlotIndex: (data.currentSlotIndex as number) ?? 0,
+    currentTurnIndex: (data.currentTurnIndex as number) ?? 0,
+    pickDeadline: toOptionalDate(
+      data.pickDeadline as Timestamp | Date | undefined,
+    ),
+    pendingAssignments:
+      (data.pendingAssignments as PendingDraftAssignment[]) || [],
+    startedAt: toOptionalDate(data.startedAt as Timestamp | Date | undefined),
+    updatedAt: toDate(data.updatedAt as Timestamp | Date | undefined),
+  };
+}
+
 function mapHistoryDoc(id: string, data: Record<string, unknown>): HistoryEntry {
   return {
     id,
@@ -295,6 +330,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     JoinRequest[]
   >([]);
   const [auctions, setAuctions] = useState<Auction[]>([]);
+  const [draftState, setDraftState] = useState<DraftState | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [calendar, setCalendar] = useState<CalendarRound[]>([]);
   const [memberProfiles, setMemberProfiles] = useState<
@@ -631,6 +667,23 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       setAuctions(
         snapshot.docs.map((docSnap) => mapAuctionDoc(docSnap.id, docSnap.data())),
       );
+    });
+
+    return unsubscribe;
+  }, [currentFanta]);
+
+  // Ascolta in tempo reale lo stato del draft a turni del fanta attualmente
+  // selezionato: un documento singolo (non una collezione), null finché non
+  // è mai stato avviato — vedi startDraft più sotto.
+  useEffect(() => {
+    if (!currentFanta) {
+      setDraftState(null);
+      return;
+    }
+
+    const ref = doc(db, "fantas", currentFanta.id, "draft", "state");
+    const unsubscribe = onSnapshot(ref, (snap) => {
+      setDraftState(snap.exists() ? mapDraftStateDoc(snap.data()) : null);
     });
 
     return unsubscribe;
@@ -1139,6 +1192,239 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auctions]);
 
+  // Avvia il draft a turni: genera un ordine casuale (Fisher-Yates) tra i
+  // membri attuali della lega e crea lo stato iniziale. Non tocca budget:
+  // il draft a turni non ha economia, le pick sono a prezzo 0 (vedi
+  // makeDraftPick). Da chiamare una sola volta; se lo stato esiste già
+  // questa sovrascrive tutto da capo, quindi l'UI la mostra solo quando
+  // draftState è null o status "not_started".
+  const startDraft = (): void => {
+    if (!currentFanta) return;
+    const pickSeconds =
+      currentFanta.settings.draftPickSeconds || MIN_COUNTDOWN_SECONDS;
+    const order = fantaMembers.map((m) => m.userId);
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+
+    setDoc(doc(db, "fantas", currentFanta.id, "draft", "state"), {
+      status: "active",
+      order,
+      currentSlotIndex: 0,
+      currentTurnIndex: 0,
+      pickDeadline: Timestamp.fromMillis(Date.now() + pickSeconds * 1000),
+      pendingAssignments: [],
+      startedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  };
+
+  // Registra la scelta del turno corrente (fatta dall'utente di turno, o da
+  // admin/vice/dev per suo conto, stesso privilegio dell'assegnazione
+  // manuale delle aste) e avanza al turno successivo. La transazione sullo
+  // stato garantisce che due client non possano avanzare lo stesso turno
+  // due volte; la scrittura sulla rosa del membro è separata (stesso
+  // compromesso non-atomico di finalizeAuction, accettabile qui).
+  const makeDraftPick = (input: {
+    playerName: string;
+    playerRole?: string;
+    playerTeam?: string;
+  }): void => {
+    if (!currentFanta || !user) return;
+    const fantaId = currentFanta.id;
+    const slots = buildDraftSlots(currentFanta);
+    const pickSeconds =
+      currentFanta.settings.draftPickSeconds || MIN_COUNTDOWN_SECONDS;
+    const stateRef = doc(db, "fantas", fantaId, "draft", "state");
+
+    let result: { targetUserId: string; pick: TeamPick } | null = null;
+
+    runTransaction(db, async (tx) => {
+      result = null;
+      const snap = await tx.get(stateRef);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (data.status !== "active") return;
+
+      const order = (data.order as string[]) || [];
+      const slotIndex = data.currentSlotIndex as number;
+      const turnIndex = data.currentTurnIndex as number;
+      const slot = slots[slotIndex];
+      if (!slot) return;
+
+      const expectedUserId = getDraftTurnUserId(order, slotIndex, turnIndex);
+      if (!expectedUserId) return;
+      if (expectedUserId !== user.id && !isFantaViceOrAdmin) return;
+
+      const next = advanceDraftTurn(order, slots.length, slotIndex, turnIndex);
+      tx.update(stateRef, {
+        status: next.completed ? "completed" : "active",
+        currentSlotIndex: next.slotIndex,
+        currentTurnIndex: next.turnIndex,
+        pickDeadline: next.completed
+          ? deleteField()
+          : Timestamp.fromMillis(Date.now() + pickSeconds * 1000),
+        updatedAt: serverTimestamp(),
+      });
+
+      result = {
+        targetUserId: expectedUserId,
+        pick: {
+          id: doc(collection(db, "fantas", fantaId, "history")).id,
+          pickType: slot.pickType,
+          playerName: input.playerName,
+          playerRole: slot.pickType === "player" ? slot.role : undefined,
+          playerTeam: input.playerTeam,
+          purchasePrice: 0,
+          acquiredAt: new Date(),
+        },
+      };
+    }).then(() => {
+      if (!result) return;
+      const { targetUserId, pick } = result;
+      updateDoc(doc(db, "fantas", fantaId, "members", targetUserId), {
+        team: arrayUnion(pick),
+      }).catch((error) => {
+        console.error("Errore nell'assegnazione della pick di draft:", error);
+      });
+      addDoc(collection(db, "fantas", fantaId, "history"), {
+        playerName: pick.playerName,
+        playerRole: pick.playerRole,
+        playerTeam: pick.playerTeam,
+        buyerUserId: targetUserId,
+        buyerName: getMemberName(targetUserId),
+        price: 0,
+        purchasedAt: serverTimestamp(),
+      }).catch((error) => {
+        console.error("Errore nella scrittura dello storico draft:", error);
+      });
+    });
+  };
+
+  // Salta il turno corrente senza assegnare nulla: succede da sola per
+  // timeout (vedi l'effetto sotto, stesso pattern del countdown asta — un
+  // client con la pagina aperta se ne accorge e chiama questa funzione, che
+  // riverifica la scadenza in transazione) oppure a comando (options.force,
+  // bottone admin "salta comunque" — l'UI mostra quel bottone solo ad
+  // admin/vice, qui non c'è un controllo ruolo separato, stessa convenzione
+  // di closeAuction/cancelAuction). Il turno saltato finisce in
+  // pendingAssignments, da completare a mano con fillPendingDraftAssignment.
+  const skipDraftTurn = (options: { force?: boolean } = {}): void => {
+    if (!currentFanta) return;
+    const fantaId = currentFanta.id;
+    const slots = buildDraftSlots(currentFanta);
+    const pickSeconds =
+      currentFanta.settings.draftPickSeconds || MIN_COUNTDOWN_SECONDS;
+    const stateRef = doc(db, "fantas", fantaId, "draft", "state");
+
+    runTransaction(db, async (tx) => {
+      const snap = await tx.get(stateRef);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (data.status !== "active") return;
+
+      if (!options.force) {
+        const deadline = data.pickDeadline as Timestamp | undefined;
+        if (!deadline || deadline.toMillis() > Date.now()) return;
+      }
+
+      const order = (data.order as string[]) || [];
+      const slotIndex = data.currentSlotIndex as number;
+      const turnIndex = data.currentTurnIndex as number;
+      const expectedUserId = getDraftTurnUserId(order, slotIndex, turnIndex);
+      if (!expectedUserId) return;
+
+      const next = advanceDraftTurn(order, slots.length, slotIndex, turnIndex);
+      const pending =
+        (data.pendingAssignments as PendingDraftAssignment[]) || [];
+
+      tx.update(stateRef, {
+        status: next.completed ? "completed" : "active",
+        currentSlotIndex: next.slotIndex,
+        currentTurnIndex: next.turnIndex,
+        pickDeadline: next.completed
+          ? deleteField()
+          : Timestamp.fromMillis(Date.now() + pickSeconds * 1000),
+        pendingAssignments: [
+          ...pending,
+          { userId: expectedUserId, slotIndex },
+        ],
+        updatedAt: serverTimestamp(),
+      });
+    }).catch((error) => {
+      console.error("Errore nel salto turno del draft:", error);
+    });
+  };
+
+  // Completa a mano un turno saltato per timeout: scrive la pick sulla rosa
+  // dell'utente saltato e toglie la voce da pendingAssignments, SENZA
+  // toccare il turno corrente (che nel frattempo è già andato avanti da solo).
+  const fillPendingDraftAssignment = (
+    pending: PendingDraftAssignment,
+    input: { playerName: string; playerTeam?: string },
+  ): void => {
+    if (!currentFanta) return;
+    const fantaId = currentFanta.id;
+    const slots = buildDraftSlots(currentFanta);
+    const slot = slots[pending.slotIndex];
+    if (!slot) return;
+
+    const pick: TeamPick = {
+      id: doc(collection(db, "fantas", fantaId, "history")).id,
+      pickType: slot.pickType,
+      playerName: input.playerName,
+      playerRole: slot.pickType === "player" ? slot.role : undefined,
+      playerTeam: input.playerTeam,
+      purchasePrice: 0,
+      acquiredAt: new Date(),
+    };
+
+    updateDoc(doc(db, "fantas", fantaId, "members", pending.userId), {
+      team: arrayUnion(pick),
+    });
+    addDoc(collection(db, "fantas", fantaId, "history"), {
+      playerName: pick.playerName,
+      playerRole: pick.playerRole,
+      playerTeam: pick.playerTeam,
+      buyerUserId: pending.userId,
+      buyerName: getMemberName(pending.userId),
+      price: 0,
+      purchasedAt: serverTimestamp(),
+    });
+
+    const remaining = (draftState?.pendingAssignments || []).filter(
+      (p) => !(p.userId === pending.userId && p.slotIndex === pending.slotIndex),
+    );
+    updateDoc(doc(db, "fantas", fantaId, "draft", "state"), {
+      pendingAssignments: remaining,
+      updatedAt: serverTimestamp(),
+    });
+  };
+
+  // Nessun cron: come per il countdown asta, un client con la pagina del
+  // draft aperta deve accorgersi che il turno è scaduto. skipDraftTurn
+  // riverifica la scadenza in transazione, quindi più client in polling
+  // insieme non causano doppi salti.
+  useEffect(() => {
+    if (
+      !draftState ||
+      draftState.status !== "active" ||
+      !draftState.pickDeadline
+    ) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      if (draftState.pickDeadline && draftState.pickDeadline.getTime() <= Date.now()) {
+        skipDraftTurn();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftState]);
+
   const sendJoinRequest = (fanta: Fanta): void => {
     if (!user) return;
     addDoc(collection(db, "fantas", fanta.id, "joinRequests"), {
@@ -1228,6 +1514,11 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         cancelAuction,
         reopenAuction,
         assignAuctionManually,
+        draftState,
+        startDraft,
+        makeDraftPick,
+        skipDraftTurn,
+        fillPendingDraftAssignment,
       }}
     >
       {children}

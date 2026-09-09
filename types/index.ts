@@ -78,6 +78,13 @@ export interface TeamScoringWeights {
   goldPer10k: number;
 }
 
+// "auction" (default, comportamento storico): admin crea un'asta per volta,
+// tutti rilanciano in tempo reale, vince chi offre di più. "snake": niente
+// aste/budget, si sceglie a turno in un ordine generato a caso che si
+// inverte ogni giro (1..N, N..1, 1..N, ...), un ruolo fisso per giro — vedi
+// lib/draft.ts per la sequenza esatta degli slot e la logica del turno.
+export type DraftMode = "auction" | "snake";
+
 export interface FantaSettings {
   generalBudget: number; // Budget generale per tutti
   minBid: number; // Puntata minima
@@ -98,6 +105,12 @@ export interface FantaSettings {
   // Pesi per le pick "team"/"coach": obiettivi di partita + vittoria,
   // niente kill/morti/assist perché non sono un giocatore singolo.
   teamScoringWeights?: TeamScoringWeights;
+  // Assente = "auction" (leghe create prima di questo campo restano aste).
+  draftMode?: DraftMode;
+  // Secondi a disposizione per ogni scelta nel draft a turni. Stessi limiti
+  // min/max del countdown asta (MIN/MAX_COUNTDOWN_SECONDS): non serve un
+  // secondo intervallo per lo stesso concetto.
+  draftPickSeconds?: number;
 }
 
 // Ruolo di un membro NELLA LEGA (permessi) — non va confuso col ruolo del
@@ -281,6 +294,39 @@ export interface CalendarRound {
   id: string;
   roundNumber: number;
   fixtures: RoundFixture[];
+}
+
+// Uno "slot" della sequenza del draft a turni: cosa si sceglie in quel
+// giro (es. {pickType:"player", role:"Top Laner"}). La sequenza completa
+// (squadra, coach, un giro per ruolo, poi i jolly) è calcolata da
+// lib/draft.ts#buildDraftSlots a partire da sportType/maxJolly della lega,
+// non salvata su Firestore: è deterministica, tutti i client la ricavano
+// allo stesso modo dalle stesse impostazioni.
+export interface DraftSlot {
+  pickType: TeamPickType;
+  role?: string; // solo pickType "player"
+}
+
+// Un turno saltato per timeout: resta qui finché admin/vice non lo assegna
+// a mano (vedi FantaContext.fillPendingDraftAssignment), il draft nel
+// frattempo continua con gli altri turni.
+export interface PendingDraftAssignment {
+  userId: string;
+  slotIndex: number;
+}
+
+// fantas/{fantaId}/draft/state — documento singolo (non una collezione):
+// lo stato dell'intero draft a turni, condiviso in tempo reale come le
+// aste. Esiste solo per leghe con settings.draftMode === "snake".
+export interface DraftState {
+  status: "not_started" | "active" | "completed";
+  order: string[]; // userId, ordine generato una volta a caso all'avvio
+  currentSlotIndex: number;
+  currentTurnIndex: number; // indice in "order" PRIMA dell'inversione a serpentina
+  pickDeadline?: Date; // scadenza del turno corrente, stesso pattern di Auction.countdownEndsAt
+  pendingAssignments: PendingDraftAssignment[];
+  startedAt?: Date;
+  updatedAt: Date;
 }
 
 // Context types for state management

@@ -74,6 +74,7 @@ import { db } from "@/lib/firebase";
 import { Flame, Save, Ban, Lock } from "lucide-react";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { DraftPanel } from "@/components/DraftPanel";
 
 const PICK_TYPE_LABELS: Record<TeamPickType, string> = {
   player: "Giocatore",
@@ -398,6 +399,23 @@ export default function AuctionsPage() {
   const saveCurrentAuction = () => {
     if (activeAuction) pauseAuction(activeAuction.id);
   };
+
+  // Modalità "snake": nessuna asta, l'intera pagina è il draft a turni —
+  // vedi components/DraftPanel.tsx per la logica (ordine, turno, timer,
+  // scelta player/team/coach).
+  if (currentFanta?.settings.draftMode === "snake") {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-100">Draft</h1>
+          <p className="text-slate-400 mt-2">
+            {currentFanta?.name} - Scegli a turno il tuo team
+          </p>
+        </div>
+        <DraftPanel />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
