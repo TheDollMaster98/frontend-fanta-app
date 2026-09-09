@@ -23,6 +23,17 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
@@ -122,18 +133,14 @@ function AdminPageContent({
   const [newViceEmail, setNewViceEmail] = useState("");
   const [isAddingVice, setIsAddingVice] = useState(false);
   const [isStartingSeason, setIsStartingSeason] = useState(false);
+  const [generalInfoMessage, setGeneralInfoMessage] = useState("");
+  const [settingsMessage, setSettingsMessage] = useState("");
+  const [viceAdminMessage, setViceAdminMessage] = useState("");
   const members = fantaMembers;
   const inviteCode = currentFanta.inviteCode;
   const seasonStarted = !!currentFanta.settings.seasonStarted;
 
   const handleStartSeason = async () => {
-    if (
-      !confirm(
-        "Il mercato si chiude: i membri non potranno più creare/avviare aste, fare offerte, fare pick di draft o togliersi giocatori dalla rosa. Genera anche il calendario. Continuare?",
-      )
-    ) {
-      return;
-    }
     setIsStartingSeason(true);
     try {
       await startSeason();
@@ -143,19 +150,13 @@ function AdminPageContent({
   };
 
   const handleReopenMarket = () => {
-    if (
-      confirm(
-        "Il mercato torna aperto per tutti i membri. Il calendario già generato NON viene toccato. Continuare?",
-      )
-    ) {
-      setSeasonStarted(false);
-    }
+    setSeasonStarted(false);
   };
 
   const handleGeneralInfoUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     updateFanta({ ...currentFanta, ...generalInfo });
-    alert("Informazioni lega aggiornate!");
+    setGeneralInfoMessage("Informazioni lega aggiornate");
   };
 
   const handleSettingsUpdate = (e: React.FormEvent) => {
@@ -177,7 +178,7 @@ function AdminPageContent({
         ),
       },
     });
-    alert("Impostazioni aggiornate!");
+    setSettingsMessage("Impostazioni aggiornate");
   };
 
   const copyInviteCode = () => {
@@ -190,6 +191,7 @@ function AdminPageContent({
     const email = newViceEmail.trim();
     if (!email) return;
 
+    setViceAdminMessage("");
     setIsAddingVice(true);
     try {
       const usersQuery = query(
@@ -199,7 +201,7 @@ function AdminPageContent({
       const snapshot = await getDocs(usersQuery);
 
       if (snapshot.empty) {
-        alert("Nessun utente registrato con questa email");
+        setViceAdminMessage("Nessun utente registrato con questa email");
         return;
       }
 
@@ -207,33 +209,35 @@ function AdminPageContent({
       const foundMember = members.find((m) => m.userId === foundId);
 
       if (!foundMember) {
-        alert(
+        setViceAdminMessage(
           "Questo utente deve prima entrare nella lega (invito o richiesta)",
         );
         return;
       }
       if (foundMember.role === "vice") {
-        alert("È già vice-admin");
+        setViceAdminMessage("È già vice-admin");
         return;
       }
       if (foundMember.role === "admin") {
-        alert("È già il creatore della lega");
+        setViceAdminMessage("È già il creatore della lega");
         return;
       }
 
       addViceAdmin(foundId);
       setNewViceEmail("");
+      setViceAdminMessage("Vice-admin aggiunto");
     } finally {
       setIsAddingVice(false);
     }
   };
 
+  // Il bottone "Rimuovi" qui sotto non compare nemmeno per il creatore
+  // (vedi {!isCreator && canManageMembers && ...} nel render): questo
+  // handler non riceve mai un userId di ruolo admin da UI normale, il
+  // controllo serve solo come rete di sicurezza silenziosa.
   const handleRemoveMember = (userId: string) => {
     const member = members.find((m) => m.userId === userId);
-    if (member?.role === "admin") {
-      alert("Non puoi rimuovere il creatore!");
-      return;
-    }
+    if (member?.role === "admin") return;
     removeMember(userId);
   };
 
@@ -278,13 +282,51 @@ function AdminPageContent({
             </CardHeader>
             <CardContent>
               {seasonStarted ? (
-                <Button variant="outline" onClick={handleReopenMarket}>
-                  Riapri Mercato
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline">Riapri Mercato</Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Riaprire il mercato?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Il mercato torna aperto per tutti i membri. Il
+                        calendario già generato NON viene toccato.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Indietro</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleReopenMarket}>
+                        Riapri Mercato
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               ) : (
-                <Button onClick={handleStartSeason} disabled={isStartingSeason}>
-                  {isStartingSeason ? "Avvio..." : "Avvia Stagione"}
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button disabled={isStartingSeason}>
+                      {isStartingSeason ? "Avvio..." : "Avvia Stagione"}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Avviare la stagione?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Il mercato si chiude: i membri non potranno più
+                        creare/avviare aste, fare offerte, fare pick di
+                        draft o togliersi giocatori dalla rosa. Genera
+                        anche il calendario.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Indietro</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleStartSeason}>
+                        Avvia Stagione
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               )}
             </CardContent>
           </Card>
@@ -300,6 +342,11 @@ function AdminPageContent({
             </CardHeader>
             <CardContent>
               <form onSubmit={handleGeneralInfoUpdate} className="space-y-4">
+                {generalInfoMessage && (
+                  <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">
+                    {generalInfoMessage}
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="fantaName">Nome Lega</Label>
                   <Input
@@ -366,6 +413,11 @@ function AdminPageContent({
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSettingsUpdate} className="space-y-4">
+                {settingsMessage && (
+                  <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">
+                    {settingsMessage}
+                  </div>
+                )}
                 <p className="text-xs text-slate-500">
                   Modalità: {settings.draftMode === "snake" ? "Draft a turni (snake)" : "Asta live"}
                   {" "}— decisa alla creazione della lega, non cambiabile da qui.
@@ -730,17 +782,24 @@ function AdminPageContent({
             </CardHeader>
             <CardContent className="space-y-4">
               {canManageMembers ? (
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Email dell'utente (già membro della lega)"
-                    value={newViceEmail}
-                    onChange={(e) => setNewViceEmail(e.target.value)}
-                    disabled={isAddingVice}
-                  />
-                  <Button onClick={handleAddViceAdmin} disabled={isAddingVice}>
-                    {isAddingVice ? "..." : "Aggiungi"}
-                  </Button>
-                </div>
+                <>
+                  {viceAdminMessage && (
+                    <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">
+                      {viceAdminMessage}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Email dell'utente (già membro della lega)"
+                      value={newViceEmail}
+                      onChange={(e) => setNewViceEmail(e.target.value)}
+                      disabled={isAddingVice}
+                    />
+                    <Button onClick={handleAddViceAdmin} disabled={isAddingVice}>
+                      {isAddingVice ? "..." : "Aggiungi"}
+                    </Button>
+                  </div>
+                </>
               ) : (
                 <p className="text-sm text-slate-500">
                   Solo il creatore della lega (o un dev) può aggiungere o
