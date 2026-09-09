@@ -54,6 +54,28 @@ Su richiesta esplicita, giro mirato a cercare buchi reali nel codice
       tutti. **Sistemato**: allowlist esplicita di `action` (solo
       `cargoquery` e `query`), tutto il resto risponde 400.
 
+**ROLLBACK D'EMERGENZA (9/9)**: la regola su `users/{uid}` sopra ha rotto
+il login in produzione — `permission-denied` su tutti i listener Firestore
+appena il deploy è andato live, tutto il gruppo bloccato fuori. Non ho
+ancora isolato la causa esatta (analisi statica delle regole non ha
+trovato un bug ovvio: sembrano corrette lette a mente, e questo è
+esattamente il problema — vanno testate, non solo lette). Ho **ripristinato
+la versione precedente** (`loggato = può leggere/scrivere qualsiasi cosa`,
+nessuna regola dedicata su `users/{uid}`) per riportare subito l'accesso.
+Conseguenza esplicita: **la falla di escalation `isDeveloper` sopra è di
+nuovo aperta** finché non trovo il bug vero e riprovo con una regola
+testata davvero (emulatore Firestore, non solo lettura del file), non
+un'altra ipotesi shippata direttamente in produzione.
+- [ ] Ridebuggare `firestore.rules` per `users/{uid}` usando l'emulatore
+      Firestore locale (`firebase emulators:start --only firestore` +
+      `@firebase/rules-unit-testing`) PRIMA di rideployare, non a mente.
+- [ ] Sospetto principale da verificare per primo: interazione tra
+      `resource.data.get('isDeveloper', false)` e il fatto che `update()`
+      lato client manda un patch parziale — se `request.resource.data` in
+      fase di regola non include davvero il merge dei campi esistenti nel
+      modo atteso, il confronto fallisce sempre. Da confermare con test
+      reali, non supposizioni.
+
 **Rischio noto, non toccato** (già accettato in giri precedenti, resta
 valido): `fantas/**` e `proplayers/**` restano su "loggato = può leggere/
 scrivere qualsiasi cosa", senza verificare che sia davvero membro della
