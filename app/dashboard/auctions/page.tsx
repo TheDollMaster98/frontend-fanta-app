@@ -235,6 +235,7 @@ export default function AuctionsPage() {
   const [isLoadingAuctionTeams, setIsLoadingAuctionTeams] = useState(false);
 
   const isAdmin = !!user && !!currentFanta && isFantaViceOrAdmin;
+  const seasonStarted = !!currentFanta?.settings.seasonStarted;
 
   // Carica dati precompilati da localStorage (da pagina import), una sola volta al mount
   const [prefilledAuction] = useState(() => {
@@ -423,12 +424,14 @@ export default function AuctionsPage() {
         <div>
           <h1 className="text-3xl font-bold text-slate-100">Aste</h1>
           <p className="text-slate-400 mt-2">
-            {currentFanta?.name} - Partecipa alle aste e acquista i tuoi
-            giocatori
+            {currentFanta?.name} -{" "}
+            {seasonStarted
+              ? "Mercato chiuso, la stagione è iniziata"
+              : "Partecipa alle aste e acquista i tuoi giocatori"}
           </p>
         </div>
 
-        {isAdmin && (
+        {isAdmin && !seasonStarted && (
           <Dialog>
             <DialogTrigger asChild>
               <Button>Crea Nuova Asta</Button>
@@ -1135,7 +1138,12 @@ export default function AuctionsPage() {
             {/* Pulsanti Offerta */}
             <div className="space-y-3">
               <Label>Fai la tua offerta:</Label>
-              {isRosterFull ? (
+              {seasonStarted && !isAdmin ? (
+                <p className="text-sm text-slate-500">
+                  Il mercato è chiuso: la stagione è iniziata, non puoi più
+                  fare offerte.
+                </p>
+              ) : isRosterFull ? (
                 <p className="text-sm text-slate-500">
                   Hai già {maxPlayersTotal} giocatori: rosa al completo, non
                   puoi fare altre offerte.

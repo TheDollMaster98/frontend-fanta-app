@@ -160,7 +160,8 @@ export function DraftPanel() {
         )
       : undefined;
   const isMyTurn = !!user && !!currentTurnUserId && currentTurnUserId === user.id;
-  const canActForCurrentTurn = isMyTurn || isFantaViceOrAdmin;
+  const seasonStarted = !!currentFanta?.settings.seasonStarted;
+  const canActForCurrentTurn = isFantaViceOrAdmin || (isMyTurn && !seasonStarted);
 
   // Ricerca Leaguepedia per la pick corrente: player filtrati per il ruolo
   // dello slot (nessun filtro per i jolly), squadre solo per lo slot "team".
@@ -243,7 +244,12 @@ export function DraftPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isFantaViceOrAdmin ? (
+          {seasonStarted ? (
+            <p className="text-sm text-slate-500">
+              Il mercato è chiuso (stagione iniziata): il draft non può più
+              essere avviato.
+            </p>
+          ) : isFantaViceOrAdmin ? (
             fantaMembers.length < 2 ? (
               <p className="text-sm text-slate-500">
                 Servono almeno 2 membri nella lega per avviare il draft.
@@ -324,8 +330,9 @@ export function DraftPanel() {
 
         {!canActForCurrentTurn ? (
           <p className="text-sm text-slate-500">
-            Aspetta il tuo turno — sta scegliendo{" "}
-            {getMemberName(currentTurnUserId || "")}.
+            {seasonStarted
+              ? "Il mercato è chiuso (stagione iniziata): non puoi più fare pick."
+              : `Aspetta il tuo turno — sta scegliendo ${getMemberName(currentTurnUserId || "")}.`}
           </p>
         ) : currentSlot?.pickType === "coach" ? (
           <div className="space-y-2 rounded-md border border-slate-700 p-4">

@@ -47,6 +47,7 @@ export default function TeamPage() {
     getUserBudget,
     getTeamName,
     updateTeamName,
+    isFantaViceOrAdmin,
   } = useFanta();
   const { user } = useAuth();
   const teamName = user ? getTeamName(user.id) : "I Campioni";
@@ -58,6 +59,8 @@ export default function TeamPage() {
   const players = user && currentFanta ? getPlayersByUser(user.id) : [];
 
   const isSnakeDraft = currentFanta?.settings.draftMode === "snake";
+  const canRemovePlayers =
+    !currentFanta?.settings.seasonStarted || isFantaViceOrAdmin;
   const budget = currentFanta?.settings.generalBudget || 500;
   const remaining = user ? getUserBudget(user.id) : budget;
   const spent = budget - remaining;
@@ -207,13 +210,15 @@ export default function TeamPage() {
                       {new Date(player.acquiredAt).toLocaleDateString("it-IT")}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setPlayerToRemove(player)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-400" />
-                      </Button>
+                      {canRemovePlayers && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setPlayerToRemove(player)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-400" />
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

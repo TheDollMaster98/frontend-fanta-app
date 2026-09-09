@@ -131,6 +131,12 @@ interface FantaContextType {
   standings: StandingsEntry[];
   generateCalendar: () => Promise<void>;
   recalculateScores: () => Promise<void>;
+  // Chiude il mercato + genera il calendario in un'unica azione, e la
+  // valvola di sicurezza per riaprirlo — vedi i commenti sulle
+  // implementazioni per cosa viene bloccato quando settings.seasonStarted
+  // è true.
+  startSeason: () => Promise<void>;
+  setSeasonStarted: (value: boolean) => void;
 
   // Scoperta leghe e richieste di ingresso
   discoverableFantas: Fanta[];
@@ -556,6 +562,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
 
   const removePlayerFromTeam = (userId: string, pickId: string): void => {
     if (!currentFanta) return;
+    if (currentFanta.settings.seasonStarted && !isFantaViceOrAdmin) return;
     const member = fantaMembers.find((m) => m.userId === userId);
     if (!member) return;
     const pick = member.team.find((p) => p.id === pickId);
@@ -763,6 +770,32 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     await batch.commit();
   };
 
+  // Chiude il mercato (niente più aste nuove/offerte/pick di draft/rimozioni
+  // dai membri normali, vedi i guard su createAuction/placeBid/startDraft/
+  // makeDraftPick/removePlayerFromTeam sopra) e genera il calendario, in
+  // un'unica azione: è il bottone "Avvia Stagione" in Gestione Lega.
+  // Admin/vice/dev restano operativi per sistemare eventuali code rimaste
+  // aperte (aste attive da chiudere, draft da completare a mano).
+  const startSeason = async (): Promise<void> => {
+    if (!currentFanta) return;
+    await generateCalendar();
+    updateFanta({
+      ...currentFanta,
+      settings: { ...currentFanta.settings, seasonStarted: true },
+    });
+  };
+
+  // Valvola di sicurezza per riaprire il mercato dopo un "Avvia Stagione"
+  // per errore: non tocca il calendario già generato, va rigenerato a
+  // parte con "Genera Calendario" se serve davvero ripartire da zero.
+  const setSeasonStarted = (value: boolean): void => {
+    if (!currentFanta) return;
+    updateFanta({
+      ...currentFanta,
+      settings: { ...currentFanta.settings, seasonStarted: value },
+    });
+  };
+
   // Ricalcola i punti fantasy di ogni pick in rosa dalle statistiche reali
   // Leaguepedia (kill/morti/assist/vittorie per player/jolly, sole vittorie
   // per team/coach — vedi lib/leaguepediaApi.ts), pesati con gli
@@ -871,6 +904,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
 
   const createAuction: FantaContextType["createAuction"] = (auction) => {
     if (!currentFanta || !user) return;
+    if (currentFanta.settings.seasonStarted) return;
     addDoc(collection(db, "fantas", currentFanta.id, "auctions"), {
       ...auction,
       // Difensivo: il form UI ha già min/max, ma non fidarsi solo del client.
@@ -909,6 +943,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
 
   const placeBid = (auctionId: string, amount: number): void => {
     if (!user || !currentFanta || !currentMember) return;
+    if (currentFanta.settings.seasonStarted && !isFantaViceOrAdmin) return;
     const maxBid = currentFanta.settings.maxBid;
     const maxPlayersTotal = currentFanta.settings.maxPlayersTotal || 0;
     const maxPlayersPerRole = currentFanta.settings.maxPlayersPerRole || {};
@@ -1200,6 +1235,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   // draftState è null o status "not_started".
   const startDraft = (): void => {
     if (!currentFanta) return;
+    if (currentFanta.settings.seasonStarted) return;
     const pickSeconds =
       currentFanta.settings.draftPickSeconds || MIN_COUNTDOWN_SECONDS;
     const order = fantaMembers.map((m) => m.userId);
@@ -1255,7 +1291,10 @@ export function FantaProvider({ children }: { children: ReactNode }) {
 
       const expectedUserId = getDraftTurnUserId(order, slotIndex, turnIndex);
       if (!expectedUserId) return;
-      if (expectedUserId !== user.id && !isFantaViceOrAdmin) return;
+      if (!isFantaViceOrAdmin) {
+        if (expectedUserId !== user.id) return;
+        if (currentFanta.settings.seasonStarted) return;
+      }
 
       const next = advanceDraftTurn(order, slots.length, slotIndex, turnIndex);
       tx.update(stateRef, {
@@ -1499,6 +1538,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         standings,
         generateCalendar,
         recalculateScores,
+        startSeason,
+        setSeasonStarted,
         discoverableFantas,
         myJoinRequests,
         pendingJoinRequests,

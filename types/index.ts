@@ -112,6 +112,13 @@ export interface FantaSettings {
   // min/max del countdown asta (MIN/MAX_COUNTDOWN_SECONDS): non serve un
   // secondo intervallo per lo stesso concetto.
   draftPickSeconds?: number;
+  // true = mercato chiuso, girone iniziato (vedi FantaContext.startSeason):
+  // i membri normali non possono più creare/avviare aste, fare offerte,
+  // avviare il draft, fare pick di draft o togliersi giocatori dalla
+  // propria rosa. Admin/vice/dev restano operativi (assegnazione manuale,
+  // chiusura/annullamento aste, rimozione pick) per sistemare eventuali
+  // codini rimasti in sospeso. Assente/false = mercato aperto (default).
+  seasonStarted?: boolean;
 }
 
 // Ruolo di un membro NELLA LEGA (permessi) — non va confuso col ruolo del

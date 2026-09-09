@@ -87,6 +87,8 @@ function AdminPageContent({
     addViceAdmin,
     removeViceAdmin,
     removeMember,
+    startSeason,
+    setSeasonStarted,
   } = useFanta();
   // I vice-admin possono entrare in Gestione Lega e toccare le
   // impostazioni (budget, circuito, pesi punteggio, ecc.), ma non gestire
@@ -119,8 +121,36 @@ function AdminPageContent({
   const [copiedCode, setCopiedCode] = useState(false);
   const [newViceEmail, setNewViceEmail] = useState("");
   const [isAddingVice, setIsAddingVice] = useState(false);
+  const [isStartingSeason, setIsStartingSeason] = useState(false);
   const members = fantaMembers;
   const inviteCode = currentFanta.inviteCode;
+  const seasonStarted = !!currentFanta.settings.seasonStarted;
+
+  const handleStartSeason = async () => {
+    if (
+      !confirm(
+        "Il mercato si chiude: i membri non potranno più creare/avviare aste, fare offerte, fare pick di draft o togliersi giocatori dalla rosa. Genera anche il calendario. Continuare?",
+      )
+    ) {
+      return;
+    }
+    setIsStartingSeason(true);
+    try {
+      await startSeason();
+    } finally {
+      setIsStartingSeason(false);
+    }
+  };
+
+  const handleReopenMarket = () => {
+    if (
+      confirm(
+        "Il mercato torna aperto per tutti i membri. Il calendario già generato NON viene toccato. Continuare?",
+      )
+    ) {
+      setSeasonStarted(false);
+    }
+  };
 
   const handleGeneralInfoUpdate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -232,6 +262,33 @@ function AdminPageContent({
         </TabsList>
 
         <TabsContent value="settings" className="space-y-4">
+          <Card className="bg-slate-900 border-slate-700">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-slate-100">Stagione</CardTitle>
+                <Badge variant={seasonStarted ? "default" : "secondary"}>
+                  {seasonStarted ? "Mercato chiuso" : "Mercato aperto"}
+                </Badge>
+              </div>
+              <CardDescription className="text-slate-400">
+                {seasonStarted
+                  ? "I membri non possono più creare/avviare aste, fare offerte, fare pick di draft o togliersi giocatori dalla rosa. Admin/vice/dev restano operativi per sistemare eventuali code rimaste aperte."
+                  : "Chiude il mercato per i membri (aste, draft, rimozione pick) e genera il calendario a girone, in un'unica azione."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {seasonStarted ? (
+                <Button variant="outline" onClick={handleReopenMarket}>
+                  Riapri Mercato
+                </Button>
+              ) : (
+                <Button onClick={handleStartSeason} disabled={isStartingSeason}>
+                  {isStartingSeason ? "Avvio..." : "Avvia Stagione"}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="bg-slate-900 border-slate-700">
             <CardHeader>
               <CardTitle className="text-slate-100">

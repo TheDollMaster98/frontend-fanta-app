@@ -4,6 +4,23 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
+## Avvia Stagione (chiusura mercato + calendario in un'azione)
+
+Su richiesta: `settings.seasonStarted` (default false/assente = mercato
+aperto). Bottone "Avvia Stagione" in Gestione Lega → Impostazioni
+(`startSeason` in FantaContext) genera il calendario e lo mette a true in
+un colpo solo; "Riapri Mercato" lo rimette a false senza toccare il
+calendario già generato (valvola di sicurezza per errori). Quando true:
+- `createAuction`/`startDraft`: bloccati per tutti (niente nuove aste o
+  nuovi draft dopo l'avvio stagione).
+- `placeBid`/`makeDraftPick` (per il proprio turno)/`removePlayerFromTeam`:
+  bloccati per i membri normali, restano disponibili per admin/vice/dev —
+  così possono ancora chiudere/annullare aste rimaste attive, completare
+  assegnazioni di draft in sospeso o correggere una rosa.
+- UI aggiornata di conseguenza in `auctions/page.tsx`, `team/page.tsx`,
+  `DraftPanel.tsx` (bottoni nascosti o messaggio esplicativo al posto
+  dell'azione bloccata).
+
 ## Draft a turni (snake), alternativa all'asta live
 
 Su richiesta: una seconda modalità di lega, scelta alla creazione
