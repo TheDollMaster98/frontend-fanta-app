@@ -667,7 +667,8 @@ function AdminPageContent({
             <CardHeader>
               <CardTitle>Gestione Vice Admin</CardTitle>
               <CardDescription>
-                Aggiungi utenti che possono aiutarti a gestire le aste
+                Aggiungi utenti che possono aiutarti a gestire{" "}
+                {settings.draftMode === "snake" ? "il draft" : "le aste"}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

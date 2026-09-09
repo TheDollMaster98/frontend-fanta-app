@@ -276,7 +276,9 @@ export default function SettingsPage() {
                     placeholder="Es: I Campioni"
                   />
                   <p className="text-sm text-slate-500">
-                    Il nome che identificherà la tua squadra nelle aste
+                    {currentFanta?.settings.draftMode === "snake"
+                      ? "Il nome che identificherà la tua squadra nel draft"
+                      : "Il nome che identificherà la tua squadra nelle aste"}
                   </p>
                 </div>
 
@@ -303,7 +305,7 @@ export default function SettingsPage() {
                     </SelectContent>
                   </Select>
                   <p className="text-sm text-slate-500">
-                    Cambia la lega attiva per vedere le aste relative
+                    Cambia la lega attiva per vedere aste/draft relativi
                   </p>
                 </div>
 

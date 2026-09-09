@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { useFanta } from "@/contexts/FantaContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
+import { MIN_COUNTDOWN_SECONDS } from "@/lib/constants";
 import { Trophy, Users, Crown, Zap } from "lucide-react";
 import type { Fanta } from "@/types";
 
@@ -130,14 +131,17 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2 text-sm">
                       <Zap className="w-4 h-4 text-slate-500" />
                       <span className="text-slate-400">
-                        {activeAuctions} aste
+                        {fanta.settings.draftMode === "snake"
+                          ? "Draft a turni"
+                          : `${activeAuctions} aste`}
                       </span>
                     </div>
                   </div>
                   <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
                     <div className="text-xs text-slate-500">
-                      Budget: {fanta.settings.generalBudget}€ • Min:{" "}
-                      {fanta.settings.minBid}€
+                      {fanta.settings.draftMode === "snake"
+                        ? `Tempo a scelta: ${fanta.settings.draftPickSeconds ?? MIN_COUNTDOWN_SECONDS}s`
+                        : `Budget: ${fanta.settings.generalBudget}€ • Min: ${fanta.settings.minBid}€`}
                     </div>
                     <Button
                       size="sm"

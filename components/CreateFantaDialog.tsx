@@ -155,11 +155,21 @@ export function CreateFantaDialog() {
                 <SelectItem value="snake">Draft a turni (snake)</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-slate-500">
-              {formData.draftMode === "auction"
-                ? "Un membro alla volta (admin/vice) mette all'asta un giocatore/squadra/coach, tutti rilanciano in tempo reale, vince chi offre di più."
-                : "Nessuna asta né budget: si sceglie a turno in un ordine casuale che si inverte a ogni giro (1→N, N→1, 1→N...), un ruolo fisso per giro."}
-            </p>
+            <div className="space-y-1.5 rounded-md border border-slate-700 bg-slate-800/50 p-3 text-xs">
+              <p className={formData.draftMode === "auction" ? "text-slate-200" : "text-slate-500"}>
+                <span className="font-medium">Asta live</span> — un membro
+                alla volta (admin/vice) mette all&apos;asta un giocatore/
+                squadra/coach, tutti rilanciano in tempo reale con un budget
+                condiviso, vince chi offre di più.
+              </p>
+              <p className={formData.draftMode === "snake" ? "text-slate-200" : "text-slate-500"}>
+                <span className="font-medium">Draft a turni (snake)</span> —
+                niente asta né budget: si sceglie a turno in un ordine
+                casuale che si inverte a ogni giro (1→N, N→1, 1→N...), un
+                ruolo fisso per giro (es. tutti scelgono il Top Laner, poi
+                tutti il Jungler...).
+              </p>
+            </div>
           </div>
 
           {formData.draftMode === "snake" && (

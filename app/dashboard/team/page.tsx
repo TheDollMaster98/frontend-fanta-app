@@ -57,6 +57,7 @@ export default function TeamPage() {
   // Ottieni i giocatori dell'utente corrente
   const players = user && currentFanta ? getPlayersByUser(user.id) : [];
 
+  const isSnakeDraft = currentFanta?.settings.draftMode === "snake";
   const budget = currentFanta?.settings.generalBudget || 500;
   const remaining = user ? getUserBudget(user.id) : budget;
   const spent = budget - remaining;
@@ -77,7 +78,11 @@ export default function TeamPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-slate-100">Il Mio Team</h1>
-        <p className="text-slate-400 mt-2">Gestisci la tua rosa e il budget</p>
+        <p className="text-slate-400 mt-2">
+          {isSnakeDraft
+            ? "Gestisci la tua rosa"
+            : "Gestisci la tua rosa e il budget"}
+        </p>
       </div>
 
       {/* Team Info */}
@@ -118,22 +123,24 @@ export default function TeamPage() {
             )}
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
-              <p className="text-sm text-slate-400">Budget Totale</p>
-              <p className="text-2xl font-bold text-slate-100">{budget}€</p>
+        {!isSnakeDraft && (
+          <CardContent>
+            <div className="grid md:grid-cols-3 gap-4">
+              <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <p className="text-sm text-slate-400">Budget Totale</p>
+                <p className="text-2xl font-bold text-slate-100">{budget}€</p>
+              </div>
+              <div className="bg-slate-800 p-4 rounded-lg border border-red-900/50">
+                <p className="text-sm text-slate-400">Speso</p>
+                <p className="text-2xl font-bold text-red-400">{spent}€</p>
+              </div>
+              <div className="bg-slate-800 p-4 rounded-lg border border-green-900/50">
+                <p className="text-sm text-slate-400">Rimanente</p>
+                <p className="text-2xl font-bold text-green-400">{remaining}€</p>
+              </div>
             </div>
-            <div className="bg-slate-800 p-4 rounded-lg border border-red-900/50">
-              <p className="text-sm text-slate-400">Speso</p>
-              <p className="text-2xl font-bold text-red-400">{spent}€</p>
-            </div>
-            <div className="bg-slate-800 p-4 rounded-lg border border-green-900/50">
-              <p className="text-sm text-slate-400">Rimanente</p>
-              <p className="text-2xl font-bold text-green-400">{remaining}€</p>
-            </div>
-          </div>
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
 
       {/* Rosa Giocatori */}
@@ -152,7 +159,9 @@ export default function TeamPage() {
                 Non hai ancora acquistato giocatori
               </p>
               <p className="text-sm text-slate-500 mt-2">
-                Partecipa alle aste per costruire la tua rosa
+                {isSnakeDraft
+                  ? "Partecipa al draft per costruire la tua rosa"
+                  : "Partecipa alle aste per costruire la tua rosa"}
               </p>
             </div>
           ) : (
@@ -224,8 +233,9 @@ export default function TeamPage() {
               <DialogHeader>
                 <DialogTitle>Rimuovere {playerToRemove.playerName}?</DialogTitle>
                 <DialogDescription>
-                  Il giocatore torna disponibile per le aste e il budget speso
-                  ({playerToRemove.purchasePrice}€) ti viene restituito.
+                  {isSnakeDraft
+                    ? "Il pick viene tolto dalla tua rosa e il draft non torna indietro: non c'è un modo in app per rimetterlo automaticamente."
+                    : `Il giocatore torna disponibile per le aste e il budget speso (${playerToRemove.purchasePrice}€) ti viene restituito.`}
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
