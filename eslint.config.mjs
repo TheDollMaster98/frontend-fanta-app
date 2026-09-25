@@ -12,8 +12,6 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Il portfolio è un progetto separato con la sua configurazione.
-    "portfolio/**",
   ]),
 ]);
 
