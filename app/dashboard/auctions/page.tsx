@@ -251,6 +251,8 @@ export default function AuctionsPage() {
     }
   });
 
+  const [isCreateAuctionOpen, setIsCreateAuctionOpen] = useState(false);
+
   const [newAuction, setNewAuction] = useState({
     pickType: "player" as TeamPickType,
     auctionFormat: "free",
@@ -364,6 +366,10 @@ export default function AuctionsPage() {
       basePrice: 1,
       countdownSeconds: currentFanta.settings.defaultCountdown,
     });
+    // Chiude il dialog dopo la creazione: l'asta appena creata resta
+    // "pending" in lista, così si sceglie da lì se avviarla subito o dopo,
+    // invece di ritrovarsi ancora nel form.
+    setIsCreateAuctionOpen(false);
   };
 
   const startAuction = (auction: Auction) => {
@@ -432,7 +438,7 @@ export default function AuctionsPage() {
         </div>
 
         {isAdmin && !seasonStarted && (
-          <Dialog>
+          <Dialog open={isCreateAuctionOpen} onOpenChange={setIsCreateAuctionOpen}>
             <DialogTrigger asChild>
               <Button>Crea Nuova Asta</Button>
             </DialogTrigger>
