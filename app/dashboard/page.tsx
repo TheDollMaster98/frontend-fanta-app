@@ -62,16 +62,21 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Le Mie Leghe</h1>
+          <h1 className="text-3xl font-bold text-foreground">Tutte le Leghe</h1>
           <p className="text-muted-foreground mt-2">
-            Gestisci tutte le tue leghe fantasy - {fantas.length}{" "}
-            {fantas.length === 1 ? "lega" : "leghe"}
+            Le tue leghe e quelle a cui puoi richiedere di entrare
           </p>
         </div>
         <CreateFantaDialog />
       </div>
 
       {/* Fanta Grid */}
+      <div>
+        <h2 className="text-xl font-semibold text-foreground">Le tue leghe</h2>
+        <p className="text-muted-foreground text-sm mt-1">
+          {fantas.length} {fantas.length === 1 ? "lega" : "leghe"}
+        </p>
+      </div>
       {fantas.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
