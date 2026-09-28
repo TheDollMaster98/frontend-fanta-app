@@ -1,9 +1,10 @@
 name: CI
 
 # Gira su ogni push e ogni PR: lint + build, niente segreti richiesti.
-# Serve a beccare un branch rotto prima che arrivi a main, non fa deploy.
-# Il job "build" qui sotto è il check richiesto dalla branch protection
-# rule su main/develop (Settings > Branches).
+# Serve a beccare un branch rotto prima che arrivi a master (branch di
+# deploy), non fa deploy. Il job "build" qui sotto è il check da usare
+# come required status check nella branch protection rule, se ne
+# configuri una (Settings > Branches).
 on:
   push:
     branches: ["**"]

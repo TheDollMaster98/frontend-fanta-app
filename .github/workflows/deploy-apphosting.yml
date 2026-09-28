@@ -4,17 +4,18 @@ name: Deploy App Hosting
 # di Firebase Console: se il backend "fam-fanta-app-be" risulta collegato
 # a questo repo in Firebase Console > App Hosting, vai lì e scollegalo (o
 # assicurati che non abbia un branch live configurato), altrimenti ogni
-# push su main farebbe due deploy in parallelo — uno da qui, uno da
+# push su master farebbe due deploy in parallelo — uno da qui, uno da
 # Firebase stesso. Quel controllo è manuale, va fatto una volta in
 # Console, non è automatizzabile da qui.
 #
-# Parte da sola ad ogni push su main, più "Run workflow" manuale dalla
-# tab Actions per un rollout forzato. Richiede lo stesso secret
+# Parte da sola ad ogni push su master (tornato ad essere il branch di
+# deploy, richiesta esplicita), più "Run workflow" manuale dalla tab
+# Actions per un rollout forzato. Richiede lo stesso secret
 # FIREBASE_SERVICE_ACCOUNT del workflow delle regole Firestore (vedi
 # deploy-firestore.yml).
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 jobs:
