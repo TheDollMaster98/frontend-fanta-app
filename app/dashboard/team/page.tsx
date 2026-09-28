@@ -173,13 +173,13 @@ export default function TeamPage() {
                 <TableRow>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Nome</TableHead>
-                  <TableHead>Ruolo</TableHead>
-                  <TableHead>Squadra</TableHead>
+                  <TableHead className="hidden sm:table-cell">Ruolo</TableHead>
+                  <TableHead className="hidden md:table-cell">Squadra</TableHead>
                   <TableHead className="text-right">
-                    Prezzo di Acquisto
+                    Prezzo
                   </TableHead>
                   <TableHead className="text-right">Punti</TableHead>
-                  <TableHead className="text-right">Data Acquisto</TableHead>
+                  <TableHead className="hidden lg:table-cell text-right">Data Acquisto</TableHead>
                   <TableHead className="text-right">Azioni</TableHead>
                 </TableRow>
               </TableHeader>
@@ -194,19 +194,19 @@ export default function TeamPage() {
                     <TableCell className="font-medium">
                       {player.playerName}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       {player.playerRole && (
                         <Badge variant="outline">{player.playerRole}</Badge>
                       )}
                     </TableCell>
-                    <TableCell>{player.playerTeam}</TableCell>
+                    <TableCell className="hidden md:table-cell">{player.playerTeam}</TableCell>
                     <TableCell className="text-right font-semibold">
                       {player.purchasePrice}€
                     </TableCell>
                     <TableCell className="text-right">
                       {player.points !== undefined ? player.points : "—"}
                     </TableCell>
-                    <TableCell className="text-right text-sm text-muted-foreground">
+                    <TableCell className="hidden lg:table-cell text-right text-sm text-muted-foreground">
                       {new Date(player.acquiredAt).toLocaleDateString("it-IT")}
                     </TableCell>
                     <TableCell className="text-right">

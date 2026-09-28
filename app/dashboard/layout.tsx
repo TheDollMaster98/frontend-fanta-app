@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -20,13 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFanta } from "@/contexts/FantaContext";
-import { Home, Crown, Zap, Users, Settings, Trophy } from "lucide-react";
+import { Home, Crown, Zap, Users, Settings, Trophy, Menu } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { user, logout, isLoading } = useAuth();
   const {
     currentFanta,
@@ -99,47 +101,85 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     });
   }
 
+  const renderNavLinks = (onNavigate?: () => void) => (
+    <nav className="space-y-1">
+      {navigation.map((item) => {
+        const isActive = pathname === item.href;
+        const Icon = item.icon;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+              isActive
+                ? "bg-raised text-foreground"
+                : "text-muted-foreground hover:bg-raised hover:text-foreground"
+            }`}
+          >
+            <Icon className="w-5 h-5" />
+            <span className="font-medium">{item.name}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+
+  const leagueSelect = currentFanta && fantas.length > 0 && (
+    <Select
+      value={currentFanta.id}
+      onValueChange={(id) => {
+        const fanta = fantas.find((f) => f.id === id);
+        if (fanta) setCurrentFanta(fanta);
+      }}
+    >
+      <SelectTrigger className="w-full lg:w-[200px]">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {fantas.map((fanta) => (
+          <SelectItem key={fanta.id} value={fanta.id}>
+            {fanta.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
   return (
     <div className="min-h-screen bg-background">
       {/* Top Navigation */}
       <header className="bg-card border-b border-border sticky top-0 z-50">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            <Link
-              href="/dashboard"
-              className="text-xl font-bold text-foreground"
-            >
-              Fanta Points App
-            </Link>
+          <div className="flex items-center justify-between h-16 gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="lg:hidden shrink-0"
+                onClick={() => setMobileNavOpen(true)}
+                aria-label="Apri il menu"
+              >
+                <Menu className="w-5 h-5" />
+              </Button>
+              <Link
+                href="/dashboard"
+                className="text-lg sm:text-xl font-bold text-foreground truncate"
+              >
+                Fanta Points App
+              </Link>
+            </div>
 
-            <div className="flex items-center gap-4">
-              {/* Selector Lega */}
-              {currentFanta && fantas.length > 0 && (
-                <Select
-                  value={currentFanta.id}
-                  onValueChange={(id) => {
-                    const fanta = fantas.find((f) => f.id === id);
-                    if (fanta) setCurrentFanta(fanta);
-                  }}
-                >
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {fantas.map((fanta) => (
-                      <SelectItem key={fanta.id} value={fanta.id}>
-                        {fanta.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+            <div className="flex items-center gap-3 sm:gap-4">
+              {/* Selector Lega: visibile in header solo da lg in su, sotto
+                  vive nel drawer mobile insieme alla nav. */}
+              <div className="hidden lg:block">{leagueSelect}</div>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="relative h-10 w-10 rounded-full"
+                    className="relative h-10 w-10 rounded-full shrink-0"
                   >
                     <Avatar>
                       {user.photoURL && (
@@ -168,30 +208,25 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-8">
+      {/* Drawer di navigazione mobile: stessa nav e selettore lega
+          dell'header/sidebar desktop, niente duplicazione di logica. */}
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent side="left" className="w-72 max-w-[85vw] p-0">
+          <SheetHeader className="border-b border-border">
+            <SheetTitle>Fanta Points App</SheetTitle>
+          </SheetHeader>
+          <div className="flex flex-col gap-4 p-4 overflow-y-auto">
+            {fantas.length > 0 && leagueSelect}
+            {renderNavLinks(() => setMobileNavOpen(false))}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <div className="container mx-auto px-4 py-6 sm:py-8">
         <div className="flex gap-6">
-          {/* Sidebar Navigation */}
-          <aside className="w-64 flex-shrink-0">
-            <nav className="space-y-1">
-              {navigation.map((item) => {
-                const isActive = pathname === item.href;
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                      isActive
-                        ? "bg-raised text-foreground"
-                        : "text-muted-foreground hover:bg-raised hover:text-foreground"
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span className="font-medium">{item.name}</span>
-                  </Link>
-                );
-              })}
-            </nav>
+          {/* Sidebar Navigation: solo da lg in su, sotto c'è il drawer */}
+          <aside className="hidden lg:block w-64 flex-shrink-0">
+            {renderNavLinks()}
           </aside>
 
           {/* Main Content */}
