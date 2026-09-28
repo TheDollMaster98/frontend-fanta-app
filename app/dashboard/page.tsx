@@ -62,8 +62,8 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-100">Le Mie Leghe</h1>
-          <p className="text-slate-400 mt-2">
+          <h1 className="text-3xl font-bold text-foreground">Le Mie Leghe</h1>
+          <p className="text-muted-foreground mt-2">
             Gestisci tutte le tue leghe fantasy - {fantas.length}{" "}
             {fantas.length === 1 ? "lega" : "leghe"}
           </p>
@@ -73,13 +73,13 @@ export default function DashboardPage() {
 
       {/* Fanta Grid */}
       {fantas.length === 0 ? (
-        <Card className="bg-slate-900 border-slate-700">
+        <Card>
           <CardContent className="py-16 text-center">
-            <Trophy className="w-16 h-16 mx-auto text-slate-600 mb-4" />
-            <h3 className="text-xl font-semibold text-slate-300 mb-2">
+            <Trophy className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-xl font-semibold text-foreground mb-2">
               Nessuna lega trovata
             </h3>
-            <p className="text-slate-400 mb-6">
+            <p className="text-muted-foreground mb-6">
               Crea la tua prima lega per iniziare a giocare
             </p>
             <CreateFantaDialog />
@@ -94,16 +94,16 @@ export default function DashboardPage() {
             return (
               <Card
                 key={fanta.id}
-                className="bg-slate-900 border-slate-700 hover:border-slate-600 transition-colors cursor-pointer"
+                className="hover:border-primary/50 transition-colors cursor-pointer"
                 onClick={() => setCurrentFanta(fanta)}
               >
                 <CardHeader>
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
-                      <CardTitle className="text-slate-100 text-xl mb-1">
+                      <CardTitle className="text-foreground text-xl mb-1">
                         {fanta.name}
                       </CardTitle>
-                      <p className="text-sm text-slate-400">
+                      <p className="text-sm text-muted-foreground">
                         {getSportTypeLabel(fanta.sportType)}
                       </p>
                     </div>
@@ -115,7 +115,7 @@ export default function DashboardPage() {
                     </Badge>
                   </div>
                   {fanta.description && (
-                    <CardDescription className="text-slate-500 line-clamp-2">
+                    <CardDescription className="text-muted-foreground line-clamp-2">
                       {fanta.description}
                     </CardDescription>
                   )}
@@ -123,22 +123,22 @@ export default function DashboardPage() {
                 <CardContent>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex items-center gap-2 text-sm">
-                      <Users className="w-4 h-4 text-slate-500" />
-                      <span className="text-slate-400">
+                      <Users className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">
                         {getMemberCount(fanta.id)} membri
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
-                      <Zap className="w-4 h-4 text-slate-500" />
-                      <span className="text-slate-400">
+                      <Zap className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">
                         {fanta.settings.draftMode === "snake"
                           ? "Draft a turni"
                           : `${activeAuctions} aste`}
                       </span>
                     </div>
                   </div>
-                  <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
-                    <div className="text-xs text-slate-500">
+                  <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
+                    <div className="text-xs text-muted-foreground">
                       {fanta.settings.draftMode === "snake"
                         ? `Tempo a scelta: ${fanta.settings.draftPickSeconds ?? MIN_COUNTDOWN_SECONDS}s`
                         : `Budget: ${fanta.settings.generalBudget}€ • Min: ${fanta.settings.minBid}€`}
@@ -164,10 +164,10 @@ export default function DashboardPage() {
       {discoverableFantas.length > 0 && (
         <div className="space-y-4">
           <div>
-            <h2 className="text-xl font-semibold text-slate-100">
+            <h2 className="text-xl font-semibold text-foreground">
               Altre leghe disponibili
             </h2>
-            <p className="text-slate-400 text-sm mt-1">
+            <p className="text-muted-foreground text-sm mt-1">
               Non ne fai ancora parte: richiedi di entrare, l&apos;admin dovrà
               approvare
             </p>
@@ -180,23 +180,23 @@ export default function DashboardPage() {
               return (
                 <Card
                   key={fanta.id}
-                  className="bg-slate-900 border-slate-700 flex h-full flex-col"
+                  className="flex h-full flex-col"
                 >
                   <CardHeader>
-                    <CardTitle className="text-slate-100 text-xl mb-1">
+                    <CardTitle className="text-foreground text-xl mb-1">
                       {fanta.name}
                     </CardTitle>
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-muted-foreground">
                       {getSportTypeLabel(fanta.sportType)}
                     </p>
-                    <CardDescription className="text-slate-500 line-clamp-2">
+                    <CardDescription className="text-muted-foreground line-clamp-2">
                       {fanta.description || "Nessuna descrizione"}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex flex-1 flex-col">
                     <div className="flex items-center gap-2 text-sm mb-4">
-                      <Users className="w-4 h-4 text-slate-500" />
-                      <span className="text-slate-400">
+                      <Users className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">
                         {getMemberCount(fanta.id)} membri
                       </span>
                     </div>
@@ -242,7 +242,7 @@ export default function DashboardPage() {
           {infoFanta && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-slate-100">
+                <DialogTitle className="text-foreground">
                   {infoFanta.name}
                 </DialogTitle>
                 <DialogDescription>
@@ -250,33 +250,33 @@ export default function DashboardPage() {
                 </DialogDescription>
               </DialogHeader>
               {infoFanta.description && (
-                <p className="text-sm text-slate-400">
+                <p className="text-sm text-muted-foreground">
                   {infoFanta.description}
                 </p>
               )}
-              <div className="grid grid-cols-2 gap-3 rounded-md border border-slate-700 bg-slate-800/50 p-4 text-sm">
+              <div className="grid grid-cols-2 gap-3 rounded-md border border-border bg-raised/50 p-4 text-sm">
                 <div>
-                  <span className="text-slate-400">Membri</span>
+                  <span className="text-muted-foreground">Membri</span>
                   <p>{getMemberCount(infoFanta.id)}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Budget Generale</span>
+                  <span className="text-muted-foreground">Budget Generale</span>
                   <p>{infoFanta.settings.generalBudget}€</p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Puntata Minima</span>
+                  <span className="text-muted-foreground">Puntata Minima</span>
                   <p>{infoFanta.settings.minBid}€</p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Puntata Massima</span>
+                  <span className="text-muted-foreground">Puntata Massima</span>
                   <p>{infoFanta.settings.maxBid}€</p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Countdown Default</span>
+                  <span className="text-muted-foreground">Countdown Default</span>
                   <p>{infoFanta.settings.defaultCountdown}s</p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Puntate Custom</span>
+                  <span className="text-muted-foreground">Puntate Custom</span>
                   <p>
                     {infoFanta.settings.allowCustomBids ? "Consentite" : "No"}
                   </p>

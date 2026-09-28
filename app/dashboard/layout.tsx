@@ -47,10 +47,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   // "0 leghe" prima che i dati reali arrivassero da Firestore.
   if (isLoading || fantaLoading || !user) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-100 mx-auto"></div>
-          <p className="mt-4 text-slate-400">Caricamento...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Caricamento...</p>
         </div>
       </div>
     );
@@ -100,14 +100,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-background">
       {/* Top Navigation */}
-      <header className="bg-slate-900 border-b border-slate-700 sticky top-0 z-50">
+      <header className="bg-card border-b border-border sticky top-0 z-50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             <Link
               href="/dashboard"
-              className="text-xl font-bold text-slate-100"
+              className="text-xl font-bold text-foreground"
             >
               Fanta Points App
             </Link>
@@ -153,7 +153,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   <DropdownMenuLabel>
                     <div className="flex flex-col space-y-1">
                       <p className="text-sm font-medium">{user.name}</p>
-                      <p className="text-xs text-slate-400">{user.email}</p>
+                      <p className="text-xs text-muted-foreground">{user.email}</p>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
@@ -182,8 +182,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     href={item.href}
                     className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                       isActive
-                        ? "bg-slate-800 text-slate-100"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+                        ? "bg-raised text-foreground"
+                        : "text-muted-foreground hover:bg-raised hover:text-foreground"
                     }`}
                   >
                     <Icon className="w-5 h-5" />

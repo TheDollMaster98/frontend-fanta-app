@@ -61,7 +61,7 @@ function PendingAssignmentsList({
 
   return (
     <div className="space-y-2">
-      <p className="text-sm text-slate-400">
+      <p className="text-sm text-muted-foreground">
         Turni saltati da assegnare a mano ({pending.length}):
       </p>
       {pending.map((p) => {
@@ -72,9 +72,9 @@ function PendingAssignmentsList({
         return (
           <div
             key={k}
-            className="flex flex-wrap items-center gap-2 rounded-md border border-slate-700 p-2"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2"
           >
-            <span className="text-sm text-slate-300">
+            <span className="text-sm text-foreground">
               {getMemberName(p.userId)} — {slotLabel(slot)}
             </span>
             <Input
@@ -233,10 +233,10 @@ export function DraftPanel() {
 
   if (!draftState || draftState.status === "not_started") {
     return (
-      <Card className="bg-slate-900 border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-slate-100">Draft a turni</CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardTitle className="text-foreground">Draft a turni</CardTitle>
+          <CardDescription className="text-muted-foreground">
             {slots.length} slot da assegnare a {fantaMembers.length} membri
             ({slots.length * fantaMembers.length} pick totali). L&apos;ordine
             viene generato a caso all&apos;avvio e si inverte a ogni giro (1→N,
@@ -245,20 +245,20 @@ export function DraftPanel() {
         </CardHeader>
         <CardContent>
           {seasonStarted ? (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted-foreground">
               Il mercato è chiuso (stagione iniziata): il draft non può più
               essere avviato.
             </p>
           ) : isFantaViceOrAdmin ? (
             fantaMembers.length < 2 ? (
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 Servono almeno 2 membri nella lega per avviare il draft.
               </p>
             ) : (
               <Button onClick={startDraft}>Genera ordine e avvia Draft</Button>
             )
           ) : (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted-foreground">
               Il draft non è ancora iniziato: aspetta che admin/vice lo avvii.
             </p>
           )}
@@ -269,10 +269,10 @@ export function DraftPanel() {
 
   if (draftState.status === "completed") {
     return (
-      <Card className="bg-slate-900 border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-slate-100">Draft completato</CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardTitle className="text-foreground">Draft completato</CardTitle>
+          <CardDescription className="text-muted-foreground">
             Tutte le rose sono state assegnate. Controlla &quot;Team&quot; per
             vedere la tua.
           </CardDescription>
@@ -292,15 +292,15 @@ export function DraftPanel() {
   }
 
   return (
-    <Card className="border-2 border-blue-500">
+    <Card className="border-2 border-info">
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-2xl text-slate-100">
+          <CardTitle className="text-2xl text-foreground">
             Turno di {getMemberName(currentTurnUserId || "")}
           </CardTitle>
-          <div className="text-4xl font-bold text-blue-400">{countdown}s</div>
+          <div className="text-4xl font-bold text-info">{countdown}s</div>
         </div>
-        <CardDescription className="flex flex-wrap items-center gap-2 text-slate-400">
+        <CardDescription className="flex flex-wrap items-center gap-2 text-muted-foreground">
           <Badge variant="secondary">
             {currentSlot ? PICK_TYPE_LABELS[currentSlot.pickType] : ""}
           </Badge>
@@ -329,13 +329,13 @@ export function DraftPanel() {
         </div>
 
         {!canActForCurrentTurn ? (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted-foreground">
             {seasonStarted
               ? "Il mercato è chiuso (stagione iniziata): non puoi più fare pick."
               : `Aspetta il tuo turno — sta scegliendo ${getMemberName(currentTurnUserId || "")}.`}
           </p>
         ) : currentSlot?.pickType === "coach" ? (
-          <div className="space-y-2 rounded-md border border-slate-700 p-4">
+          <div className="space-y-2 rounded-md border border-border p-4">
             <Label htmlFor="draftCoachName">Nome Coach *</Label>
             <Input
               id="draftCoachName"
@@ -355,7 +355,7 @@ export function DraftPanel() {
             </Button>
           </div>
         ) : currentSlot?.pickType === "team" ? (
-          <div className="space-y-2 rounded-md border border-slate-700 p-4">
+          <div className="space-y-2 rounded-md border border-border p-4">
             <Label>Squadra Leaguepedia</Label>
             <Input
               value={teamSearch}
@@ -364,7 +364,7 @@ export function DraftPanel() {
             />
             <div className="max-h-60 space-y-1 overflow-y-auto">
               {teams.length === 0 ? (
-                <p className="px-2 py-4 text-sm text-slate-500">
+                <p className="px-2 py-4 text-sm text-muted-foreground">
                   Nessuna squadra trovata
                 </p>
               ) : (
@@ -372,7 +372,7 @@ export function DraftPanel() {
                   <button
                     key={team.name}
                     onClick={() => submitTeamPick(team)}
-                    className="w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-800"
+                    className="w-full rounded px-2 py-1 text-left text-sm hover:bg-raised"
                   >
                     {team.name} {team.region ? `- ${team.region}` : ""}
                   </button>
@@ -381,7 +381,7 @@ export function DraftPanel() {
             </div>
           </div>
         ) : (
-          <div className="space-y-2 rounded-md border border-slate-700 p-4">
+          <div className="space-y-2 rounded-md border border-border p-4">
             <Label>
               Player Leaguepedia
               {currentSlot?.role ? ` (${currentSlot.role})` : ""}
@@ -393,7 +393,7 @@ export function DraftPanel() {
             />
             <div className="max-h-60 space-y-1 overflow-y-auto">
               {filteredPlayers.length === 0 ? (
-                <p className="px-2 py-4 text-sm text-slate-500">
+                <p className="px-2 py-4 text-sm text-muted-foreground">
                   Nessun player trovato
                 </p>
               ) : (
@@ -401,7 +401,7 @@ export function DraftPanel() {
                   <button
                     key={player.player}
                     onClick={() => submitPlayerPick(player)}
-                    className="w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-800"
+                    className="w-full rounded px-2 py-1 text-left text-sm hover:bg-raised"
                   >
                     {player.player} {player.team ? `- ${player.team}` : ""}
                   </button>
@@ -422,7 +422,7 @@ export function DraftPanel() {
         )}
 
         {draftState.pendingAssignments.length > 0 && isFantaViceOrAdmin && (
-          <div className="border-t border-slate-700 pt-3">
+          <div className="border-t border-border pt-3">
             <PendingAssignmentsList
               pending={draftState.pendingAssignments}
               slots={slots}

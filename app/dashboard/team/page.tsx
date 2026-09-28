@@ -80,8 +80,8 @@ export default function TeamPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-slate-100">Il Mio Team</h1>
-        <p className="text-slate-400 mt-2">
+        <h1 className="text-3xl font-bold text-foreground">Il Mio Team</h1>
+        <p className="text-muted-foreground mt-2">
           {isSnakeDraft
             ? "Gestisci la tua rosa"
             : "Gestisci la tua rosa e il budget"}
@@ -89,7 +89,7 @@ export default function TeamPage() {
       </div>
 
       {/* Team Info */}
-      <Card className="bg-slate-900 border-slate-700">
+      <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             {isEditingName ? (
@@ -112,7 +112,7 @@ export default function TeamPage() {
               </div>
             ) : (
               <>
-                <CardTitle className="text-2xl text-slate-100">
+                <CardTitle className="text-2xl text-foreground">
                   {teamName}
                 </CardTitle>
                 <Button
@@ -129,17 +129,17 @@ export default function TeamPage() {
         {!isSnakeDraft && (
           <CardContent>
             <div className="grid md:grid-cols-3 gap-4">
-              <div className="bg-slate-800 p-4 rounded-lg border border-green-900/50">
-                <p className="text-sm text-slate-400">Rimanente</p>
-                <p className="text-2xl font-bold text-green-400">{remaining}€</p>
+              <div className="stat-tile border-success/30">
+                <p className="text-sm text-muted-foreground">Rimanente</p>
+                <p className="text-2xl font-bold text-success">{remaining}€</p>
               </div>
-              <div className="bg-slate-800 p-4 rounded-lg border border-red-900/50">
-                <p className="text-sm text-slate-400">Speso</p>
-                <p className="text-2xl font-bold text-red-400">{spent}€</p>
+              <div className="stat-tile border-destructive/30">
+                <p className="text-sm text-muted-foreground">Speso</p>
+                <p className="text-2xl font-bold text-destructive">{spent}€</p>
               </div>
-              <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                <p className="text-sm text-slate-400">Budget Totale</p>
-                <p className="text-2xl font-bold text-slate-100">{budget}€</p>
+              <div className="stat-tile">
+                <p className="text-sm text-muted-foreground">Budget Totale</p>
+                <p className="text-2xl font-bold text-foreground">{budget}€</p>
               </div>
             </div>
           </CardContent>
@@ -147,10 +147,10 @@ export default function TeamPage() {
       </Card>
 
       {/* Rosa Giocatori */}
-      <Card className="bg-slate-900 border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-slate-100">Rosa Giocatori</CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardTitle className="text-foreground">Rosa Giocatori</CardTitle>
+          <CardDescription className="text-muted-foreground">
             {players.length} giocatore{players.length !== 1 ? "i" : ""} acquisit
             {players.length !== 1 ? "i" : "o"}
           </CardDescription>
@@ -158,10 +158,10 @@ export default function TeamPage() {
         <CardContent>
           {players.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-slate-400">
+              <p className="text-muted-foreground">
                 Non hai ancora acquistato giocatori
               </p>
-              <p className="text-sm text-slate-500 mt-2">
+              <p className="text-sm text-muted-foreground mt-2">
                 {isSnakeDraft
                   ? "Partecipa al draft per costruire la tua rosa"
                   : "Partecipa alle aste per costruire la tua rosa"}
@@ -206,7 +206,7 @@ export default function TeamPage() {
                     <TableCell className="text-right">
                       {player.points !== undefined ? player.points : "—"}
                     </TableCell>
-                    <TableCell className="text-right text-sm text-slate-400">
+                    <TableCell className="text-right text-sm text-muted-foreground">
                       {new Date(player.acquiredAt).toLocaleDateString("it-IT")}
                     </TableCell>
                     <TableCell className="text-right">
@@ -216,7 +216,7 @@ export default function TeamPage() {
                           size="sm"
                           onClick={() => setPlayerToRemove(player)}
                         >
-                          <Trash2 className="h-4 w-4 text-red-400" />
+                          <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       )}
                     </TableCell>

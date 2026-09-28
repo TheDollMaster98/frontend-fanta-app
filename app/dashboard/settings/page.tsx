@@ -165,8 +165,8 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-slate-100">Impostazioni</h1>
-        <p className="text-slate-400 mt-2">
+        <h1 className="text-3xl font-bold text-foreground">Impostazioni</h1>
+        <p className="text-muted-foreground mt-2">
           Gestisci il tuo profilo e le preferenze
         </p>
       </div>
@@ -179,12 +179,12 @@ export default function SettingsPage() {
         </TabsList>
 
         <TabsContent value="profile">
-          <Card className="bg-slate-900 border-slate-700">
+          <Card>
             <CardHeader>
-              <CardTitle className="text-slate-100">
+              <CardTitle className="text-foreground">
                 Informazioni Profilo
               </CardTitle>
-              <CardDescription className="text-slate-400">
+              <CardDescription className="text-muted-foreground">
                 Aggiorna i tuoi dati personali
               </CardDescription>
             </CardHeader>
@@ -200,7 +200,7 @@ export default function SettingsPage() {
                 </Avatar>
                 <div className="space-y-1">
                   <Label htmlFor="photo" className="cursor-pointer">
-                    <span className="inline-flex h-9 items-center rounded-md border border-slate-700 px-3 text-sm hover:bg-slate-800">
+                    <span className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm hover:bg-raised">
                       {isUploadingPhoto ? "Caricamento..." : "Cambia foto"}
                     </span>
                   </Label>
@@ -213,14 +213,14 @@ export default function SettingsPage() {
                     onChange={handlePhotoChange}
                   />
                   {photoMessage && (
-                    <p className="text-xs text-slate-500">{photoMessage}</p>
+                    <p className="text-xs text-muted-foreground">{photoMessage}</p>
                   )}
                 </div>
               </div>
               <Separator className="mb-4" />
               <form onSubmit={handleProfileUpdate} className="space-y-4">
                 {profileMessage && (
-                  <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">
+                  <div className="rounded-md border border-border bg-raised/50 p-3 text-sm text-foreground">
                     {profileMessage}
                   </div>
                 )}
@@ -241,7 +241,7 @@ export default function SettingsPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     Usala anche per accedere: se la cambi qui, dal prossimo
                     login dovrai usare quella nuova
                   </p>
@@ -275,7 +275,7 @@ export default function SettingsPage() {
               <Separator className="my-6" />
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Gestione Leghe</h3>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Crea una nuova lega per un diverso sport o competizione
                 </p>
                 <CreateFantaDialog />
@@ -288,7 +288,7 @@ export default function SettingsPage() {
                     <h3 className="text-lg font-semibold">
                       Modalità Developer
                     </h3>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-muted-foreground">
                       Accesso universale a tutte le leghe, senza bisogno di
                       farne parte o di essere admin. Puoi attivarla e
                       disattivarla liberamente
@@ -323,7 +323,7 @@ export default function SettingsPage() {
             <CardContent>
               <form onSubmit={handleTeamUpdate} className="space-y-4">
                 {teamMessage && (
-                  <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">
+                  <div className="rounded-md border border-border bg-raised/50 p-3 text-sm text-foreground">
                     {teamMessage}
                   </div>
                 )}
@@ -335,7 +335,7 @@ export default function SettingsPage() {
                     onChange={(e) => setTeamName(e.target.value)}
                     placeholder="Es: I Campioni"
                   />
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     {currentFanta?.settings.draftMode === "snake"
                       ? "Il nome che identificherà la tua squadra nel draft"
                       : "Il nome che identificherà la tua squadra nelle aste"}
@@ -364,7 +364,7 @@ export default function SettingsPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     Cambia la lega attiva per vedere aste/draft relativi
                   </p>
                 </div>
@@ -378,28 +378,28 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-semibold">Gestione Leghe</h3>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-muted-foreground">
                       Crea una nuova lega per un diverso sport o competizione
                     </p>
                   </div>
                   <CreateFantaDialog />
                 </div>
 
-                <div className="border border-slate-700 rounded-lg p-4 space-y-2">
-                  <h4 className="font-medium text-slate-100">
+                <div className="border border-border rounded-lg p-4 space-y-2">
+                  <h4 className="font-medium text-foreground">
                     Leghe Disponibili
                   </h4>
                   <div className="space-y-2">
                     {fantas.map((fanta) => (
                       <div
                         key={fanta.id}
-                        className="flex items-center justify-between p-3 border border-slate-700 rounded hover:bg-slate-800 transition-colors"
+                        className="flex items-center justify-between p-3 border border-border rounded hover:bg-raised transition-colors"
                       >
                         <div>
-                          <p className="font-medium text-slate-100">
+                          <p className="font-medium text-foreground">
                             {fanta.name}
                           </p>
-                          <p className="text-sm text-slate-400">
+                          <p className="text-sm text-muted-foreground">
                             {fanta.sportType} • {getMemberCount(fanta.id)} membri
                           </p>
                         </div>
@@ -426,14 +426,14 @@ export default function SettingsPage() {
             <form onSubmit={handleNotificationPrefsUpdate}>
               <CardContent className="space-y-4">
                 {notificationMessage && (
-                  <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">
+                  <div className="rounded-md border border-border bg-raised/50 p-3 text-sm text-foreground">
                     {notificationMessage}
                   </div>
                 )}
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">Nuove Aste</p>
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-muted-foreground">
                       Ricevi notifiche quando inizia una nuova asta
                     </p>
                   </div>
@@ -455,7 +455,7 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">Aste Vinte</p>
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-muted-foreground">
                       Notifica quando vinci un&apos;asta
                     </p>
                   </div>
@@ -477,7 +477,7 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">Modifiche Impostazioni</p>
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-muted-foreground">
                       Notifica quando l&apos;admin modifica le impostazioni
                     </p>
                   </div>

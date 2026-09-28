@@ -84,19 +84,19 @@ export default function JoinFantaPage() {
 
   if (authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
-        <div className="text-center text-slate-400">Caricamento...</div>
+      <div className="auth-shell">
+        <div className="text-center text-muted-foreground">Caricamento...</div>
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
-        <Card className="w-full max-w-md border-slate-800 bg-slate-900">
+      <div className="auth-shell">
+        <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle className="text-slate-100">Accedi per continuare</CardTitle>
-            <CardDescription className="text-slate-400">
+            <CardTitle className="text-foreground">Accedi per continuare</CardTitle>
+            <CardDescription className="text-muted-foreground">
               Devi avere un account per unirti a questa lega. Dopo aver
               effettuato l&apos;accesso o la registrazione, riapri questo
               stesso link.
@@ -116,17 +116,17 @@ export default function JoinFantaPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
-      <Card className="w-full max-w-md border-slate-800 bg-slate-900">
+    <div className="auth-shell">
+      <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-slate-100">
+          <CardTitle className="text-foreground">
             {status === "loading" && "Verifica in corso..."}
             {status === "success" && "Ti sei unito alla lega!"}
             {status === "already-member" && "Sei già membro"}
             {status === "not-found" && "Codice invito non valido"}
             {status === "error" && "Qualcosa è andato storto"}
           </CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardDescription className="text-muted-foreground">
             {status === "loading" && "Sto controllando il codice invito."}
             {status === "success" &&
               `Ora fai parte di "${fantaName}". Selezionala dal menu in alto nella dashboard.`}

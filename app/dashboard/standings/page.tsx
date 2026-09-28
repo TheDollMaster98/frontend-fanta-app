@@ -235,8 +235,8 @@ export default function StandingsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-slate-100">Classifica</h1>
-          <p className="text-slate-400 mt-2">
+          <h1 className="text-3xl font-bold text-foreground">Classifica</h1>
+          <p className="text-muted-foreground mt-2">
             {currentFanta.name} - Punteggio totale per membro, da statistiche
             reali Leaguepedia
           </p>
@@ -263,22 +263,22 @@ export default function StandingsPage() {
       </div>
 
       {circuitMissing && (
-        <p className="text-sm text-amber-500">
+        <p className="text-sm text-warning">
           Nessun circuito impostato in Gestione Lega: il ricalcolo punteggi
           non sa quale torneo interrogare su Leaguepedia.
         </p>
       )}
       {actionMessage && (
-        <p className="text-sm text-slate-400">{actionMessage}</p>
+        <p className="text-sm text-muted-foreground">{actionMessage}</p>
       )}
 
-      <Card className="bg-slate-900 border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-slate-100 flex items-center gap-2">
+          <CardTitle className="text-foreground flex items-center gap-2">
             <Trophy className="w-5 h-5" />
             Classifica Generale
           </CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardDescription className="text-muted-foreground">
             Somma dei punti fantasy di ogni pick in rosa (kill/morti/assist/
             vittorie per giocatori e jolly, vittorie per squadra/coach).
             Clicca un membro per il dettaglio, poi un pick per le partite.
@@ -286,7 +286,7 @@ export default function StandingsPage() {
         </CardHeader>
         <CardContent>
           {standings.length === 0 ? (
-            <p className="text-sm text-slate-500">Nessun membro in lega</p>
+            <p className="text-sm text-muted-foreground">Nessun membro in lega</p>
           ) : (
             <div className="space-y-2">
               {standings.map((entry, index) => {
@@ -296,21 +296,21 @@ export default function StandingsPage() {
                 return (
                   <div
                     key={entry.userId}
-                    className="flex items-center justify-between p-3 bg-slate-800 border border-slate-700 rounded-lg cursor-pointer hover:border-slate-600 transition-colors"
+                    className="flex items-center justify-between p-3 bg-raised border border-border rounded-lg cursor-pointer hover:border-primary/50 transition-colors"
                     onClick={() => member && setSelectedMember(member)}
                   >
                     <div className="flex items-center gap-3">
-                      <span className="w-6 text-center text-slate-500 font-mono">
+                      <span className="w-6 text-center text-muted-foreground font-mono">
                         {index + 1}
                       </span>
                       <div>
-                        <p className="text-slate-100 font-medium">
+                        <p className="text-foreground font-medium">
                           {entry.teamName}
                         </p>
-                        <p className="text-xs text-slate-400">{entry.name}</p>
+                        <p className="text-xs text-muted-foreground">{entry.name}</p>
                       </div>
                     </div>
-                    <span className="text-lg font-bold text-green-400">
+                    <span className="text-lg font-bold text-success">
                       {entry.totalPoints}
                     </span>
                   </div>
@@ -321,12 +321,12 @@ export default function StandingsPage() {
         </CardContent>
       </Card>
 
-      <Card className="bg-slate-900 border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-slate-100">
+          <CardTitle className="text-foreground">
             Calendario ({calendar.length} turni)
           </CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardDescription className="text-muted-foreground">
             Girone all&apos;italiana tra i membri della lega. Il confronto
             diretto a punti per turno non è ancora disponibile: manca una
             mappatura affidabile tra turno fantasy e data reale delle
@@ -336,7 +336,7 @@ export default function StandingsPage() {
         </CardHeader>
         <CardContent>
           {calendar.length === 0 ? (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted-foreground">
               Nessun calendario generato
               {isFantaAdmin ? ': usa "Genera Calendario" qui sopra.' : "."}
             </p>
@@ -344,27 +344,27 @@ export default function StandingsPage() {
             <div className="space-y-4">
               {calendar.map((round) => (
                 <div key={round.id}>
-                  <p className="text-sm font-medium text-slate-300 mb-2">
+                  <p className="text-sm font-medium text-foreground mb-2">
                     Turno {round.roundNumber}
                   </p>
                   <div className="grid md:grid-cols-2 gap-2">
                     {round.fixtures.map((fixture, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center justify-between p-2 bg-slate-800 border border-slate-700 rounded text-sm"
+                        className="flex items-center justify-between p-2 bg-raised border border-border rounded text-sm"
                       >
-                        <span className="text-slate-200">
+                        <span className="text-foreground">
                           {getMemberName(fixture.homeUserId)}
                         </span>
                         {fixture.awayUserId ? (
                           <>
-                            <span className="text-slate-500">vs</span>
-                            <span className="text-slate-200">
+                            <span className="text-muted-foreground">vs</span>
+                            <span className="text-foreground">
                               {getMemberName(fixture.awayUserId)}
                             </span>
                           </>
                         ) : (
-                          <span className="text-slate-500">riposo</span>
+                          <span className="text-muted-foreground">riposo</span>
                         )}
                       </div>
                     ))}
@@ -385,13 +385,13 @@ export default function StandingsPage() {
           {selectedMember && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-slate-100">
+                <DialogTitle className="text-foreground">
                   {selectedMember.teamName}
                 </DialogTitle>
                 <DialogDescription>{selectedMember.name}</DialogDescription>
               </DialogHeader>
               {selectedMember.team.length === 0 ? (
-                <p className="text-sm text-slate-500">Rosa vuota</p>
+                <p className="text-sm text-muted-foreground">Rosa vuota</p>
               ) : (
                 <div className="space-y-2">
                   {[...selectedMember.team]
@@ -403,14 +403,14 @@ export default function StandingsPage() {
                     .map((pick) => (
                       <div
                         key={pick.id}
-                        className="flex items-center justify-between p-2 border border-slate-700 rounded-lg cursor-pointer hover:border-slate-600 transition-colors"
+                        className="flex items-center justify-between p-2 border border-border rounded-lg cursor-pointer hover:border-primary/50 transition-colors"
                         onClick={() => openDrillDown(pick, selectedMember.userId)}
                       >
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary">
                             {PICK_TYPE_LABELS[pick.pickType]}
                           </Badge>
-                          <span className="text-slate-100">
+                          <span className="text-foreground">
                             {pick.playerName}
                           </span>
                           {pick.playerRole && (
@@ -418,16 +418,16 @@ export default function StandingsPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-green-400">
+                          <span className="font-semibold text-success">
                             {totalPickPoints(pick, roleWeights, teamWeights)}
                           </span>
-                          <ChevronRight className="h-4 w-4 text-slate-500" />
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         </div>
                       </div>
                     ))}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-700">
-                    <span className="text-slate-300 font-medium">Totale</span>
-                    <span className="text-lg font-bold text-green-400">
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
+                    <span className="text-foreground font-medium">Totale</span>
+                    <span className="text-lg font-bold text-success">
                       {selectedMember.team.reduce(
                         (sum, p) =>
                           sum + totalPickPoints(p, roleWeights, teamWeights),
@@ -457,7 +457,7 @@ export default function StandingsPage() {
           {drillPick && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-slate-100">
+                <DialogTitle className="text-foreground">
                   {drillPick.playerName}
                 </DialogTitle>
                 <DialogDescription>
@@ -471,8 +471,8 @@ export default function StandingsPage() {
               </DialogHeader>
 
               {isFantaViceOrAdmin && (
-                <div className="space-y-2 rounded-md border border-slate-700 p-3">
-                  <p className="text-xs text-slate-500">
+                <div className="space-y-2 rounded-md border border-border p-3">
+                  <p className="text-xs text-muted-foreground">
                     Statistiche inserite a mano (CS/Vision Score/Pentakill/
                     obiettivi non sono ancora calcolati in automatico da
                     Leaguepedia): si sommano subito ai punti, senza dover
@@ -502,9 +502,9 @@ export default function StandingsPage() {
                     ))}
                   </div>
                   <div className="flex items-center justify-between pt-1">
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-muted-foreground">
                       Bonus da queste statistiche:{" "}
-                      <span className="font-semibold text-green-400">
+                      <span className="font-semibold text-success">
                         {Math.round(manualBonusPreview * 100) / 100}
                       </span>
                     </p>
@@ -516,16 +516,16 @@ export default function StandingsPage() {
               )}
 
               {isLoadingLog ? (
-                <p className="text-sm text-slate-400">Caricamento partite...</p>
+                <p className="text-sm text-muted-foreground">Caricamento partite...</p>
               ) : drillPick.pickType === "player" ||
                 drillPick.pickType === "jolly" ? (
                 playerLog.length === 0 ? (
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     Nessuna partita trovata per questo giocatore in questo
                     circuito.
                   </p>
                 ) : (
-                  <div className="max-h-96 overflow-y-auto rounded-md border border-slate-700">
+                  <div className="max-h-96 overflow-y-auto rounded-md border border-border">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -577,12 +577,12 @@ export default function StandingsPage() {
                   </div>
                 )
               ) : teamLog.length === 0 ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Nessuna partita trovata per questa squadra in questo
                   circuito.
                 </p>
               ) : (
-                <div className="max-h-96 overflow-y-auto rounded-md border border-slate-700">
+                <div className="max-h-96 overflow-y-auto rounded-md border border-border">
                   <Table>
                     <TableHeader>
                       <TableRow>

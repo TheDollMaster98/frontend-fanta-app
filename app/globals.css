@@ -25,6 +25,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -37,6 +38,13 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-raised: var(--raised);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -46,73 +54,94 @@
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
+/* Palette dedicata dell'app (28/9): base carbone freddo + oro come unico
+   accento, verde/rosso/ambra solo come stati semantici (successo/errore/
+   warning), niente gradienti. Scelta apposta diversa dalla palette del
+   portfolio (carta chiara/inchiostro/verde muschio) per non ripeterla:
+   qui è tutto scuro, freddo, con l'oro che fa da unico punto caldo. */
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
+  --background: oklch(0.99 0.002 260);
+  --foreground: oklch(0.16 0.01 260);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
+  --card-foreground: oklch(0.16 0.01 260);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.984 0.003 247.858);
-  --sidebar-foreground: oklch(0.129 0.042 264.695);
-  --sidebar-primary: oklch(0.208 0.042 265.755);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.968 0.007 247.896);
-  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
-  --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-ring: oklch(0.704 0.04 256.788);
+  --popover-foreground: oklch(0.16 0.01 260);
+  --primary: oklch(0.62 0.13 75);
+  --primary-foreground: oklch(0.14 0.02 75);
+  --secondary: oklch(0.95 0.005 260);
+  --secondary-foreground: oklch(0.16 0.01 260);
+  --muted: oklch(0.95 0.005 260);
+  --muted-foreground: oklch(0.48 0.015 260);
+  --accent: oklch(0.95 0.005 260);
+  --accent-foreground: oklch(0.16 0.01 260);
+  --destructive: oklch(0.58 0.21 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.9 0.005 260);
+  --input: oklch(0.9 0.005 260);
+  --ring: oklch(0.62 0.13 75);
+  --raised: oklch(0.96 0.005 260);
+  --success: oklch(0.6 0.15 155);
+  --success-foreground: oklch(0.14 0.03 155);
+  --warning: oklch(0.68 0.15 60);
+  --warning-foreground: oklch(0.16 0.03 60);
+  --info: oklch(0.6 0.15 250);
+  --info-foreground: oklch(0.98 0 0);
+  --chart-1: oklch(0.62 0.13 75);
+  --chart-2: oklch(0.6 0.15 155);
+  --chart-3: oklch(0.6 0.15 250);
+  --chart-4: oklch(0.68 0.15 60);
+  --chart-5: oklch(0.58 0.21 25);
+  --sidebar: oklch(0.98 0.003 260);
+  --sidebar-foreground: oklch(0.16 0.01 260);
+  --sidebar-primary: oklch(0.62 0.13 75);
+  --sidebar-primary-foreground: oklch(0.14 0.02 75);
+  --sidebar-accent: oklch(0.95 0.005 260);
+  --sidebar-accent-foreground: oklch(0.16 0.01 260);
+  --sidebar-border: oklch(0.9 0.005 260);
+  --sidebar-ring: oklch(0.62 0.13 75);
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.15 0.02 264);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.15 0.02 264);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.25 0.02 264);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  --background: oklch(0.15 0.012 255);
+  --foreground: oklch(0.96 0.003 255);
+  --card: oklch(0.19 0.013 255);
+  --card-foreground: oklch(0.96 0.003 255);
+  --popover: oklch(0.19 0.013 255);
+  --popover-foreground: oklch(0.96 0.003 255);
+  --primary: oklch(0.75 0.13 75);
+  --primary-foreground: oklch(0.16 0.025 75);
+  --secondary: oklch(0.26 0.014 255);
+  --secondary-foreground: oklch(0.96 0.003 255);
+  --muted: oklch(0.24 0.013 255);
+  --muted-foreground: oklch(0.65 0.02 255);
+  --accent: oklch(0.26 0.014 255);
+  --accent-foreground: oklch(0.96 0.003 255);
+  --destructive: oklch(0.62 0.19 25);
+  --destructive-foreground: oklch(0.97 0 0);
+  --border: oklch(0.28 0.015 255);
+  --input: oklch(0.28 0.015 255);
+  --ring: oklch(0.75 0.13 75);
+  --raised: oklch(0.23 0.014 255);
+  --success: oklch(0.72 0.16 155);
+  --success-foreground: oklch(0.16 0.03 155);
+  --warning: oklch(0.74 0.15 60);
+  --warning-foreground: oklch(0.16 0.03 60);
+  --info: oklch(0.7 0.14 250);
+  --info-foreground: oklch(0.14 0.03 250);
+  --chart-1: oklch(0.75 0.13 75);
+  --chart-2: oklch(0.72 0.16 155);
+  --chart-3: oklch(0.7 0.14 250);
+  --chart-4: oklch(0.74 0.15 60);
+  --chart-5: oklch(0.62 0.19 25);
+  --sidebar: oklch(0.17 0.012 255);
+  --sidebar-foreground: oklch(0.96 0.003 255);
+  --sidebar-primary: oklch(0.75 0.13 75);
+  --sidebar-primary-foreground: oklch(0.16 0.025 75);
+  --sidebar-accent: oklch(0.26 0.014 255);
+  --sidebar-accent-foreground: oklch(0.96 0.003 255);
+  --sidebar-border: oklch(0.28 0.015 255);
+  --sidebar-ring: oklch(0.75 0.13 75);
 }
 
 @layer base {
@@ -124,12 +153,12 @@
   }
 }
 
-/* Scrollbar coerente col tema scuro (bg-slate-900/border-slate-700 usati in
-   tutta l'app), al posto di quella chiara di sistema che stonava dentro
-   dialog e liste scrollabili (es. CreateFantaDialog, ricerca player/team). */
+/* Scrollbar coerente col tema (token --card/--border), al posto di quella
+   chiara di sistema che stonava dentro dialog e liste scrollabili (es.
+   CreateFantaDialog, ricerca player/team). */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #475569 #0f172a; /* thumb: slate-600, track: slate-900 */
+  scrollbar-color: var(--border) var(--card);
 }
 
 *::-webkit-scrollbar {
@@ -138,16 +167,30 @@
 }
 
 *::-webkit-scrollbar-track {
-  background: #0f172a; /* slate-900 */
+  background: var(--card);
   border-radius: 8px;
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: #475569; /* slate-600 */
+  background-color: var(--border);
   border-radius: 8px;
-  border: 2px solid #0f172a; /* slate-900, crea l'effetto "bordo smussato" */
+  border: 2px solid var(--card);
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background-color: #64748b; /* slate-500 */
+  background-color: var(--muted-foreground);
+}
+
+/* Pattern ripetuti identici in più pagine (login/register/join, stat box
+   del team): definiti una volta sola qui invece che ricopiati ad ogni file,
+   così un cambio di stile si fa in un punto solo. In Tailwind v4 (CSS-first,
+   niente tailwind.config) le classi custom riutilizzabili vanno dichiarate
+   con @utility, non @layer components: quest'ultimo non veniva proprio
+   generato nell'output CSS (verificato nel browser, non a occhio). */
+@utility auth-shell {
+  @apply flex min-h-screen items-center justify-center bg-background p-4;
+}
+
+@utility stat-tile {
+  @apply bg-raised p-4 rounded-lg border border-border;
 }

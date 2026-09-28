@@ -51,20 +51,20 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
-      <Card className="w-full max-w-md border-slate-800 bg-slate-900">
+    <div className="auth-shell">
+      <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-semibold text-white">
             Accedi
           </CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardDescription className="text-muted-foreground">
             Inserisci le tue credenziali per accedere all’app.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             {error && (
-              <div className="rounded-md border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
                 {error}
               </div>
             )}
@@ -96,9 +96,9 @@ export default function LoginPage() {
             </Button>
           </form>
           <div className="my-4 flex items-center gap-3">
-            <Separator className="flex-1 bg-slate-800" />
-            <span className="text-xs text-slate-500">oppure</span>
-            <Separator className="flex-1 bg-slate-800" />
+            <Separator className="flex-1 bg-raised" />
+            <span className="text-xs text-muted-foreground">oppure</span>
+            <Separator className="flex-1 bg-raised" />
           </div>
           <Button
             type="button"
@@ -109,11 +109,11 @@ export default function LoginPage() {
           >
             {isGoogleLoading ? "Accesso in corso..." : "Accedi con Google"}
           </Button>
-          <div className="mt-4 text-center text-sm text-slate-400">
+          <div className="mt-4 text-center text-sm text-muted-foreground">
             Non hai un account?{" "}
             <Link
               href="/auth/register"
-              className="text-slate-100 underline-offset-4 hover:underline"
+              className="text-foreground underline-offset-4 hover:underline"
             >
               Registrati
             </Link>

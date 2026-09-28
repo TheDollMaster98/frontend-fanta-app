@@ -408,8 +408,8 @@ export default function AuctionsPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-100">Draft</h1>
-          <p className="text-slate-400 mt-2">
+          <h1 className="text-3xl font-bold text-foreground">Draft</h1>
+          <p className="text-muted-foreground mt-2">
             {currentFanta?.name} - Scegli a turno il tuo team
           </p>
         </div>
@@ -422,8 +422,8 @@ export default function AuctionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-100">Aste</h1>
-          <p className="text-slate-400 mt-2">
+          <h1 className="text-3xl font-bold text-foreground">Aste</h1>
+          <p className="text-muted-foreground mt-2">
             {currentFanta?.name} -{" "}
             {seasonStarted
               ? "Mercato chiuso, la stagione è iniziata"
@@ -477,7 +477,7 @@ export default function AuctionsPage() {
                         <SelectItem value="coach">Coach</SelectItem>
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-muted-foreground">
                       Il draft composto è squadra + coach + 5 giocatori di
                       ruolo{maxJollySetting > 0 ? ` + fino a ${maxJollySetting} jolly` : ""}
                       : ogni pezzo si compra con un&apos;asta separata.
@@ -488,7 +488,7 @@ export default function AuctionsPage() {
                 {currentFanta?.sportType === "lol" &&
                   (newAuction.pickType === "player" ||
                     newAuction.pickType === "jolly") && (
-                  <div className="space-y-3 rounded-md border border-slate-700 p-4">
+                  <div className="space-y-3 rounded-md border border-border p-4">
                     <div className="space-y-2">
                       <Label>Formato asta</Label>
                       <Select
@@ -554,7 +554,7 @@ export default function AuctionsPage() {
                     )}
 
                     {newAuction.auctionFormat === "free" && (
-                      <div className="text-sm text-slate-400">
+                      <div className="text-sm text-muted-foreground">
                         Sono disponibili tutti i player presenti in Leaguepedia.
                       </div>
                     )}
@@ -609,7 +609,7 @@ export default function AuctionsPage() {
                           </SelectTrigger>
                           <SelectContent className="max-h-80">
                             {filteredAuctionPlayers.length === 0 ? (
-                              <div className="px-2 py-4 text-sm text-slate-500">
+                              <div className="px-2 py-4 text-sm text-muted-foreground">
                                 Nessun player trovato
                               </div>
                             ) : (
@@ -629,7 +629,7 @@ export default function AuctionsPage() {
                     )}
 
                     {selectedAuctionPlayer && (
-                      <div className="space-y-3 rounded-md border border-slate-700 bg-slate-800/50 p-3">
+                      <div className="space-y-3 rounded-md border border-border bg-raised/50 p-3">
                         <div className="flex items-center gap-4">
                           {selectedAuctionPlayerImage ? (
                             <img
@@ -638,54 +638,54 @@ export default function AuctionsPage() {
                               className="h-14 w-14 rounded-md object-cover"
                             />
                           ) : (
-                            <div className="h-14 w-14 rounded-md bg-slate-800" />
+                            <div className="h-14 w-14 rounded-md bg-raised" />
                           )}
                           <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-1 text-sm md:grid-cols-3">
                             <div>
-                              <span className="text-slate-400">Nickname</span>
+                              <span className="text-muted-foreground">Nickname</span>
                               <p>{selectedAuctionPlayer.player || "N/D"}</p>
                             </div>
                             <div>
-                              <span className="text-slate-400">Nome reale</span>
+                              <span className="text-muted-foreground">Nome reale</span>
                               <p>{selectedAuctionPlayer.name || "N/D"}</p>
                             </div>
                             <div>
-                              <span className="text-slate-400">Ruolo</span>
+                              <span className="text-muted-foreground">Ruolo</span>
                               <p>{selectedAuctionPlayer.role || "N/D"}</p>
                             </div>
                             <div>
-                              <span className="text-slate-400">Team</span>
+                              <span className="text-muted-foreground">Team</span>
                               <p>{selectedAuctionPlayer.team || "N/D"}</p>
                             </div>
                             <div>
-                              <span className="text-slate-400">Lega</span>
+                              <span className="text-muted-foreground">Lega</span>
                               <p>{selectedAuctionPlayer.league || "N/D"}</p>
                             </div>
                             <div>
-                              <span className="text-slate-400">Paese</span>
+                              <span className="text-muted-foreground">Paese</span>
                               <p>{selectedAuctionPlayer.country || "N/D"}</p>
                             </div>
                             <div>
-                              <span className="text-slate-400">Residenza</span>
+                              <span className="text-muted-foreground">Residenza</span>
                               <p>{selectedAuctionPlayer.residency || "N/D"}</p>
                             </div>
                             <div>
-                              <span className="text-slate-400">Nascita</span>
+                              <span className="text-muted-foreground">Nascita</span>
                               <p>{selectedAuctionPlayer.birthdate || "N/D"}</p>
                             </div>
                           </div>
                         </div>
 
-                        <div className="border-t border-slate-700 pt-3">
+                        <div className="border-t border-border pt-3">
                           {isLoadingAuctionPlayerStats ? (
-                            <p className="text-sm text-slate-400">
+                            <p className="text-sm text-muted-foreground">
                               Caricamento statistiche...
                             </p>
                           ) : selectedAuctionPlayerStats.length > 0 ? (
                             <div className="space-y-2">
                               <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
                                 <div>
-                                  <span className="text-slate-400">Partite</span>
+                                  <span className="text-muted-foreground">Partite</span>
                                   <p>
                                     {selectedAuctionPlayerStats.reduce(
                                       (t, s) => t + s.gamesPlayed,
@@ -694,7 +694,7 @@ export default function AuctionsPage() {
                                   </p>
                                 </div>
                                 <div>
-                                  <span className="text-slate-400">K/D/A</span>
+                                  <span className="text-muted-foreground">K/D/A</span>
                                   <p>
                                     {selectedAuctionPlayerStats.reduce(
                                       (t, s) => t + s.kills,
@@ -723,7 +723,7 @@ export default function AuctionsPage() {
                                 );
                                 return (
                                   <div>
-                                    <span className="text-slate-400 text-sm">
+                                    <span className="text-muted-foreground text-sm">
                                       Champion giocati ({champions.length})
                                     </span>
                                     <p className="mt-1 max-h-24 overflow-y-auto whitespace-normal wrap-break-word text-sm leading-relaxed">
@@ -734,7 +734,7 @@ export default function AuctionsPage() {
                                   </div>
                                 );
                               })()}
-                              <div className="max-h-40 overflow-y-auto rounded-md border border-slate-700">
+                              <div className="max-h-40 overflow-y-auto rounded-md border border-border">
                                 <Table>
                                   <TableHeader>
                                     <TableRow>
@@ -764,7 +764,7 @@ export default function AuctionsPage() {
                               </div>
                             </div>
                           ) : (
-                            <p className="text-sm text-slate-500">
+                            <p className="text-sm text-muted-foreground">
                               Nessuna statistica disponibile
                             </p>
                           )}
@@ -776,7 +776,7 @@ export default function AuctionsPage() {
 
                 {currentFanta?.sportType === "lol" &&
                   newAuction.pickType === "team" && (
-                  <div className="space-y-2 rounded-md border border-slate-700 p-4">
+                  <div className="space-y-2 rounded-md border border-border p-4">
                     <Label>Squadra Leaguepedia</Label>
                     <Input
                       value={auctionTeamSearch}
@@ -810,7 +810,7 @@ export default function AuctionsPage() {
                       </SelectTrigger>
                       <SelectContent className="max-h-80">
                         {auctionTeams.length === 0 ? (
-                          <div className="px-2 py-4 text-sm text-slate-500">
+                          <div className="px-2 py-4 text-sm text-muted-foreground">
                             Nessuna squadra trovata
                           </div>
                         ) : (
@@ -828,8 +828,8 @@ export default function AuctionsPage() {
 
                 {currentFanta?.sportType === "lol" &&
                   newAuction.pickType === "coach" && (
-                  <div className="space-y-3 rounded-md border border-slate-700 p-4">
-                    <p className="text-xs text-slate-500">
+                  <div className="space-y-3 rounded-md border border-border p-4">
+                    <p className="text-xs text-muted-foreground">
                       Leaguepedia non ha una tabella coach utilizzabile: nome
                       e squadra allenata si inseriscono a mano.
                     </p>
@@ -935,7 +935,7 @@ export default function AuctionsPage() {
                           placeholder="Es: Mid Laner, Attaccante, Point Guard..."
                         />
                       )}
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-muted-foreground">
                         {availableRoles.length > 0
                           ? `Ruoli disponibili per ${currentFanta?.sportType}`
                           : "Inserisci un ruolo personalizzato"}
@@ -1009,7 +1009,7 @@ export default function AuctionsPage() {
                       min={MIN_COUNTDOWN_SECONDS}
                       max={MAX_COUNTDOWN_SECONDS}
                     />
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-muted-foreground">
                       Tra {MIN_COUNTDOWN_SECONDS}s e {MAX_COUNTDOWN_SECONDS}s
                     </p>
                   </div>
@@ -1026,14 +1026,14 @@ export default function AuctionsPage() {
 
       {/* Asta Attiva */}
       {activeAuction && activeAuction.status === "active" && (
-        <Card className="border-2 border-blue-500">
+        <Card className="border-2 border-info">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-2xl flex items-center gap-2">
-                <Flame className="w-6 h-6 text-orange-500" />
+                <Flame className="w-6 h-6 text-warning" />
                 Asta in Corso
               </CardTitle>
-              <div className="text-4xl font-bold text-blue-400">
+              <div className="text-4xl font-bold text-info">
                 {countdown}s
               </div>
             </div>
@@ -1051,25 +1051,25 @@ export default function AuctionsPage() {
                   <Badge className="mt-2">{activeAuction.playerRole}</Badge>
                 )}
                 {activeAuction.playerTeam && (
-                  <p className="text-slate-400 mt-1">
+                  <p className="text-muted-foreground mt-1">
                     {activeAuction.playerTeam}
                   </p>
                 )}
                 {activeAuction.description && (
-                  <p className="text-sm text-slate-500 mt-2">
+                  <p className="text-sm text-muted-foreground mt-2">
                     {activeAuction.description}
                   </p>
                 )}
               </div>
 
               <div className="space-y-4">
-                <div className="bg-slate-800 border border-slate-700 p-4 rounded-lg">
-                  <p className="text-sm text-slate-400">Prezzo Attuale</p>
-                  <p className="text-3xl font-bold text-green-400">
+                <div className="bg-raised border border-border p-4 rounded-lg">
+                  <p className="text-sm text-muted-foreground">Prezzo Attuale</p>
+                  <p className="text-3xl font-bold text-success">
                     {activeAuction.currentPrice}€
                   </p>
                   {activeAuction.highestBidderId && (
-                    <p className="text-sm text-slate-400 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       Offerente:{" "}
                       {getMemberName(
                         activeAuction.highestBidderId,
@@ -1082,8 +1082,8 @@ export default function AuctionsPage() {
                 {/* Crediti di tutti i membri della lega, per farsi un'idea
                     di quanto possono ancora spingere gli avversari */}
                 {fantaMembers.length > 0 && (
-                  <div className="bg-slate-800 border border-slate-700 p-4 rounded-lg">
-                    <p className="text-sm text-slate-400 mb-2">
+                  <div className="bg-raised border border-border p-4 rounded-lg">
+                    <p className="text-sm text-muted-foreground mb-2">
                       Crediti di tutti
                     </p>
                     <div className="space-y-1 max-h-32 overflow-y-auto">
@@ -1097,10 +1097,10 @@ export default function AuctionsPage() {
                             key={member.userId}
                             className="flex items-center justify-between text-sm"
                           >
-                            <span className="text-slate-300">
+                            <span className="text-foreground">
                               {member.name}
                             </span>
-                            <span className="text-slate-100 font-medium">
+                            <span className="text-foreground font-medium">
                               {getUserBudget(member.userId)}€
                             </span>
                           </div>
@@ -1111,8 +1111,8 @@ export default function AuctionsPage() {
 
                 {/* Storico offerte: chi ha rilanciato, quando e di quanto */}
                 {bidHistory.length > 0 && (
-                  <div className="bg-slate-800 border border-slate-700 p-4 rounded-lg">
-                    <p className="text-sm text-slate-400 mb-2">
+                  <div className="bg-raised border border-border p-4 rounded-lg">
+                    <p className="text-sm text-muted-foreground mb-2">
                       Storico Offerte
                     </p>
                     <div className="space-y-1 max-h-32 overflow-y-auto">
@@ -1121,10 +1121,10 @@ export default function AuctionsPage() {
                           key={bid.id}
                           className="flex items-center justify-between text-sm"
                         >
-                          <span className="text-slate-300">
+                          <span className="text-foreground">
                             {getMemberName(bid.userId, bid.userName)}
                           </span>
-                          <span className="text-slate-100 font-medium">
+                          <span className="text-foreground font-medium">
                             +{bid.amount}€
                           </span>
                         </div>
@@ -1139,44 +1139,44 @@ export default function AuctionsPage() {
             <div className="space-y-3">
               <Label>Fai la tua offerta:</Label>
               {seasonStarted && !isAdmin ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Il mercato è chiuso: la stagione è iniziata, non puoi più
                   fare offerte.
                 </p>
               ) : isRosterFull ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Hai già {maxPlayersTotal} giocatori: rosa al completo, non
                   puoi fare altre offerte.
                 </p>
               ) : isRoleFull ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Hai già {roleLimit} giocatori nel ruolo &quot;
                   {activeAuction.playerRole}&quot;: limite raggiunto per
                   questo ruolo.
                 </p>
               ) : isTeamPickTaken ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Hai già una squadra in rosa: nel draft composto se ne può
                   avere una sola.
                 </p>
               ) : isCoachPickTaken ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Hai già un coach in rosa: nel draft composto se ne può
                   avere uno solo.
                 </p>
               ) : isJollyFull ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   {maxJolly > 0
                     ? `Hai già ${maxJolly} jolly: limite raggiunto.`
                     : "I jolly sono disattivati in questa lega."}
                 </p>
               ) : maxBid !== undefined && activeAuction.currentPrice >= maxBid ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Puntata massima della lega raggiunta ({maxBid}€): l&apos;asta
                   può solo essere chiusa o annullata.
                 </p>
               ) : maxAffordableBid <= activeAuction.currentPrice ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   {openSlots > 0
                     ? `Con ${openSlots} posti rosa ancora da riempire devi tenere almeno ${openSlots} crediti da parte: non puoi rilanciare oltre.`
                     : "Budget insufficiente per rilanciare."}
@@ -1184,7 +1184,7 @@ export default function AuctionsPage() {
               ) : (
                 <>
                   {openSlots > 0 && (
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-muted-foreground">
                       Puoi arrivare fino a {maxAffordableBid}€ (budget:{" "}
                       {myBudget}€, {openSlots} posti rosa ancora da riempire
                       dopo questo).
@@ -1283,7 +1283,7 @@ export default function AuctionsPage() {
                 {/* Assegnazione manuale: utile quando due persone si sono
                     già accordate fuori dall'asta su chi se lo prende, a
                     prescindere da chi risulta offerente più alto. */}
-                <div className="flex gap-2 pt-2 border-t border-slate-700">
+                <div className="flex gap-2 pt-2 border-t border-border">
                   <Select
                     value={manualAssignTo}
                     onValueChange={setManualAssignTo}
@@ -1325,24 +1325,24 @@ export default function AuctionsPage() {
       )}
 
       {/* Lista Aste */}
-      <Card className="bg-slate-900 border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-slate-100">Tutte le Aste</CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardTitle className="text-foreground">Tutte le Aste</CardTitle>
+          <CardDescription className="text-muted-foreground">
             Storico completo delle aste
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
             {auctions.length === 0 ? (
-              <p className="text-center text-slate-500 py-8">
+              <p className="text-center text-muted-foreground py-8">
                 Nessuna asta disponibile. Crea la prima!
               </p>
             ) : (
               auctions.map((auction) => (
                 <div
                   key={auction.id}
-                  className={`flex items-center justify-between p-4 border border-slate-700 rounded-lg hover:bg-slate-800 transition-colors ${
+                  className={`flex items-center justify-between p-4 border border-border rounded-lg hover:bg-raised transition-colors ${
                     auction.status === "closed" ? "cursor-pointer" : ""
                   }`}
                   onClick={() => {
@@ -1350,10 +1350,10 @@ export default function AuctionsPage() {
                   }}
                 >
                   <div>
-                    <h3 className="font-semibold text-slate-100">
+                    <h3 className="font-semibold text-foreground">
                       {auction.playerName}
                     </h3>
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-muted-foreground">
                       {PICK_TYPE_LABELS[auction.pickType || "player"]} - Prezzo:{" "}
                       {auction.currentPrice}€
                       {auction.highestBidderId &&
@@ -1419,28 +1419,28 @@ export default function AuctionsPage() {
                     <Badge>{detailAuction.playerRole}</Badge>
                   )}
                   {detailAuction.playerTeam && (
-                    <span className="text-sm text-slate-400">
+                    <span className="text-sm text-muted-foreground">
                       {detailAuction.playerTeam}
                     </span>
                   )}
                 </div>
                 {detailAuction.description && (
-                  <p className="text-sm text-slate-400">
+                  <p className="text-sm text-muted-foreground">
                     {detailAuction.description}
                   </p>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3 rounded-md border border-slate-700 bg-slate-800/50 p-4 text-sm">
+              <div className="grid grid-cols-2 gap-3 rounded-md border border-border bg-raised/50 p-4 text-sm">
                 <div>
-                  <span className="text-slate-400">Prezzo Base</span>
+                  <span className="text-muted-foreground">Prezzo Base</span>
                   <p>{detailAuction.basePrice}€</p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Prezzo Finale</span>
+                  <span className="text-muted-foreground">Prezzo Finale</span>
                   <p>{detailAuction.currentPrice}€</p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Vinta da</span>
+                  <span className="text-muted-foreground">Vinta da</span>
                   <p>
                     {detailAuction.highestBidderId
                       ? getMemberName(
@@ -1451,7 +1451,7 @@ export default function AuctionsPage() {
                   </p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Durata</span>
+                  <span className="text-muted-foreground">Durata</span>
                   <p>
                     {detailAuction.startedAt && detailAuction.closedAt
                       ? `${Math.max(
@@ -1466,7 +1466,7 @@ export default function AuctionsPage() {
                   </p>
                 </div>
                 <div className="col-span-2">
-                  <span className="text-slate-400">Chiusa il</span>
+                  <span className="text-muted-foreground">Chiusa il</span>
                   <p>
                     {detailAuction.closedAt
                       ? detailAuction.closedAt.toLocaleString("it-IT")

@@ -244,8 +244,8 @@ function AdminPageContent({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-slate-100">Gestione Lega</h1>
-        <p className="text-slate-400 mt-2">
+        <h1 className="text-3xl font-bold text-foreground">Gestione Lega</h1>
+        <p className="text-muted-foreground mt-2">
           Configura {currentFanta.name} - Solo tu come creatore puoi gestire
           questa lega
         </p>
@@ -266,15 +266,15 @@ function AdminPageContent({
         </TabsList>
 
         <TabsContent value="settings" className="space-y-4">
-          <Card className="bg-slate-900 border-slate-700">
+          <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
-                <CardTitle className="text-slate-100">Stagione</CardTitle>
+                <CardTitle className="text-foreground">Stagione</CardTitle>
                 <Badge variant={seasonStarted ? "default" : "secondary"}>
                   {seasonStarted ? "Mercato chiuso" : "Mercato aperto"}
                 </Badge>
               </div>
-              <CardDescription className="text-slate-400">
+              <CardDescription className="text-muted-foreground">
                 {seasonStarted
                   ? "I membri non possono più creare/avviare aste, fare offerte, fare pick di draft o togliersi giocatori dalla rosa. Admin/vice/dev restano operativi per sistemare eventuali code rimaste aperte."
                   : "Chiude il mercato per i membri (aste, draft, rimozione pick) e genera il calendario a girone, in un'unica azione."}
@@ -331,19 +331,19 @@ function AdminPageContent({
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-900 border-slate-700">
+          <Card>
             <CardHeader>
-              <CardTitle className="text-slate-100">
+              <CardTitle className="text-foreground">
                 Informazioni Lega
               </CardTitle>
-              <CardDescription className="text-slate-400">
+              <CardDescription className="text-muted-foreground">
                 Nome, sport e descrizione della lega
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleGeneralInfoUpdate} className="space-y-4">
                 {generalInfoMessage && (
-                  <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">
+                  <div className="rounded-md border border-border bg-raised/50 p-3 text-sm text-foreground">
                     {generalInfoMessage}
                   </div>
                 )}
@@ -400,12 +400,12 @@ function AdminPageContent({
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-900 border-slate-700">
+          <Card>
             <CardHeader>
-              <CardTitle className="text-slate-100">
+              <CardTitle className="text-foreground">
                 Impostazioni Generali
               </CardTitle>
-              <CardDescription className="text-slate-400">
+              <CardDescription className="text-muted-foreground">
                 {settings.draftMode === "snake"
                   ? "Configura il timer per scelta e i limiti rosa del draft"
                   : "Configura budget, puntate e countdown per le aste"}
@@ -414,11 +414,11 @@ function AdminPageContent({
             <CardContent>
               <form onSubmit={handleSettingsUpdate} className="space-y-4">
                 {settingsMessage && (
-                  <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">
+                  <div className="rounded-md border border-border bg-raised/50 p-3 text-sm text-foreground">
                     {settingsMessage}
                   </div>
                 )}
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Modalità: {settings.draftMode === "snake" ? "Draft a turni (snake)" : "Asta live"}
                   {" "}— decisa alla creazione della lega, non cambiabile da qui.
                 </p>
@@ -441,7 +441,7 @@ function AdminPageContent({
                         min={MIN_COUNTDOWN_SECONDS}
                         max={MAX_COUNTDOWN_SECONDS}
                       />
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-muted-foreground">
                         Tra {MIN_COUNTDOWN_SECONDS}s e {MAX_COUNTDOWN_SECONDS}s.
                         Se scade, il turno viene saltato e va assegnato a mano.
                       </p>
@@ -481,7 +481,7 @@ function AdminPageContent({
                           min={MIN_COUNTDOWN_SECONDS}
                           max={MAX_COUNTDOWN_SECONDS}
                         />
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-muted-foreground">
                           Tra {MIN_COUNTDOWN_SECONDS}s e {MAX_COUNTDOWN_SECONDS}s
                         </p>
                       </div>
@@ -536,7 +536,7 @@ function AdminPageContent({
                       }
                       min={0}
                     />
-                    <p className="text-xs text-slate-500">0 = nessun limite</p>
+                    <p className="text-xs text-muted-foreground">0 = nessun limite</p>
                   </div>
                 </div>
 
@@ -583,7 +583,7 @@ function AdminPageContent({
 
                 {currentFanta.sportType === "lol" && (
                   <div className="space-y-2">
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-muted-foreground">
                       Da bloccare (solo admin/dev) quando inizieranno le partite
                       — per ora modificabile anche dai vice-admin
                     </p>
@@ -604,7 +604,7 @@ function AdminPageContent({
                 {availableRoles.length > 0 && (
                   <div className="space-y-2">
                     <Label>Max Giocatori per Ruolo</Label>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-muted-foreground">
                       Vuoto = nessun limite per quel ruolo
                     </p>
                     <div className="grid md:grid-cols-2 gap-4">
@@ -612,7 +612,7 @@ function AdminPageContent({
                         <div key={role} className="space-y-2">
                           <Label
                             htmlFor={`roleLimit-${role}`}
-                            className="text-slate-400 font-normal"
+                            className="text-muted-foreground font-normal"
                           >
                             {role}
                           </Label>
@@ -669,19 +669,19 @@ function AdminPageContent({
 
         {/* INVITE TAB */}
         <TabsContent value="invite">
-          <Card className="bg-slate-900 border-slate-700">
+          <Card>
             <CardHeader>
-              <CardTitle className="text-slate-100 flex items-center gap-2">
+              <CardTitle className="text-foreground flex items-center gap-2">
                 <UserPlus className="w-5 h-5" />
                 Invita Nuovi Membri
               </CardTitle>
-              <CardDescription className="text-slate-400">
+              <CardDescription className="text-muted-foreground">
                 Condividi il codice invito con i tuoi amici
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
-                <Label className="text-slate-300">Codice Invito</Label>
+                <Label className="text-foreground">Codice Invito</Label>
                 <div className="flex gap-2 mt-2">
                   <Input
                     value={inviteCode}
@@ -696,17 +696,17 @@ function AdminPageContent({
                     {copiedCode ? "Copiato!" : "Copia"}
                   </Button>
                 </div>
-                <p className="text-sm text-slate-500 mt-2">
+                <p className="text-sm text-muted-foreground mt-2">
                   Gli utenti possono inserire questo codice durante la
                   registrazione o dalle impostazioni
                 </p>
               </div>
 
-              <Alert className="bg-slate-800 border-slate-700">
-                <AlertDescription className="text-slate-300">
+              <Alert>
+                <AlertDescription className="text-foreground">
                   <strong>Link diretto:</strong> Condividi questo link:
                   <br />
-                  <code className="mt-2 inline-block rounded bg-slate-950 px-2 py-1 text-sm">
+                  <code className="mt-2 inline-block rounded bg-background px-2 py-1 text-sm">
                     {typeof window !== "undefined"
                       ? window.location.origin
                       : ""}
@@ -719,18 +719,18 @@ function AdminPageContent({
         </TabsContent>
 
         <TabsContent value="requests">
-          <Card className="bg-slate-900 border-slate-700">
+          <Card>
             <CardHeader>
-              <CardTitle className="text-slate-100">
+              <CardTitle className="text-foreground">
                 Richieste di Ingresso
               </CardTitle>
-              <CardDescription className="text-slate-400">
+              <CardDescription className="text-muted-foreground">
                 Persone che vogliono entrare in questa lega
               </CardDescription>
             </CardHeader>
             <CardContent>
               {pendingJoinRequests.length === 0 ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Nessuna richiesta in sospeso
                 </p>
               ) : (
@@ -738,13 +738,13 @@ function AdminPageContent({
                   {pendingJoinRequests.map((request) => (
                     <div
                       key={request.id}
-                      className="flex items-center justify-between p-3 bg-slate-800 border border-slate-700 rounded-lg"
+                      className="flex items-center justify-between p-3 bg-raised border border-border rounded-lg"
                     >
                       <div>
-                        <p className="text-slate-100 font-medium">
+                        <p className="text-foreground font-medium">
                           {request.userName}
                         </p>
-                        <p className="text-sm text-slate-400">
+                        <p className="text-sm text-muted-foreground">
                           {request.userEmail}
                         </p>
                       </div>
@@ -772,7 +772,7 @@ function AdminPageContent({
         </TabsContent>
 
         <TabsContent value="vice-admins">
-          <Card className="bg-slate-900 border-slate-700">
+          <Card>
             <CardHeader>
               <CardTitle>Gestione Vice Admin</CardTitle>
               <CardDescription>
@@ -784,7 +784,7 @@ function AdminPageContent({
               {canManageMembers ? (
                 <>
                   {viceAdminMessage && (
-                    <div className="rounded-md border border-slate-700 bg-slate-800/50 p-3 text-sm text-slate-300">
+                    <div className="rounded-md border border-border bg-raised/50 p-3 text-sm text-foreground">
                       {viceAdminMessage}
                     </div>
                   )}
@@ -801,16 +801,16 @@ function AdminPageContent({
                   </div>
                 </>
               ) : (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Solo il creatore della lega (o un dev) può aggiungere o
                   togliere vice-admin.
                 </p>
               )}
 
               <div className="space-y-2">
-                <Label className="text-slate-300">Vice Admin Attuali:</Label>
+                <Label className="text-foreground">Vice Admin Attuali:</Label>
                 {members.filter((m) => m.role === "vice").length === 0 ? (
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     Nessun vice admin configurato
                   </p>
                 ) : (
@@ -820,12 +820,12 @@ function AdminPageContent({
                       .map((member) => (
                         <div
                           key={member.userId}
-                          className="flex items-center justify-between p-3 bg-slate-800 border border-slate-700 rounded-lg"
+                          className="flex items-center justify-between p-3 bg-raised border border-border rounded-lg"
                         >
                           <div>
-                            <p className="text-slate-100">{member.name}</p>
+                            <p className="text-foreground">{member.name}</p>
                             {member.email && (
-                              <p className="text-sm text-slate-400">
+                              <p className="text-sm text-muted-foreground">
                                 {member.email}
                               </p>
                             )}
@@ -849,7 +849,7 @@ function AdminPageContent({
         </TabsContent>
 
         <TabsContent value="users">
-          <Card className="bg-slate-900 border-slate-700">
+          <Card>
             <CardHeader>
               <CardTitle>Gestione Utenti</CardTitle>
               <CardDescription>
@@ -858,7 +858,7 @@ function AdminPageContent({
             </CardHeader>
             <CardContent>
               {members.length === 0 ? (
-                <p className="text-sm text-slate-500">Nessun membro</p>
+                <p className="text-sm text-muted-foreground">Nessun membro</p>
               ) : (
                 <div className="space-y-2">
                   {members.map((member) => {
@@ -867,13 +867,13 @@ function AdminPageContent({
                     return (
                       <div
                         key={member.userId}
-                        className="flex items-center justify-between p-4 border border-slate-700 rounded-lg"
+                        className="flex items-center justify-between p-4 border border-border rounded-lg"
                       >
                         <div>
-                          <p className="font-medium text-slate-100">
+                          <p className="font-medium text-foreground">
                             {member.name}
                           </p>
-                          <p className="text-sm text-slate-400">
+                          <p className="text-sm text-muted-foreground">
                             {member.email}
                           </p>
                         </div>

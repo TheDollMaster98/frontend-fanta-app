@@ -94,11 +94,11 @@ export function RoleScoringWeightsEditor({
   return (
     <div className="space-y-3">
       <Label>Pesi Punteggio *</Label>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-muted-foreground">
         Quanti punti valgono le statistiche reali, un set per ruolo (kill/
         morti/assist non valgono uguale ovunque) più uno per le pick
         Squadra/Coach. Modificabile dopo, ma bloccato a partite iniziate. I
-        campi con <span className="text-amber-500">●</span> non sono ancora
+        campi con <span className="text-warning">●</span> non sono ancora
         calcolati in automatico da Leaguepedia (nomi campo non confermati):
         contano solo se inseriti a mano su un pick, in Classifica → dettaglio
         membro → dettaglio pick.
@@ -131,7 +131,7 @@ export function RoleScoringWeightsEditor({
             <div key={key} className="space-y-1">
               <Label htmlFor={`wTeam-${key}`} className="text-xs font-normal">
                 {label}
-                {pending && <span className="text-amber-500"> ●</span>}
+                {pending && <span className="text-warning"> ●</span>}
               </Label>
               <Input
                 id={`wTeam-${key}`}
@@ -149,7 +149,7 @@ export function RoleScoringWeightsEditor({
             <div key={key} className="space-y-1">
               <Label htmlFor={`w-${key}`} className="text-xs font-normal">
                 {label}
-                {pending && <span className="text-amber-500"> ●</span>}
+                {pending && <span className="text-warning"> ●</span>}
               </Label>
               <Input
                 id={`w-${key}`}

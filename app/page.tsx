@@ -11,60 +11,60 @@ import { Users, Zap, Trophy } from "lucide-react";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
+    <main className="min-h-screen bg-background text-foreground">
       <div className="container mx-auto px-4 py-16">
         <div className="mx-auto max-w-5xl space-y-10">
           <div className="space-y-4 text-center">
-            <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-400">
+            <p className="text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">
               Fantasy management
             </p>
             <h1 className="text-4xl font-semibold tracking-tight text-white md:text-5xl">
               Fanta Points App
             </h1>
-            <p className="mx-auto max-w-2xl text-base text-slate-300 md:text-lg">
+            <p className="mx-auto max-w-2xl text-base text-foreground md:text-lg">
               Gestisci leghe, aste e budget in un unico sistema pensato per
               sport e giochi fantasy.
             </p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
-            <Card className="border-slate-800 bg-slate-900">
+            <Card className="border-border bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base text-white">
-                  <Users className="h-4 w-4 text-slate-300" />
+                  <Users className="h-4 w-4 text-foreground" />
                   Gestione utenti
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <CardDescription className="text-slate-400">
+                <CardDescription className="text-muted-foreground">
                   Ruoli chiari per creatori, vice-admin e giocatori.
                 </CardDescription>
               </CardContent>
             </Card>
 
-            <Card className="border-slate-800 bg-slate-900">
+            <Card className="border-border bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base text-white">
-                  <Zap className="h-4 w-4 text-slate-300" />
+                  <Zap className="h-4 w-4 text-foreground" />
                   Aste live
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <CardDescription className="text-slate-400">
+                <CardDescription className="text-muted-foreground">
                   Countdown, puntate e chiusura automatica del bando.
                 </CardDescription>
               </CardContent>
             </Card>
 
-            <Card className="border-slate-800 bg-slate-900">
+            <Card className="border-border bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base text-white">
-                  <Trophy className="h-4 w-4 text-slate-300" />
+                  <Trophy className="h-4 w-4 text-foreground" />
                   Multi lega
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <CardDescription className="text-slate-400">
+                <CardDescription className="text-muted-foreground">
                   Crea più leghe e gestisci anche sport diversi.
                 </CardDescription>
               </CardContent>
@@ -80,11 +80,11 @@ export default function Home() {
             </Button>
           </div>
 
-          <div className="mx-auto max-w-3xl rounded-lg border border-slate-800 bg-slate-900 p-6">
+          <div className="mx-auto max-w-3xl rounded-lg border border-border bg-card p-6">
             <h2 className="mb-4 text-xl font-semibold text-white">
               Funzionalità principali
             </h2>
-            <ul className="space-y-3 text-sm text-slate-300">
+            <ul className="space-y-3 text-sm text-foreground">
               <li>
                 • Sistema universale per calcio, LoL, basket e sport custom.
               </li>
