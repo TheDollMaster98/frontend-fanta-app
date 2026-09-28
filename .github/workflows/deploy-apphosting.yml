@@ -1,18 +1,20 @@
-name: Deploy App Hosting (manuale)
+name: Deploy App Hosting
 
-# ATTENZIONE PRIMA DI USARLO: se in Firebase Console, sotto App Hosting, il
-# backend "fam-fanta-app-be" risulta già collegato a questo repository
-# GitHub, il rollout dell'app parte già in automatico ad ogni push sul
-# branch live configurato lì (deve essere "main", non più "master" —
-# controllalo tu in Console, non è una cosa che si cambia da qui) —
-# questa Action farebbe solo un deploy duplicato (innocuo, ma inutile e
-# più lento). Usala solo se quel collegamento NON è configurato, oppure
-# per forzare manualmente un nuovo rollout.
+# Deploy pilotato SOLO da questa Action, non dal collegamento automatico
+# di Firebase Console: se il backend "fam-fanta-app-be" risulta collegato
+# a questo repo in Firebase Console > App Hosting, vai lì e scollegalo (o
+# assicurati che non abbia un branch live configurato), altrimenti ogni
+# push su main farebbe due deploy in parallelo — uno da qui, uno da
+# Firebase stesso. Quel controllo è manuale, va fatto una volta in
+# Console, non è automatizzabile da qui.
 #
-# Va lanciata a mano dalla tab "Actions" del repo (Run workflow). Richiede
-# lo stesso secret FIREBASE_SERVICE_ACCOUNT del workflow delle regole
-# Firestore (vedi deploy-firestore.yml).
+# Parte da sola ad ogni push su main, più "Run workflow" manuale dalla
+# tab Actions per un rollout forzato. Richiede lo stesso secret
+# FIREBASE_SERVICE_ACCOUNT del workflow delle regole Firestore (vedi
+# deploy-firestore.yml).
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
