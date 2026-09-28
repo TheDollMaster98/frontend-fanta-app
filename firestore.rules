@@ -20,6 +20,20 @@ rules_version = '2';
 // questo qui sotto NON esiste un {subpath=**} generico sotto fantas/{id}:
 // ogni sottocollezione è elencata a mano, altrimenti il blocco su
 // auctions/members/draft verrebbe vanificato dal wildcard.
+//
+// ECCEZIONE (28/9), le uniche due collection-group wildcard nel file, in
+// fondo: una query collectionGroup() (es. "tutte le mie membership su
+// tutte le leghe", usata per sapere di quali fanta faccio parte) NON è
+// coperta da una regola annidata sotto fantas/{fantaId} — quella si
+// applica solo a un path con fantaId già noto, mai a una query trasversale
+// a tutte le leghe. Serve una regola dedicata con {path=**}. Sono SOLO
+// "allow read" (mai write), quindi non allargano nulla in OR: read era già
+// aperto senza condizioni nella regola annidata corrispondente, qui si
+// abilita solo la FORMA di query che Firestore richiede, non un permesso
+// nuovo. Trovato con l'emulatore (rules-unit-testing): senza queste due
+// regole, collectionGroup("members") e collectionGroup("joinRequests")
+// tornavano permission-denied per chiunque, sempre, non per un problema di
+// timing o di token.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -177,6 +191,17 @@ service cloud.firestore {
       match /joinRequests/{requestId} {
         allow read, write: if request.auth != null;
       }
+    }
+
+    // Collection-group, vedi la nota in cima al file: solo "read", solo per
+    // abilitare le query collectionGroup() che l'app fa davvero
+    // (allMemberships e myJoinRequests in FantaContext.tsx).
+    match /{path=**}/members/{memberId} {
+      allow read: if request.auth != null;
+    }
+
+    match /{path=**}/joinRequests/{requestId} {
+      allow read: if request.auth != null;
     }
   }
 }
