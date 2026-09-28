@@ -3,8 +3,10 @@ name: Deploy regole Firestore & Storage
 # App Hosting (Cloud Run) deploya solo il codice Next.js: firestore.rules,
 # firestore.indexes.json e storage.rules restano scollegati da qualunque
 # pipeline finché non li pubblica qualcuno esplicitamente. Questo workflow
-# lo fa in automatico ad ogni push su master che li tocca, così le regole
+# lo fa in automatico ad ogni push su main che li tocca, così le regole
 # nel repo sono sempre quelle davvero attive sul progetto Firebase.
+# main è il branch di produzione/deploy (develop è quello di lavoro,
+# si merge in main via PR quando pronto).
 #
 # Richiede il secret GitHub FIREBASE_SERVICE_ACCOUNT: il contenuto JSON di
 # una service account con permessi sufficienti a deployare regole/indici
@@ -13,7 +15,7 @@ name: Deploy regole Firestore & Storage
 # poi incollane il contenuto in Settings > Secrets and variables > Actions.
 on:
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - "firestore.rules"
       - "firestore.indexes.json"
