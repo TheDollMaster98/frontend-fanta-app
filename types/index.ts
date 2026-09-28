@@ -293,15 +293,29 @@ export interface JoinRequest {
 // mappatura affidabile giornata-fantasy ↔ data reale delle partite pro, che
 // Leaguepedia non offre in modo diretto — per ora la classifica è per
 // punteggio totale, non per punti-partita da confronto diretto.
+// homePoints/awayPoints: punti fantasy totalizzati dai due roster SOLO
+// nella finestra [CalendarRound.startDate, endDate) di questo turno (non il
+// punteggio cumulativo di sempre, quello resta su TeamPick.points). Assenti
+// finché "Ricalcola Punteggi" non viene lanciato almeno una volta dopo che
+// il turno è iniziato.
 export interface RoundFixture {
   homeUserId: string;
   awayUserId: string | null;
+  homePoints?: number;
+  awayPoints?: number;
 }
 
 export interface CalendarRound {
   id: string;
   roundNumber: number;
   fixtures: RoundFixture[];
+  // Finestra temporale reale di questo turno: il confronto diretto tra i
+  // due membri di una fixture è la somma dei punti fantasy ottenuti dai
+  // rispettivi roster SOLO nelle partite pro giocate in questo intervallo
+  // (vedi FantaContext.recalculateScores). Assegnata da generateCalendar,
+  // sequenziale a partire dalla data scelta dall'admin.
+  startDate: Date;
+  endDate: Date;
 }
 
 // Uno "slot" della sequenza del draft a turni: cosa si sceglie in quel

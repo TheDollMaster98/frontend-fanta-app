@@ -1,4 +1,45 @@
 import type { RoleScoringWeights, TeamPick, TeamScoringWeights } from "@/types";
+import type { FantasyPlayerStats } from "@/lib/leaguepediaApi";
+
+/**
+ * Punti automatici (kill/morti/assist/vittoria) di un pick da statistiche
+ * Leaguepedia già aggregate — stessa formula usata sia per il totale
+ * cumulativo (FantaContext.recalculateScores, su TeamPick.points) sia per
+ * il punteggio di un singolo turno di calendario (stesse stats ma filtrate
+ * per data). undefined se non c'è ancora un dato per quel pick (giocatore/
+ * squadra non trovato in questo circuito/finestra).
+ */
+export function computeAutoPoints(
+  pick: TeamPick,
+  playerStats: Record<string, FantasyPlayerStats>,
+  teamStats: Record<string, { wins: number }>,
+  roleWeights: RoleScoringWeights,
+  teamWeights: TeamScoringWeights,
+): number | undefined {
+  if (pick.pickType === "player" || pick.pickType === "jolly") {
+    const s = playerStats[pick.playerName];
+    const weights = pick.playerRole ? roleWeights[pick.playerRole] : undefined;
+    if (!s || !weights) return undefined;
+    return (
+      s.kills * weights.kills +
+      s.deaths * weights.deaths +
+      s.assists * weights.assists +
+      s.wins * weights.win
+    );
+  }
+
+  if (pick.pickType === "team") {
+    const s = teamStats[pick.playerName];
+    return s ? s.wins * teamWeights.win : undefined;
+  }
+
+  if (pick.pickType === "coach" && pick.playerTeam) {
+    const s = teamStats[pick.playerTeam];
+    return s ? s.wins * teamWeights.win : undefined;
+  }
+
+  return undefined;
+}
 
 /**
  * Bonus punti da statistiche inserite a mano (CS/Vision Score/Pentakill per

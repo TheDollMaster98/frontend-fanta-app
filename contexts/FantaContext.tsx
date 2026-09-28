@@ -45,7 +45,7 @@ import {
   getFantasyPlayerStats,
   getFantasyTeamStats,
 } from "@/lib/leaguepediaApi";
-import { totalPickPoints } from "@/lib/scoring";
+import { totalPickPoints, computeAutoPoints } from "@/lib/scoring";
 import { buildDraftSlots, getDraftTurnUserId, advanceDraftTurn } from "@/lib/draft";
 import type {
   Fanta,
@@ -161,7 +161,7 @@ interface FantaContextType {
   // Calendario a girone all'italiana e punteggi reali (step 2)
   calendar: CalendarRound[];
   standings: StandingsEntry[];
-  generateCalendar: () => Promise<void>;
+  generateCalendar: (startDate?: Date, roundLengthDays?: number) => Promise<void>;
   recalculateScores: () => Promise<void>;
   // Chiude il mercato + genera il calendario in un'unica azione, e la
   // valvola di sicurezza per riaprirlo — vedi i commenti sulle
@@ -317,6 +317,8 @@ function mapCalendarRoundDoc(
     id,
     roundNumber: (data.roundNumber as number) ?? 0,
     fixtures: (data.fixtures as CalendarRound["fixtures"]) || [],
+    startDate: toDate(data.startDate as Timestamp | Date | undefined),
+    endDate: toDate(data.endDate as Timestamp | Date | undefined),
   };
 }
 
@@ -836,7 +838,15 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   // Genera (o rigenera da capo) il calendario a girone all'italiana tra i
   // membri della lega corrente, col metodo del cerchio: cancella i turni
   // precedenti prima di scrivere i nuovi, altrimenti si accumulerebbero.
-  const generateCalendar = async (): Promise<void> => {
+  // Ogni turno riceve una finestra di date sequenziale (roundLengthDays
+  // giorni ciascuna, a partire da startDate): è quella finestra che
+  // recalculateScores usa per il confronto diretto tra i due membri di ogni
+  // fixture. Default 7 giorni a turno da oggi se non specificato (es. da
+  // startSeason, che genera il calendario senza chiedere date).
+  const generateCalendar = async (
+    startDate: Date = new Date(),
+    roundLengthDays = 7,
+  ): Promise<void> => {
     if (!currentFanta) return;
     const userIds = fantaMembers.map((m) => m.userId);
     const rounds = generateRoundRobin(userIds);
@@ -851,9 +861,17 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     const batch = writeBatch(db);
     existing.docs.forEach((d) => batch.delete(d.ref));
     rounds.forEach((fixtures, index) => {
+      const roundStart = new Date(
+        startDate.getTime() + index * roundLengthDays * 86400000,
+      );
+      const roundEnd = new Date(
+        roundStart.getTime() + roundLengthDays * 86400000,
+      );
       batch.set(doc(calendarCollection), {
         roundNumber: index + 1,
         fixtures,
+        startDate: Timestamp.fromDate(roundStart),
+        endDate: Timestamp.fromDate(roundEnd),
       });
     });
     await batch.commit();
@@ -929,27 +947,13 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     fantaMembers.forEach((m) => {
       let changed = false;
       const updatedTeam = m.team.map((pick) => {
-        let points: number | undefined;
-        if (pick.pickType === "player" || pick.pickType === "jolly") {
-          const s = playerStats[pick.playerName];
-          const weights = pick.playerRole
-            ? roleWeights[pick.playerRole]
-            : undefined;
-          if (s && weights) {
-            points =
-              s.kills * weights.kills +
-              s.deaths * weights.deaths +
-              s.assists * weights.assists +
-              s.wins * weights.win;
-          }
-        } else if (pick.pickType === "team") {
-          const s = teamStats[pick.playerName];
-          if (s) points = s.wins * teamWeights.win;
-        } else if (pick.pickType === "coach" && pick.playerTeam) {
-          const s = teamStats[pick.playerTeam];
-          if (s) points = s.wins * teamWeights.win;
-        }
-
+        const points = computeAutoPoints(
+          pick,
+          playerStats,
+          teamStats,
+          roleWeights,
+          teamWeights,
+        );
         if (points === undefined) return pick;
         const rounded = Math.round(points * 100) / 100;
         if (rounded !== pick.points) changed = true;
@@ -966,6 +970,94 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     });
 
     if (hasWrites) await batch.commit();
+
+    // Punteggio di ogni turno di calendario (confronto diretto tra i due
+    // membri di una fixture): stessa formula sopra, ma le stats vengono
+    // richieste filtrate sulla finestra [startDate, endDate) del turno,
+    // invece che cumulative di sempre — vedi getFantasyPlayerStats/
+    // getFantasyTeamStats in lib/leaguepediaApi.ts. Una query per turno,
+    // non per fixture: i membri coinvolti in un turno condividono la stessa
+    // finestra di date.
+    if (calendar.length > 0) {
+      const roundBatch = writeBatch(db);
+      let hasRoundWrites = false;
+
+      for (const round of calendar) {
+        const involvedUserIds = Array.from(
+          new Set(
+            round.fixtures.flatMap((f) =>
+              [f.homeUserId, f.awayUserId].filter((id): id is string => !!id),
+            ),
+          ),
+        );
+        const roundPlayerNames = new Set<string>();
+        const roundTeamNames = new Set<string>();
+        involvedUserIds.forEach((uid) => {
+          const member = fantaMembers.find((m) => m.userId === uid);
+          member?.team.forEach((pick) => {
+            if (pick.pickType === "player" || pick.pickType === "jolly") {
+              roundPlayerNames.add(pick.playerName);
+            } else if (pick.pickType === "team") {
+              roundTeamNames.add(pick.playerName);
+            } else if (pick.pickType === "coach" && pick.playerTeam) {
+              roundTeamNames.add(pick.playerTeam);
+            }
+          });
+        });
+
+        const dateRange = { start: round.startDate, end: round.endDate };
+        const [roundPlayerStats, roundTeamStats] = await Promise.all([
+          getFantasyPlayerStats(
+            Array.from(roundPlayerNames),
+            circuitType,
+            dateRange,
+          ),
+          getFantasyTeamStats(
+            Array.from(roundTeamNames),
+            circuitType,
+            dateRange,
+          ),
+        ]);
+
+        const memberRoundPoints = (userId: string): number => {
+          const member = fantaMembers.find((m) => m.userId === userId);
+          if (!member) return 0;
+          return member.team.reduce((sum, pick) => {
+            const points = computeAutoPoints(
+              pick,
+              roundPlayerStats,
+              roundTeamStats,
+              roleWeights,
+              teamWeights,
+            );
+            return sum + (points || 0);
+          }, 0);
+        };
+
+        let roundChanged = false;
+        const updatedFixtures = round.fixtures.map((f) => {
+          const homePoints =
+            Math.round(memberRoundPoints(f.homeUserId) * 100) / 100;
+          const awayPoints = f.awayUserId
+            ? Math.round(memberRoundPoints(f.awayUserId) * 100) / 100
+            : undefined;
+          if (homePoints !== f.homePoints || awayPoints !== f.awayPoints) {
+            roundChanged = true;
+          }
+          return { ...f, homePoints, awayPoints };
+        });
+
+        if (roundChanged) {
+          hasRoundWrites = true;
+          roundBatch.update(
+            doc(db, "fantas", currentFanta.id, "calendar", round.id),
+            { fixtures: updatedFixtures },
+          );
+        }
+      }
+
+      if (hasRoundWrites) await roundBatch.commit();
+    }
   };
 
   // Classifica: somma dei punti di ogni pick in rosa, per membro. Non è

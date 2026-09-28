@@ -24,6 +24,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -92,6 +93,11 @@ export default function StandingsPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
+  const [isCalendarDialogOpen, setIsCalendarDialogOpen] = useState(false);
+  const [calendarStartDate, setCalendarStartDate] = useState(
+    () => new Date().toISOString().slice(0, 10),
+  );
+  const [roundLengthDays, setRoundLengthDays] = useState(7);
 
   // Drill-down step 3: click su un pick della rosa -> log partita per
   // partita (data, avversario/champion, stats, punti). Caricato al volo
@@ -128,8 +134,9 @@ export default function StandingsPage() {
     setIsGenerating(true);
     setActionMessage("");
     try {
-      await generateCalendar();
+      await generateCalendar(new Date(calendarStartDate), roundLengthDays);
       setActionMessage("Calendario generato.");
+      setIsCalendarDialogOpen(false);
     } catch (error) {
       console.error("Errore nella generazione del calendario:", error);
       setActionMessage("Errore nella generazione del calendario.");
@@ -243,14 +250,63 @@ export default function StandingsPage() {
         </div>
         {isFantaAdmin && (
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={handleGenerateCalendar}
-              disabled={isGenerating}
-            >
-              <CalendarDays className="mr-2 h-4 w-4" />
-              {isGenerating ? "Genero..." : "Genera Calendario"}
-            </Button>
+            <Dialog open={isCalendarDialogOpen} onOpenChange={setIsCalendarDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <CalendarDays className="mr-2 h-4 w-4" />
+                  Genera Calendario
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Genera Calendario</DialogTitle>
+                  <DialogDescription>
+                    Girone all&apos;italiana tra i membri della lega: ogni
+                    turno copre una finestra di giorni consecutivi, usata per
+                    il confronto diretto a punti tra i due membri di ogni
+                    fixture (vedi &quot;Ricalcola Punteggi&quot;). Rigenerare
+                    cancella e ricrea tutti i turni da capo.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="calendarStartDate">
+                      Data di inizio del primo turno
+                    </Label>
+                    <Input
+                      id="calendarStartDate"
+                      type="date"
+                      value={calendarStartDate}
+                      onChange={(e) => setCalendarStartDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="roundLengthDays">
+                      Durata di ogni turno (giorni)
+                    </Label>
+                    <Input
+                      id="roundLengthDays"
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={roundLengthDays}
+                      onChange={(e) =>
+                        setRoundLengthDays(
+                          Math.max(1, Number(e.target.value) || 1),
+                        )
+                      }
+                    />
+                  </div>
+                  <Button
+                    onClick={handleGenerateCalendar}
+                    disabled={isGenerating}
+                    className="w-full"
+                  >
+                    {isGenerating ? "Genero..." : "Genera Calendario"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
             <Button
               onClick={handleRecalculateScores}
               disabled={isRecalculating || circuitMissing}
@@ -327,11 +383,12 @@ export default function StandingsPage() {
             Calendario ({calendar.length} turni)
           </CardTitle>
           <CardDescription className="text-muted-foreground">
-            Girone all&apos;italiana tra i membri della lega. Il confronto
-            diretto a punti per turno non è ancora disponibile: manca una
-            mappatura affidabile tra turno fantasy e data reale delle
-            partite pro su Leaguepedia — per ora la classifica è a
-            punteggio totale, non a vittorie/sconfitte di turno.
+            Girone all&apos;italiana tra i membri della lega. Ogni turno
+            copre una finestra di date: il punteggio di un confronto diretto
+            è la somma dei punti fantasy ottenuti dai due roster SOLO nelle
+            partite pro giocate in quella finestra (non il totale
+            cumulativo della Classifica Generale sopra). Aggiornato da
+            &quot;Ricalcola Punteggi&quot;.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -346,28 +403,77 @@ export default function StandingsPage() {
                 <div key={round.id}>
                   <p className="text-sm font-medium text-foreground mb-2">
                     Turno {round.roundNumber}
+                    <span className="text-muted-foreground font-normal ml-2">
+                      {round.startDate.toLocaleDateString("it-IT", {
+                        day: "2-digit",
+                        month: "2-digit",
+                      })}
+                      {" – "}
+                      {round.endDate.toLocaleDateString("it-IT", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                      })}
+                    </span>
                   </p>
                   <div className="grid md:grid-cols-2 gap-2">
-                    {round.fixtures.map((fixture, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-2 bg-raised border border-border rounded text-sm"
-                      >
-                        <span className="text-foreground">
-                          {getMemberName(fixture.homeUserId)}
-                        </span>
-                        {fixture.awayUserId ? (
-                          <>
-                            <span className="text-muted-foreground">vs</span>
-                            <span className="text-foreground">
-                              {getMemberName(fixture.awayUserId)}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">riposo</span>
-                        )}
-                      </div>
-                    ))}
+                    {round.fixtures.map((fixture, idx) => {
+                      const hasResult =
+                        fixture.homePoints !== undefined &&
+                        fixture.awayPoints !== undefined;
+                      const homeWins =
+                        hasResult && fixture.homePoints! > fixture.awayPoints!;
+                      const awayWins =
+                        hasResult && fixture.awayPoints! > fixture.homePoints!;
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between p-2 bg-raised border border-border rounded text-sm"
+                        >
+                          <span
+                            className={
+                              homeWins
+                                ? "text-success font-semibold"
+                                : "text-foreground"
+                            }
+                          >
+                            {getMemberName(fixture.homeUserId)}
+                            {hasResult && (
+                              <span className="text-muted-foreground font-normal ml-1">
+                                ({fixture.homePoints})
+                              </span>
+                            )}
+                          </span>
+                          {fixture.awayUserId ? (
+                            <>
+                              <span className="text-muted-foreground">
+                                {hasResult
+                                  ? homeWins || awayWins
+                                    ? "-"
+                                    : "pareggio"
+                                  : "vs"}
+                              </span>
+                              <span
+                                className={
+                                  awayWins
+                                    ? "text-success font-semibold"
+                                    : "text-foreground"
+                                }
+                              >
+                                {hasResult && (
+                                  <span className="text-muted-foreground font-normal mr-1">
+                                    ({fixture.awayPoints})
+                                  </span>
+                                )}
+                                {getMemberName(fixture.awayUserId)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">riposo</span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ))}

@@ -632,6 +632,12 @@ export interface FantasyPlayerStats {
   gamesPlayed: number;
 }
 
+// Cargo usa "YYYY-MM-DD HH:MM:SS" in UTC per DateTime_UTC: confrontabile
+// come stringa senza bisogno di funzioni data lato Cargo.
+function toCargoDateTime(d: Date): string {
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
 /**
  * Statistiche reali (kill/morti/assist/vittorie) di una lista di giocatori
  * in un circuito, aggregate da ScoreboardPlayers+ScoreboardGames. La
@@ -639,10 +645,16 @@ export interface FantasyPlayerStats {
  * applica il chiamante con gli scoringWeights della lega, così questa
  * funzione non deve sapere nulla delle impostazioni di una lega specifica.
  * Nomi in batch da 30 per non costruire where-clause troppo lunghe.
+ *
+ * dateRange opzionale: se passato, limita l'aggregazione alle sole partite
+ * giocate in quella finestra (usato per il punteggio di un singolo turno di
+ * calendario — vedi FantaContext.recalculateScores). Omesso = statistiche
+ * cumulative di sempre nel circuito, comportamento originale.
  */
 export async function getFantasyPlayerStats(
   playerNames: string[],
   circuitType: string,
+  dateRange?: { start: Date; end: Date },
 ): Promise<Record<string, FantasyPlayerStats>> {
   const names = Array.from(new Set(playerNames.map((n) => n.trim()).filter(Boolean)));
   const stats: Record<string, FantasyPlayerStats> = {};
@@ -650,6 +662,10 @@ export async function getFantasyPlayerStats(
     stats[n] = { kills: 0, deaths: 0, assists: 0, wins: 0, gamesPlayed: 0 };
   });
   if (names.length === 0) return stats;
+
+  const dateClause = dateRange
+    ? ` AND SG.DateTime_UTC >= "${toCargoDateTime(dateRange.start)}" AND SG.DateTime_UTC < "${toCargoDateTime(dateRange.end)}"`
+    : "";
 
   for (const group of chunk(names, 30)) {
     const nameList = group.map((n) => `"${escapeCargoValue(n)}"`).join(",");
@@ -662,7 +678,7 @@ export async function getFantasyPlayerStats(
         tables: "ScoreboardPlayers=SP, ScoreboardGames=SG, Tournaments=T, PlayerRedirects=PR",
         fields:
           "PR.AllName=QueryName, SP.Team, SP.Kills, SP.Deaths, SP.Assists, SG.WinTeam",
-        where: `PR.AllName IN (${nameList}) AND (T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")`,
+        where: `PR.AllName IN (${nameList}) AND (T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")${dateClause}`,
         join_on:
           "SP.GameId=SG.GameId, SG.OverviewPage=T.OverviewPage, SP.Link=PR.AllName",
         limit: pageSize,
@@ -698,6 +714,7 @@ export async function getFantasyPlayerStats(
 export async function getFantasyTeamStats(
   teamNames: string[],
   circuitType: string,
+  dateRange?: { start: Date; end: Date },
 ): Promise<Record<string, { wins: number; gamesPlayed: number }>> {
   const names = Array.from(new Set(teamNames.map((n) => n.trim()).filter(Boolean)));
   const stats: Record<string, { wins: number; gamesPlayed: number }> = {};
@@ -705,6 +722,10 @@ export async function getFantasyTeamStats(
     stats[n] = { wins: 0, gamesPlayed: 0 };
   });
   if (names.length === 0) return stats;
+
+  const dateClause = dateRange
+    ? ` AND SG.DateTime_UTC >= "${toCargoDateTime(dateRange.start)}" AND SG.DateTime_UTC < "${toCargoDateTime(dateRange.end)}"`
+    : "";
 
   for (const group of chunk(names, 30)) {
     const nameList = group.map((n) => `"${escapeCargoValue(n)}"`).join(",");
@@ -716,7 +737,7 @@ export async function getFantasyTeamStats(
       const page = await cargoQuery({
         tables: "ScoreboardGames=SG, Tournaments=T",
         fields: "SG.WinTeam, SG.LossTeam",
-        where: `(SG.WinTeam IN (${nameList}) OR SG.LossTeam IN (${nameList})) AND (T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")`,
+        where: `(SG.WinTeam IN (${nameList}) OR SG.LossTeam IN (${nameList})) AND (T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")${dateClause}`,
         join_on: "SG.OverviewPage=T.OverviewPage",
         limit: pageSize,
         offset,
