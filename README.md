@@ -38,3 +38,15 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 links:
 https://lol.fandom.com/wiki/Category:Developer_Documentation
 https://github.com/alessio-greco/LolWorldsPredictions
+
+### API Documentation:
+
+https://lol.fandom.com/wiki/Category:Developer_Documentation
+
+https://lol.fandom.com/wiki/Special:CargoQuery
+
+https://lol.fandom.com/wiki/Special:CargoTables
+
+https://lol.fandom.com/wiki/Special:BotPasswords
+
+https://vickz84259.github.io/lolesports-api-docs/
