@@ -30,8 +30,10 @@ import {
   serverTimestamp,
   deleteField,
   Timestamp,
+  type FirestoreError,
+  type Unsubscribe,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   MIN_COUNTDOWN_SECONDS,
@@ -62,6 +64,36 @@ import type {
 } from "@/types";
 
 const DEFAULT_TEAM_NAME = "I Campioni";
+
+// onSnapshot tratta permission-denied come errore terminale e NON ritenta da
+// solo: nella frazione di secondo subito dopo il login il token appena
+// emesso può non essere ancora pienamente propagato al canale Firestore, e
+// senza questo wrapper quel primo permission-denied ucciderebbe il listener
+// per tutta la sessione (nessun altro punto lo riattacca). Un solo retry
+// dopo un breve delay copre questa race; se fallisce anche il retry il
+// problema è reale (regole/permessi) e resta comunque loggato in console
+// invece di sparire silenziosamente come faceva onSnapshot senza onError.
+function attachWithPermissionRetry(
+  subscribe: (onError: (error: FirestoreError) => void) => Unsubscribe,
+  label: string,
+): Unsubscribe {
+  let unsubscribe: Unsubscribe;
+  let retried = false;
+
+  const handleError = (error: FirestoreError) => {
+    console.error(`[Firestore] listener "${label}":`, error.code, error.message);
+    if (error.code === "permission-denied" && auth.currentUser && !retried) {
+      retried = true;
+      setTimeout(() => {
+        unsubscribe();
+        unsubscribe = subscribe(handleError);
+      }, 1500);
+    }
+  };
+
+  unsubscribe = subscribe(handleError);
+  return () => unsubscribe();
+}
 
 // Documento membro così come vive su Firestore, con l'id della lega di
 // appartenenza ricavato dal path (fantas/{fantaId}/members/{userId}), utile
@@ -348,14 +380,22 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return;
 
-    const unsubscribe = onSnapshot(collection(db, "fantas"), (snapshot) => {
-      setAllFantas(
-        snapshot.docs.map((docSnap) => mapFantaDoc(docSnap.id, docSnap.data())),
-      );
-      setFantasLoaded(true);
-    });
-
-    return unsubscribe;
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          collection(db, "fantas"),
+          (snapshot) => {
+            setAllFantas(
+              snapshot.docs.map((docSnap) =>
+                mapFantaDoc(docSnap.id, docSnap.data()),
+              ),
+            );
+            setFantasLoaded(true);
+          },
+          onError,
+        ),
+      "fantas",
+    );
   }, [user]);
 
   // Ascolta in tempo reale TUTTE le membership di TUTTE le leghe (collection
@@ -365,20 +405,23 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return;
 
-    const unsubscribe = onSnapshot(
-      collectionGroup(db, "members"),
-      (snapshot) => {
-        setAllMemberships(
-          snapshot.docs.map((docSnap) => {
-            const fantaId = docSnap.ref.parent.parent!.id;
-            return mapMembershipDoc(fantaId, docSnap.id, docSnap.data());
-          }),
-        );
-        setMembershipsLoaded(true);
-      },
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          collectionGroup(db, "members"),
+          (snapshot) => {
+            setAllMemberships(
+              snapshot.docs.map((docSnap) => {
+                const fantaId = docSnap.ref.parent.parent!.id;
+                return mapMembershipDoc(fantaId, docSnap.id, docSnap.data());
+              }),
+            );
+            setMembershipsLoaded(true);
+          },
+          onError,
+        ),
+      "members (collectionGroup)",
     );
-
-    return unsubscribe;
   }, [user]);
 
   // Ascolta le richieste di ingresso inviate dall'utente corrente, su tutte le leghe
@@ -390,15 +433,21 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       where("userId", "==", user.id),
     );
 
-    const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
-      setRawMyJoinRequests(
-        snapshot.docs.map((docSnap) =>
-          mapJoinRequestDoc(docSnap.id, docSnap.data()),
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          requestsQuery,
+          (snapshot) => {
+            setRawMyJoinRequests(
+              snapshot.docs.map((docSnap) =>
+                mapJoinRequestDoc(docSnap.id, docSnap.data()),
+              ),
+            );
+          },
+          onError,
         ),
-      );
-    });
-
-    return unsubscribe;
+      "myJoinRequests",
+    );
   }, [user]);
 
   const isDeveloper = !!user?.isDeveloper;
@@ -499,18 +548,24 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       where(documentId(), "in", userIds.slice(0, 30)),
     );
 
-    const unsubscribe = onSnapshot(membersQuery, (snapshot) => {
-      const profiles: Record<string, { name: string; email: string }> = {};
-      snapshot.docs.forEach((docSnap) => {
-        profiles[docSnap.id] = {
-          name: docSnap.data().name || "Utente",
-          email: docSnap.data().email || "",
-        };
-      });
-      setMemberProfiles(profiles);
-    });
-
-    return unsubscribe;
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          membersQuery,
+          (snapshot) => {
+            const profiles: Record<string, { name: string; email: string }> = {};
+            snapshot.docs.forEach((docSnap) => {
+              profiles[docSnap.id] = {
+                name: docSnap.data().name || "Utente",
+                email: docSnap.data().email || "",
+              };
+            });
+            setMemberProfiles(profiles);
+          },
+          onError,
+        ),
+      "memberProfiles",
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawFantaMembers.map((m) => m.userId).join(",")]);
 
@@ -647,15 +702,21 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       where("status", "==", "pending"),
     );
 
-    const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
-      setPendingJoinRequests(
-        snapshot.docs.map((docSnap) =>
-          mapJoinRequestDoc(docSnap.id, docSnap.data()),
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          requestsQuery,
+          (snapshot) => {
+            setPendingJoinRequests(
+              snapshot.docs.map((docSnap) =>
+                mapJoinRequestDoc(docSnap.id, docSnap.data()),
+              ),
+            );
+          },
+          onError,
         ),
-      );
-    });
-
-    return unsubscribe;
+      "pendingJoinRequests",
+    );
   }, [currentFanta]);
 
   // Ascolta in tempo reale le aste del fanta attualmente selezionato
@@ -670,13 +731,21 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       orderBy("createdAt", "desc"),
     );
 
-    const unsubscribe = onSnapshot(auctionsQuery, (snapshot) => {
-      setAuctions(
-        snapshot.docs.map((docSnap) => mapAuctionDoc(docSnap.id, docSnap.data())),
-      );
-    });
-
-    return unsubscribe;
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          auctionsQuery,
+          (snapshot) => {
+            setAuctions(
+              snapshot.docs.map((docSnap) =>
+                mapAuctionDoc(docSnap.id, docSnap.data()),
+              ),
+            );
+          },
+          onError,
+        ),
+      "auctions",
+    );
   }, [currentFanta]);
 
   // Ascolta in tempo reale lo stato del draft a turni del fanta attualmente
@@ -689,11 +758,17 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     }
 
     const ref = doc(db, "fantas", currentFanta.id, "draft", "state");
-    const unsubscribe = onSnapshot(ref, (snap) => {
-      setDraftState(snap.exists() ? mapDraftStateDoc(snap.data()) : null);
-    });
-
-    return unsubscribe;
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          ref,
+          (snap) => {
+            setDraftState(snap.exists() ? mapDraftStateDoc(snap.data()) : null);
+          },
+          onError,
+        ),
+      "draftState",
+    );
   }, [currentFanta]);
 
   // Ascolta lo storico acquisti del fanta attualmente selezionato: log
@@ -710,13 +785,21 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       orderBy("purchasedAt", "desc"),
     );
 
-    const unsubscribe = onSnapshot(historyQuery, (snapshot) => {
-      setHistory(
-        snapshot.docs.map((docSnap) => mapHistoryDoc(docSnap.id, docSnap.data())),
-      );
-    });
-
-    return unsubscribe;
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          historyQuery,
+          (snapshot) => {
+            setHistory(
+              snapshot.docs.map((docSnap) =>
+                mapHistoryDoc(docSnap.id, docSnap.data()),
+              ),
+            );
+          },
+          onError,
+        ),
+      "history",
+    );
   }, [currentFanta]);
 
   // Ascolta il calendario a girone all'italiana del fanta attualmente
@@ -733,15 +816,21 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       orderBy("roundNumber", "asc"),
     );
 
-    const unsubscribe = onSnapshot(calendarQuery, (snapshot) => {
-      setCalendar(
-        snapshot.docs.map((docSnap) =>
-          mapCalendarRoundDoc(docSnap.id, docSnap.data()),
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          calendarQuery,
+          (snapshot) => {
+            setCalendar(
+              snapshot.docs.map((docSnap) =>
+                mapCalendarRoundDoc(docSnap.id, docSnap.data()),
+              ),
+            );
+          },
+          onError,
         ),
-      );
-    });
-
-    return unsubscribe;
+      "calendar",
+    );
   }, [currentFanta]);
 
   // Genera (o rigenera da capo) il calendario a girone all'italiana tra i
