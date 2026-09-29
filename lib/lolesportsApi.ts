@@ -8,13 +8,39 @@
  * Schema verificato dall'utente sull'OpenAPI non ufficiale
  * (vickz84259.github.io/lolesports-api-docs), non indovinato.
  *
+ * MATCHING NOMI — verificato con una chiamata reale a /window/{gameId}
+ * (game SK Gaming vs Karmine Corp): summonerName arriva SEMPRE come "{TAG
+ * SQUADRA} {NomeGiocatore}", es. "SK Wunder", "KC Caliste" — non il nome
+ * nudo di Leaguepedia ("Wunder", "Caliste"). Il matching è: togliere il
+ * primo token (il tag squadra) da summonerName, vedi
+ * stripTeamTagFromSummonerName sotto. CS (creepScore) confermato presente
+ * nella stessa risposta di /window, non serve /details per quello.
+ *
+ * ATTENZIONE — Vision Score e Pentakill NON sono comparsi nella risposta di
+ * /window testata (solo kills/deaths/assists/creepScore/totalGold/level per
+ * participant): potrebbero non esistere affatto in questa API, o vivere
+ * altrove (es. /details con parametri diversi) — non confermato, quindi non
+ * ancora usabili per punti reali. Obiettivi di squadra (torri/baroni/
+ * draghi) sembrano presenti a livello di team nei frame, ma void grub/rift
+ * herald/atakhan/inibitori non ancora verificati come campi distinti.
+ *
  * ATTENZIONE — non ancora collegato al calcolo punteggi reale
- * (FantaContext.recalculateScores): questa API identifica i giocatori per
- * participantId (1-10) + summonerName, un sistema diverso dai nomi
- * Leaguepedia già usati in rosa (es. "Faker"). Il matching tra i due va
- * verificato con un esempio vero prima di fidarsene per punti reali — vedi
- * TODO.md.
+ * (FantaContext.recalculateScores): oltre al matching nomi, manca una
+ * pipeline per trovare i gameId giocati da una squadra/giocatore in una
+ * finestra di date (qui serve getSchedule/getEventDetails per evento, non
+ * una query diretta come il Cargo di Leaguepedia) — lavoro separato, non
+ * ancora iniziato.
  */
+
+// Toglie il tag squadra iniziale da un summonerName lolesports ("SK Wunder"
+// -> "Wunder"), per confrontarlo col nome nudo usato da Leaguepedia e già in
+// rosa. Assume che il tag sia sempre il primo token separato da uno spazio
+// (verificato su 10 giocatori reali, vedi il commento sopra) — se
+// summonerName non contiene spazi lo restituisce invariato.
+export function stripTeamTagFromSummonerName(summonerName: string): string {
+  const spaceIndex = summonerName.indexOf(" ");
+  return spaceIndex === -1 ? summonerName : summonerName.slice(spaceIndex + 1);
+}
 
 interface LolesportsResponse<T> {
   data: T;
