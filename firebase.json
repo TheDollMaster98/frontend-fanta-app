@@ -6,7 +6,8 @@
     "indexes": "firestore.indexes.json"
   },
   "storage": {
-    "rules": "storage.rules"
+    "rules": "storage.rules",
+    "bucket": "fam-fanta-app.firebasestorage.app"
   },
   "apphosting": [
     {
@@ -17,7 +18,8 @@
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log"
-      ]
+      ],
+      "alwaysDeployFromSource": true
     }
   ]
 }
