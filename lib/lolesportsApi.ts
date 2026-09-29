@@ -13,23 +13,32 @@
  * SQUADRA} {NomeGiocatore}", es. "SK Wunder", "KC Caliste" — non il nome
  * nudo di Leaguepedia ("Wunder", "Caliste"). Il matching è: togliere il
  * primo token (il tag squadra) da summonerName, vedi
- * stripTeamTagFromSummonerName sotto. CS (creepScore) confermato presente
- * nella stessa risposta di /window, non serve /details per quello.
+ * stripTeamTagFromSummonerName sotto.
  *
- * ATTENZIONE — Vision Score e Pentakill NON sono comparsi nella risposta di
- * /window testata (solo kills/deaths/assists/creepScore/totalGold/level per
- * participant): potrebbero non esistere affatto in questa API, o vivere
- * altrove (es. /details con parametri diversi) — non confermato, quindi non
- * ancora usabili per punti reali. Obiettivi di squadra (torri/baroni/
- * draghi) sembrano presenti a livello di team nei frame, ma void grub/rift
- * herald/atakhan/inibitori non ancora verificati come campi distinti.
+ * CAMPI VERIFICATI (su /window E /details reali dello stesso game):
+ * - CS (creepScore): presente in entrambi.
+ * - Oro: "totalGold" in /window, "totalGoldEarned" in /details — nomi
+ *   diversi per lo stesso dato, mappati entrambi su totalGold qui.
+ * - Wards: "wardsPlaced"/"wardsDestroyed" in /details, usate come proxy del
+ *   Vision Score (decisione presa col progetto: Riot non espone un vero
+ *   Vision Score da nessuna parte in questa API, quindi ScoringWeights.
+ *   visionPer10 pesa wardsPlaced+wardsDestroyed ogni 10, non lo stesso
+ *   numero del client di gioco ma un segnale reale).
+ * - Pentakill e dati sui ban: ASSENTI in entrambe le risposte testate,
+ *   nessun campo di alcun tipo — confermato non disponibile, non
+ *   implementato (ScoringWeights.pentakill resta inerte, 0 in automatico).
+ * - Obiettivi di squadra (torri/baroni/draghi/inibitori): presenti a
+ *   livello di team SOLO nei frame di /window (non in /details, che ha solo
+ *   "participants"), void grub/rift herald/atakhan non ancora verificati
+ *   come campi distinti — non ancora wirati, fuori da questo giro.
  *
- * ATTENZIONE — non ancora collegato al calcolo punteggi reale
- * (FantaContext.recalculateScores): oltre al matching nomi, manca una
- * pipeline per trovare i gameId giocati da una squadra/giocatore in una
- * finestra di date (qui serve getSchedule/getEventDetails per evento, non
- * una query diretta come il Cargo di Leaguepedia) — lavoro separato, non
- * ancora iniziato.
+ * ANCORA MANCANTE — la pipeline che trova i gameId giocati da una squadra
+ * in una finestra di date: getSchedule(leagueId) restituisce eventi con
+ * match.id, ma la forma esatta di match.teams (nome/tag della squadra per
+ * abbinarla al roster fantasy) non è ancora stata vista su una risposta
+ * reale — LolesportsScheduleEvent va verificato prima di usarlo per
+ * cercare le partite di una squadra specifica, stesso principio di tutto
+ * il resto in questo file: non indovinare uno schema.
  */
 
 // Toglie il tag squadra iniziale da un summonerName lolesports ("SK Wunder"
@@ -171,21 +180,49 @@ export interface LolesportsParticipantStats {
   assists: number;
   creepScore: number;
   totalGold: number;
+  // Vision Score vero e proprio NON è mai comparso in /details (verificato
+  // su una risposta reale): usiamo wards piazzate/distrutte come proxy —
+  // dato reale, non identico al Vision Score di Riot ma non inventato.
+  wardsPlaced: number;
+  wardsDestroyed: number;
+}
+
+// Forma grezza di un participant in /details/{gameId}: il campo dell'oro si
+// chiama totalGoldEarned qui (diverso da totalGold di /window/{gameId}) —
+// verificato su una risposta reale, non un'ipotesi.
+interface RawDetailsParticipant {
+  participantId: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  creepScore: number;
+  totalGoldEarned: number;
+  wardsPlaced: number;
+  wardsDestroyed: number;
 }
 
 /**
- * Statistiche finali (kill/morti/assist/CS/oro) di ogni giocatore in un
- * game già concluso: prende l'ULTIMO frame (stato finale), non l'intera
+ * Statistiche finali (kill/morti/assist/CS/oro/wards) di ogni giocatore in
+ * un game già concluso: prende l'ULTIMO frame (stato finale), non l'intera
  * timeline minuto per minuto che non serve al punteggio fantasy.
  */
 export async function getGameFinalStats(
   gameId: string,
 ): Promise<LolesportsParticipantStats[]> {
   const data = await feedRequest<{
-    frames: { participants: LolesportsParticipantStats[] }[];
+    frames: { participants: RawDetailsParticipant[] }[];
   }>(`details/${gameId}`);
   const lastFrame = data.frames[data.frames.length - 1];
-  return lastFrame?.participants || [];
+  return (lastFrame?.participants || []).map((p) => ({
+    participantId: p.participantId,
+    kills: p.kills,
+    deaths: p.deaths,
+    assists: p.assists,
+    creepScore: p.creepScore,
+    totalGold: p.totalGoldEarned,
+    wardsPlaced: p.wardsPlaced,
+    wardsDestroyed: p.wardsDestroyed,
+  }));
 }
 
 /**

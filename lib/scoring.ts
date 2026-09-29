@@ -1,5 +1,6 @@
-import type { RoleScoringWeights, TeamPick, TeamScoringWeights } from "@/types";
+import type { RoleScoringWeights, ScoringWeights, TeamPick, TeamScoringWeights } from "@/types";
 import type { FantasyPlayerStats } from "@/lib/leaguepediaApi";
+import type { LolesportsParticipantStats } from "@/lib/lolesportsApi";
 
 /**
  * Punti automatici (kill/morti/assist/vittoria) di un pick da statistiche
@@ -39,6 +40,29 @@ export function computeAutoPoints(
   }
 
   return undefined;
+}
+
+/**
+ * CS + proxy Vision Score (wardsPlaced+wardsDestroyed, vedi l'avvertenza in
+ * lib/lolesportsApi.ts sul perché non è il Vision Score vero di Riot) da
+ * statistiche lolesports di un SINGOLO game, secondo i pesi del ruolo del
+ * pick. Va sommata a computeAutoPoints (kill/morti/assist/vittoria da
+ * Leaguepedia), non lo sostituisce — sono due fonti dati diverse per due
+ * gruppi di statistiche diversi dello stesso giocatore.
+ *
+ * ATTENZIONE — non ancora chiamata da nessun punto di FantaContext: manca
+ * ancora la pipeline che trova i game di un giocatore in una finestra di
+ * date (vedi lib/lolesportsApi.ts), quindi per ora questa funzione non ha
+ * ancora dati reali da sommare in recalculateScores.
+ */
+export function computeLolesportsBonusPoints(
+  stats: Pick<LolesportsParticipantStats, "creepScore" | "wardsPlaced" | "wardsDestroyed">,
+  weights: ScoringWeights,
+): number {
+  return (
+    (stats.creepScore / 50) * weights.csPer50 +
+    ((stats.wardsPlaced + stats.wardsDestroyed) / 10) * weights.visionPer10
+  );
 }
 
 /**
