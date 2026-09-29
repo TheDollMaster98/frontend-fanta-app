@@ -88,27 +88,49 @@ service cloud.firestore {
           .data.settings.get('seasonStarted', false) == true;
       }
 
-      // Ruolo di chi sta scrivendo IN QUESTA lega (non il ruolo di un
-      // pick/giocatore pro, tutt'altra cosa). Se l'utente non è membro di
-      // questa lega, get() fallisce e la funzione chiamante valuta false
-      // (comportamento documentato di Firestore Rules: un get()/exists()
-      // che fallisce nega, non va in errore verso il client).
-      function isAdminOrVice() {
-        let role = get(
-          /databases/$(database)/documents/fantas/$(fantaId)/members/$(request.auth.uid)
-        ).data.role;
-        return role == 'admin' || role == 'vice';
+      // Un developer (users/{uid}.isDeveloper, vedi la nota su
+      // immutabilità in quella regola) ha "accesso universale a tutte le
+      // leghe, senza bisogno di farne parte o di essere admin" — testo
+      // letterale della UI in Impostazioni. Prima di stringere le regole
+      // (29/9) questo era vero per costruzione: tutto era aperto a
+      // chiunque, quindi il flag non serviva lato server. Ora che
+      // isAdminOrVice/isAdmin controllano il ruolo vero, un developer
+      // senza un member doc reale in quella lega (o con ruolo "membro")
+      // veniva bloccato da Firestore pur vedendo i pulsanti in UI — bug
+      // vero, trovato testando la creazione di un'asta. exists() prima di
+      // get() evita che un utente senza ancora un documento users/{uid}
+      // faccia fallire l'intera funzione (get() su un doc assente lancia,
+      // vedi il commento sotto su isAdminOrVice).
+      function isDeveloper() {
+        return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isDeveloper', false) == true;
       }
 
-      // Come isAdminOrVice ma solo admin: gestione membri (cacciare,
-      // promuovere/rimuovere vice) resta una decisione del creatore, non
-      // dei vice — stesso identico vincolo già imposto lato UI
-      // (canManageMembers = isFantaAdmin in app/dashboard/admin/page.tsx).
+      // Ruolo di chi sta scrivendo IN QUESTA lega (non il ruolo di un
+      // pick/giocatore pro, tutt'altra cosa), o developer. isDeveloper()
+      // valutata PRIMA (corto circuito ||): se true, il get() sul member
+      // doc — che per un developer senza membership qui non esiste — non
+      // viene mai eseguito. Se l'utente non è membro né developer, quel
+      // get() fallisce e la funzione valuta false (comportamento
+      // documentato di Firestore Rules: un get()/exists() che fallisce
+      // nega, non va in errore verso il client).
+      function isAdminOrVice() {
+        return isDeveloper() || (
+          exists(/databases/$(database)/documents/fantas/$(fantaId)/members/$(request.auth.uid))
+          && get(/databases/$(database)/documents/fantas/$(fantaId)/members/$(request.auth.uid)).data.role in ['admin', 'vice']
+        );
+      }
+
+      // Come isAdminOrVice ma solo admin (o developer): gestione membri
+      // (cacciare, promuovere/rimuovere vice) resta una decisione del
+      // creatore, non dei vice — stesso identico vincolo già imposto lato
+      // UI (canManageMembers = isFantaAdmin in
+      // app/dashboard/admin/page.tsx).
       function isAdmin() {
-        let role = get(
-          /databases/$(database)/documents/fantas/$(fantaId)/members/$(request.auth.uid)
-        ).data.role;
-        return role == 'admin';
+        return isDeveloper() || (
+          exists(/databases/$(database)/documents/fantas/$(fantaId)/members/$(request.auth.uid))
+          && get(/databases/$(database)/documents/fantas/$(fantaId)/members/$(request.auth.uid)).data.role == 'admin'
+        );
       }
 
       match /members/{memberId} {
