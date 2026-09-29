@@ -50,6 +50,7 @@ import {
   DEFAULT_TEAM_SCORING_WEIGHTS,
 } from "@/lib/constants";
 import { Copy, UserPlus } from "lucide-react";
+import { toast } from "sonner";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -133,9 +134,6 @@ function AdminPageContent({
   const [newViceEmail, setNewViceEmail] = useState("");
   const [isAddingVice, setIsAddingVice] = useState(false);
   const [isStartingSeason, setIsStartingSeason] = useState(false);
-  const [generalInfoMessage, setGeneralInfoMessage] = useState("");
-  const [settingsMessage, setSettingsMessage] = useState("");
-  const [viceAdminMessage, setViceAdminMessage] = useState("");
   const members = fantaMembers;
   const inviteCode = currentFanta.inviteCode;
   const seasonStarted = !!currentFanta.settings.seasonStarted;
@@ -144,6 +142,7 @@ function AdminPageContent({
     setIsStartingSeason(true);
     try {
       await startSeason();
+      toast.success("Stagione avviata: mercato chiuso, calendario generato");
     } finally {
       setIsStartingSeason(false);
     }
@@ -151,12 +150,13 @@ function AdminPageContent({
 
   const handleReopenMarket = () => {
     setSeasonStarted(false);
+    toast.success("Mercato riaperto");
   };
 
   const handleGeneralInfoUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     updateFanta({ ...currentFanta, ...generalInfo });
-    setGeneralInfoMessage("Informazioni lega aggiornate");
+    toast.success("Informazioni lega aggiornate");
   };
 
   const handleSettingsUpdate = (e: React.FormEvent) => {
@@ -178,7 +178,7 @@ function AdminPageContent({
         ),
       },
     });
-    setSettingsMessage("Impostazioni aggiornate");
+    toast.success("Impostazioni aggiornate");
   };
 
   const copyInviteCode = () => {
@@ -191,7 +191,6 @@ function AdminPageContent({
     const email = newViceEmail.trim();
     if (!email) return;
 
-    setViceAdminMessage("");
     setIsAddingVice(true);
     try {
       const usersQuery = query(
@@ -201,7 +200,7 @@ function AdminPageContent({
       const snapshot = await getDocs(usersQuery);
 
       if (snapshot.empty) {
-        setViceAdminMessage("Nessun utente registrato con questa email");
+        toast.error("Nessun utente registrato con questa email");
         return;
       }
 
@@ -209,23 +208,23 @@ function AdminPageContent({
       const foundMember = members.find((m) => m.userId === foundId);
 
       if (!foundMember) {
-        setViceAdminMessage(
+        toast.error(
           "Questo utente deve prima entrare nella lega (invito o richiesta)",
         );
         return;
       }
       if (foundMember.role === "vice") {
-        setViceAdminMessage("È già vice-admin");
+        toast.error("È già vice-admin");
         return;
       }
       if (foundMember.role === "admin") {
-        setViceAdminMessage("È già il creatore della lega");
+        toast.error("È già il creatore della lega");
         return;
       }
 
       addViceAdmin(foundId);
       setNewViceEmail("");
-      setViceAdminMessage("Vice-admin aggiunto");
+      toast.success("Vice-admin aggiunto");
     } finally {
       setIsAddingVice(false);
     }
@@ -342,11 +341,6 @@ function AdminPageContent({
             </CardHeader>
             <CardContent>
               <form onSubmit={handleGeneralInfoUpdate} className="space-y-4">
-                {generalInfoMessage && (
-                  <div className="rounded-md border border-border bg-raised/50 p-3 text-sm text-foreground">
-                    {generalInfoMessage}
-                  </div>
-                )}
                 <div className="space-y-2">
                   <Label htmlFor="fantaName">Nome Lega</Label>
                   <Input
@@ -413,11 +407,6 @@ function AdminPageContent({
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSettingsUpdate} className="space-y-4">
-                {settingsMessage && (
-                  <div className="rounded-md border border-border bg-raised/50 p-3 text-sm text-foreground">
-                    {settingsMessage}
-                  </div>
-                )}
                 <p className="text-xs text-muted-foreground">
                   Modalità: {settings.draftMode === "snake" ? "Draft a turni (snake)" : "Asta live"}
                   {" "}— decisa alla creazione della lega, non cambiabile da qui.
@@ -783,11 +772,6 @@ function AdminPageContent({
             <CardContent className="space-y-4">
               {canManageMembers ? (
                 <>
-                  {viceAdminMessage && (
-                    <div className="rounded-md border border-border bg-raised/50 p-3 text-sm text-foreground">
-                      {viceAdminMessage}
-                    </div>
-                  )}
                   <div className="flex gap-2">
                     <Input
                       placeholder="Email dell'utente (già membro della lega)"

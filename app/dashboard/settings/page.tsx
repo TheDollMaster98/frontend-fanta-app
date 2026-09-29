@@ -25,6 +25,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
+import { toast } from "sonner";
 
 export default function SettingsPage() {
   const {
@@ -52,21 +53,17 @@ export default function SettingsPage() {
   const [email, setEmail] = useState(user?.email || "");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [profileMessage, setProfileMessage] = useState("");
-  const [photoMessage, setPhotoMessage] = useState("");
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   const [teamName, setTeamName] = useState(
     user ? getTeamName(user.id) : "",
   );
-  const [teamMessage, setTeamMessage] = useState("");
 
   const [notificationPrefs, setNotificationPrefs] = useState({
     newAuctions: true,
     auctionsWon: true,
     settingsChanges: true,
   });
-  const [notificationMessage, setNotificationMessage] = useState("");
 
   // Nessun sistema di notifiche esiste ancora in quest'app (niente push,
   // email o centro notifiche in-app): questi checkbox prima non salvavano
@@ -89,9 +86,9 @@ export default function SettingsPage() {
         "fanta-notification-prefs",
         JSON.stringify(notificationPrefs),
       );
-      setNotificationMessage("Preferenze salvate su questo dispositivo");
+      toast.success("Preferenze salvate su questo dispositivo");
     } catch {
-      setNotificationMessage("Impossibile salvare le preferenze");
+      toast.error("Impossibile salvare le preferenze");
     }
   };
 
@@ -105,10 +102,9 @@ export default function SettingsPage() {
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setProfileMessage("");
 
     if (newPassword && newPassword !== confirmPassword) {
-      setProfileMessage("Le password non corrispondono");
+      toast.error("Le password non corrispondono");
       return;
     }
 
@@ -124,9 +120,9 @@ export default function SettingsPage() {
         setNewPassword("");
         setConfirmPassword("");
       }
-      setProfileMessage("Modifiche salvate");
+      toast.success("Modifiche salvate");
     } catch (error) {
-      setProfileMessage(
+      toast.error(
         error instanceof Error ? error.message : "Errore durante il salvataggio",
       );
     }
@@ -140,13 +136,12 @@ export default function SettingsPage() {
     e.target.value = "";
     if (!file) return;
 
-    setPhotoMessage("");
     setIsUploadingPhoto(true);
     try {
       await updateUserPhoto(file);
-      setPhotoMessage("Foto profilo aggiornata");
+      toast.success("Foto profilo aggiornata");
     } catch (error) {
-      setPhotoMessage(
+      toast.error(
         error instanceof Error ? error.message : "Errore durante il caricamento",
       );
     } finally {
@@ -158,7 +153,7 @@ export default function SettingsPage() {
     e.preventDefault();
     if (user && teamName.trim()) {
       updateTeamName(user.id, teamName.trim());
-      setTeamMessage("Nome team salvato");
+      toast.success("Nome team salvato");
     }
   };
 
@@ -212,18 +207,10 @@ export default function SettingsPage() {
                     disabled={isUploadingPhoto}
                     onChange={handlePhotoChange}
                   />
-                  {photoMessage && (
-                    <p className="text-xs text-muted-foreground">{photoMessage}</p>
-                  )}
                 </div>
               </div>
               <Separator className="mb-4" />
               <form onSubmit={handleProfileUpdate} className="space-y-4">
-                {profileMessage && (
-                  <div className="rounded-md border border-border bg-raised/50 p-3 text-sm text-foreground">
-                    {profileMessage}
-                  </div>
-                )}
                 <div className="space-y-2">
                   <Label htmlFor="name">Nome</Label>
                   <Input
@@ -322,11 +309,6 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleTeamUpdate} className="space-y-4">
-                {teamMessage && (
-                  <div className="rounded-md border border-border bg-raised/50 p-3 text-sm text-foreground">
-                    {teamMessage}
-                  </div>
-                )}
                 <div className="space-y-2">
                   <Label htmlFor="teamName">Nome Team</Label>
                   <Input
@@ -425,11 +407,6 @@ export default function SettingsPage() {
             </CardHeader>
             <form onSubmit={handleNotificationPrefsUpdate}>
               <CardContent className="space-y-4">
-                {notificationMessage && (
-                  <div className="rounded-md border border-border bg-raised/50 p-3 text-sm text-foreground">
-                    {notificationMessage}
-                  </div>
-                )}
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">Nuove Aste</p>

@@ -39,6 +39,7 @@ import {
 import { computeManualBonus, totalPickPoints } from "@/lib/scoring";
 import type { TeamPick, TeamPickType } from "@/types";
 import { DEFAULT_TEAM_SCORING_WEIGHTS } from "@/lib/constants";
+import { toast } from "sonner";
 
 // Campi delle statistiche manuali per pickType: chiave del form -> etichetta.
 // Player/jolly: CS, Vision Score, Pentakill. Team/coach: obiettivi + CS + oro.
@@ -92,7 +93,6 @@ export default function StandingsPage() {
   );
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
-  const [actionMessage, setActionMessage] = useState("");
   const [isCalendarDialogOpen, setIsCalendarDialogOpen] = useState(false);
   const [calendarStartDate, setCalendarStartDate] = useState(
     () => new Date().toISOString().slice(0, 10),
@@ -132,14 +132,13 @@ export default function StandingsPage() {
 
   const handleGenerateCalendar = async () => {
     setIsGenerating(true);
-    setActionMessage("");
     try {
       await generateCalendar(new Date(calendarStartDate), roundLengthDays);
-      setActionMessage("Calendario generato.");
+      toast.success("Calendario generato");
       setIsCalendarDialogOpen(false);
     } catch (error) {
       console.error("Errore nella generazione del calendario:", error);
-      setActionMessage("Errore nella generazione del calendario.");
+      toast.error("Errore nella generazione del calendario");
     } finally {
       setIsGenerating(false);
     }
@@ -147,13 +146,12 @@ export default function StandingsPage() {
 
   const handleRecalculateScores = async () => {
     setIsRecalculating(true);
-    setActionMessage("");
     try {
       await recalculateScores();
-      setActionMessage("Punteggi ricalcolati.");
+      toast.success("Punteggi ricalcolati");
     } catch (error) {
       console.error("Errore nel ricalcolo dei punteggi:", error);
-      setActionMessage("Errore nel ricalcolo dei punteggi.");
+      toast.error("Errore nel ricalcolo dei punteggi");
     } finally {
       setIsRecalculating(false);
     }
@@ -323,9 +321,6 @@ export default function StandingsPage() {
           Nessun circuito impostato in Gestione Lega: il ricalcolo punteggi
           non sa quale torneo interrogare su Leaguepedia.
         </p>
-      )}
-      {actionMessage && (
-        <p className="text-sm text-muted-foreground">{actionMessage}</p>
       )}
 
       <Card>
