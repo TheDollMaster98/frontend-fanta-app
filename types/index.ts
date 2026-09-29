@@ -25,6 +25,14 @@ export interface Fanta {
   inviteCode: string; // Codice per unirsi via /join/[code], indipendente dall'id
   createdAt: Date;
   updatedAt: Date;
+  // uid di chi ha creato la lega, impostato una volta in addFanta e mai più
+  // toccato: firestore.rules lo usa per permettere al creatore di
+  // auto-nominarsi admin SOLO nel momento in cui la lega nasce (altrimenti
+  // qualunque utente potrebbe scriversi admin in una lega già esistente).
+  // Assente sulle leghe create prima di questo campo — non un problema:
+  // quel bootstrap è già avvenuto per loro sotto le regole precedenti, non
+  // va ripetuto.
+  createdBy?: string;
 }
 
 export interface ScoringWeights {

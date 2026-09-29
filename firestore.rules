@@ -1,17 +1,22 @@
 rules_version = '2';
 
-// App privata per un gruppo di amici: chiunque sia autenticato è considerato
-// fidato, quindi non replichiamo qui tutta la logica di membership/ruoli già
-// applicata lato client. L'unico requisito è essere loggati: niente accesso
-// anonimo da chi trova solo il projectId, e niente scadenza a tempo.
+// App privata per un gruppo di amici, MA il repository è pubblico e la
+// registrazione è aperta a chiunque abbia un'email: "autenticato = fidato"
+// non è più un modello di minaccia accettabile, va verificato il ruolo vero
+// per ogni operazione sensibile (ruoli, impostazioni lega, membership).
+// Verificato con audit (29/9): senza questo, qualunque utente registrato
+// poteva autopromuoversi admin di QUALSIASI lega o developer universale con
+// una chiamata Firestore dalla console del browser. Le regole sotto
+// fantas/{fantaId}/members e users/{userId} sono la correzione.
 //
 // ATTENZIONE (9/9): la versione precedente aveva una regola più stretta su
 // users/{uid} che ha rotto il login in produzione (causa non isolata prima
-// del rollback — vedi TODO.md). Questa volta users/{uid} resta IDENTICO
-// alla versione di rollback (blanket, invariato) apposta per non toccare
-// quel codice non ancora capito: le uniche regole nuove sono sotto
-// fantas/{fantaId}, testate con l'emulatore Firestore (@firebase/
-// rules-unit-testing) PRIMA del deploy, non solo lette a mente.
+// del rollback — vedi TODO.md). La nuova regola qui sotto NON tocca il
+// flusso di login/lettura (read resta aperto, invariato) — restringe solo
+// write al proprietario del documento, e lascia isDeveloper scrivibile
+// liberamente una volta già true (vedi commento sulla regola). Testata con
+// l'emulatore Firestore (@firebase/rules-unit-testing) PRIMA del deploy,
+// non solo letta a mente.
 //
 // NOTA IMPORTANTE su come Firestore combina più `match` sullo stesso path:
 // se un wildcard generico (es. {subpath=**}) copre anche un path già
@@ -38,7 +43,26 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     match /users/{userId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.get('isDeveloper', false) == false;
+
+      // isDeveloper (accesso developer universale a tutta l'app) è
+      // IMMUTABILE da qui, in entrambe le direzioni: un self-toggle
+      // "true->false->true" nella stessa sessione non è distinguibile da
+      // regole senza stato da "false->true" di chi non è mai stato
+      // developer (dopo il primo spegnimento il documento torna a
+      // isDeveloper:false, uguale in entrambi i casi) — testato con
+      // l'emulatore, la versione precedente di questa regola permetteva il
+      // turn-off ma poi bloccava il turn-back-on, un bug vero trovato prima
+      // del deploy. Va acceso/spento solo a mano dalla Firebase Console,
+      // come diceva già il commento in AuthContext.tsx — ora è la regola a
+      // farlo rispettare davvero, non solo un commento. Il toggle
+      // self-service in Impostazioni smette di funzionare con questa
+      // regola: è un effetto collaterale noto, non un bug.
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.get('isDeveloper', false) == resource.data.get('isDeveloper', false);
     }
 
     match /proplayers/{playerId} {
@@ -46,7 +70,15 @@ service cloud.firestore {
     }
 
     match /fantas/{fantaId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      // Creare una nuova lega è self-service (bottone "Crea Nuovo Fanta"):
+      // chiunque loggato può farlo, diventa admin tramite il create sotto
+      // members/{creatorUid} nella stessa batch.
+      allow create: if request.auth != null;
+      // Modificare o cancellare una lega ESISTENTE richiede di esserne
+      // admin/vice — prima non c'era nessun controllo qui, chiunque loggato
+      // poteva riscrivere impostazioni/nome/inviteCode di qualunque lega.
+      allow update, delete: if request.auth != null && isAdminOrVice();
 
       // true se la lega ha il mercato chiuso (bottone "Avvia Stagione" in
       // Gestione Lega). Assente/false = mercato aperto (default per le
@@ -68,10 +100,48 @@ service cloud.firestore {
         return role == 'admin' || role == 'vice';
       }
 
+      // Come isAdminOrVice ma solo admin: gestione membri (cacciare,
+      // promuovere/rimuovere vice) resta una decisione del creatore, non
+      // dei vice — stesso identico vincolo già imposto lato UI
+      // (canManageMembers = isFantaAdmin in app/dashboard/admin/page.tsx).
+      function isAdmin() {
+        let role = get(
+          /databases/$(database)/documents/fantas/$(fantaId)/members/$(request.auth.uid)
+        ).data.role;
+        return role == 'admin';
+      }
+
       match /members/{memberId} {
         allow read: if request.auth != null;
-        allow create: if request.auth != null;
-        allow delete: if request.auth != null;
+
+        // Due soli casi legittimi di creazione, nessun altro:
+        // 1) bootstrap: chi ha appena creato la lega (fantas/create sopra,
+        //    stessa batch) si auto-nomina admin — permesso SOLO se è
+        //    davvero lui il creatore dichiarato sul documento fanta
+        //    (createdBy, scritto una volta in FantaContext.addFanta), mai
+        //    per una lega già esistente con un altro creatore.
+        // 2) approvazione di una richiesta d'ingresso: un admin/vice crea
+        //    il membro per conto del richiedente (approveJoinRequest),
+        //    sempre e solo come "membro" semplice, mai admin/vice.
+        // Prima non c'era ALCUN controllo qui: chiunque loggato poteva
+        // scriversi "role: admin" in qualsiasi lega, anche non sua.
+        allow create: if request.auth != null && (
+          (
+            request.auth.uid == memberId
+            && request.resource.data.role == 'admin'
+            && get(/databases/$(database)/documents/fantas/$(fantaId)).data.get('createdBy', '') == request.auth.uid
+          )
+          || (isAdminOrVice() && request.resource.data.role == 'membro')
+        );
+
+        // Rimuovere un membro è un'azione da admin (non vice, vedi isAdmin
+        // sopra) — prima chiunque loggato poteva cacciare chiunque da
+        // qualunque lega.
+        allow delete: if request.auth != null && isAdmin();
+
+        function isRoleChange() {
+          return request.resource.data.role != resource.data.role;
+        }
 
         // Il team di un membro cresce quando un'asta si chiude o parte una
         // pick di draft — scritture che possono arrivare dal browser di
@@ -87,16 +157,26 @@ service cloud.firestore {
             && request.resource.data.team.size() < resource.data.team.size();
         }
 
+        // Un cambio di ruolo (promuovere/rimuovere vice) richiede admin —
+        // prima chiunque poteva riscrivere il proprio (o altrui) role a
+        // "admin" via un update qualsiasi. Ogni altro campo (team, budget,
+        // teamName) segue la stessa logica di sempre, invariata.
         allow update: if request.auth != null && (
-          !seasonStarted()
-          || isAdminOrVice()
-          || !isTeamShrinking()
+          (isRoleChange() && isAdmin())
+          || (!isRoleChange() && (
+            !seasonStarted()
+            || isAdminOrVice()
+            || !isTeamShrinking()
+          ))
         );
       }
 
       match /auctions/{auctionId} {
         allow read: if request.auth != null;
-        allow delete: if request.auth != null;
+
+        // Annullare un'asta è admin/vice lato UI (cancelAuction) — prima
+        // chiunque loggato poteva cancellare l'asta di qualunque lega.
+        allow delete: if request.auth != null && isAdminOrVice();
 
         // Creare un'asta è già un'azione admin/vice lato UI (bottone "Crea
         // Nuova Asta"): lo stesso vincolo va imposto anche qui, altrimenti
@@ -127,7 +207,10 @@ service cloud.firestore {
 
       match /draft/{docId} {
         allow read: if request.auth != null;
-        allow delete: if request.auth != null;
+
+        // Come le aste: resettare/cancellare il draft è admin/vice lato
+        // UI, prima non c'era alcun vincolo qui.
+        allow delete: if request.auth != null && isAdminOrVice();
 
         // Avviare un draft è già un'azione admin/vice lato UI, stesso
         // discorso delle aste: solo admin/vice possono crearlo, e comunque
@@ -197,7 +280,14 @@ service cloud.firestore {
       }
 
       match /joinRequests/{requestId} {
-        allow read, write: if request.auth != null;
+        allow read: if request.auth != null;
+        // Si può creare una richiesta solo come se stessi, non a nome di
+        // qualcun altro (prima chiunque poteva scrivere userId di un altro
+        // utente in una richiesta e farla approvare a suo nome).
+        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+        // Approvare/rifiutare è admin/vice lato UI — prima chiunque poteva
+        // auto-approvarsi o cancellare la richiesta di qualcun altro.
+        allow update, delete: if request.auth != null && isAdminOrVice();
       }
     }
 

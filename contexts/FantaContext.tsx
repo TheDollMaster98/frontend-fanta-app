@@ -278,6 +278,12 @@ function mapFantaDoc(id: string, data: Record<string, unknown>): Fanta {
     inviteCode: data.inviteCode,
     createdAt: toDate(data.createdAt as Timestamp | Date | undefined),
     updatedAt: toDate(data.updatedAt as Timestamp | Date | undefined),
+    // Niente "createdBy: data.createdBy" diretto: sulle leghe create prima
+    // di questo campo sarebbe undefined, e updateFanta (setDoc senza
+    // ignoreUndefinedProperties) lancia un errore su un campo undefined
+    // esplicito — meglio ometterlo del tutto quando manca, come già si fa
+    // per photoURL in AuthContext.tsx.
+    ...(data.createdBy ? { createdBy: data.createdBy as string } : {}),
   } as Fanta;
 }
 
@@ -636,7 +642,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   const addFanta = (fanta: Fanta): void => {
     if (!user) return;
     const batch = writeBatch(db);
-    batch.set(doc(db, "fantas", fanta.id), fanta);
+    batch.set(doc(db, "fantas", fanta.id), { ...fanta, createdBy: user.id });
     const memberRef = doc(db, "fantas", fanta.id, "members", user.id);
     const generalBudget = fanta.settings.generalBudget;
     const adminMember: FantaMember = {
