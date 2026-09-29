@@ -40,14 +40,26 @@ export async function GET(request: NextRequest) {
     headers["x-api-key"] = process.env.LOLESPORTS_API_KEY || DEFAULT_API_KEY;
   }
 
+  let response: Response;
   try {
-    const response = await fetch(targetUrl, { headers, cache: "no-store" });
-    const data = await response.json();
-    return NextResponse.json(data, { status: response.status });
+    response = await fetch(targetUrl, { headers, cache: "no-store" });
   } catch (error) {
-    console.error("Errore nel proxy lolesports:", error);
+    console.error("Errore di rete verso lolesports:", error);
     return NextResponse.json(
-      { error: "Richiesta a lolesports fallita" },
+      { error: "Richiesta a lolesports fallita (rete)", detail: String(error) },
+      { status: 502 },
+    );
+  }
+
+  const rawBody = await response.text();
+  try {
+    return NextResponse.json(JSON.parse(rawBody), { status: response.status });
+  } catch {
+    // L'upstream ha risposto (status noto) ma il corpo non è JSON: es. una
+    // pagina di blocco anti-bot. Restituiamo status e corpo grezzo invece
+    // di un generico 502, così si vede subito cosa ha risposto davvero.
+    return NextResponse.json(
+      { error: "Risposta lolesports non-JSON", upstreamStatus: response.status, body: rawBody.slice(0, 500) },
       { status: 502 },
     );
   }
