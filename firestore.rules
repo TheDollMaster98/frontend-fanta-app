@@ -133,6 +133,16 @@ service cloud.firestore {
         );
       }
 
+      // Qualunque membro della lega (o developer), a prescindere dal ruolo:
+      // usata da auctions/create (30/9) perché avviare un'asta è aperto a
+      // tutti i membri, non solo admin/vice — decisione prodotto, distinta
+      // da isAdminOrVice() che resta per le azioni di gestione (chiudere,
+      // annullare, assegnare manualmente un'asta già avviata).
+      function isMember() {
+        return isDeveloper()
+          || exists(/databases/$(database)/documents/fantas/$(fantaId)/members/$(request.auth.uid));
+      }
+
       match /members/{memberId} {
         allow read: if request.auth != null;
 
@@ -200,13 +210,15 @@ service cloud.firestore {
         // chiunque loggato poteva cancellare l'asta di qualunque lega.
         allow delete: if request.auth != null && isAdminOrVice();
 
-        // Creare un'asta è già un'azione admin/vice lato UI (bottone "Crea
-        // Nuova Asta"): lo stesso vincolo va imposto anche qui, altrimenti
-        // un membro normale potrebbe crearne una da console del browser.
-        // Niente nuove aste comunque una volta chiuso il mercato, admin
-        // incluso (chi deve sistemare qualcosa usa l'assegnazione manuale
-        // su aste già esistenti, non serve crearne altre).
-        allow create: if request.auth != null && !seasonStarted() && isAdminOrVice();
+        // Creare un'asta è aperto a qualunque membro della lega (30/9,
+        // decisione prodotto: "faccia creare le aste a tutti"), non solo
+        // admin/vice — ma resta comunque riservato a chi è DAVVERO membro
+        // di QUESTA lega (isMember()), mai a un utente qualsiasi loggato
+        // che potrebbe altrimenti spammare aste in leghe altrui. Niente
+        // nuove aste comunque una volta chiuso il mercato, admin incluso
+        // (chi deve sistemare qualcosa usa l'assegnazione manuale su aste
+        // già esistenti, non serve crearne altre).
+        allow create: if request.auth != null && !seasonStarted() && isMember();
 
         // currentPrice cambia SOLO con un'offerta (placeBid): avvio/pausa/
         // chiusura/annullamento/assegnazione manuale di un'asta non lo

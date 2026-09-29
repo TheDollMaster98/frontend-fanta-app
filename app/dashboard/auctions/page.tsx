@@ -100,6 +100,7 @@ export default function AuctionsPage() {
     fantaMembers,
     getMemberName,
     isFantaViceOrAdmin,
+    currentMember,
   } = useFanta();
   const { user } = useAuth();
   const [detailAuction, setDetailAuction] = useState<Auction | null>(null);
@@ -235,6 +236,12 @@ export default function AuctionsPage() {
   const [isLoadingAuctionTeams, setIsLoadingAuctionTeams] = useState(false);
 
   const isAdmin = !!user && !!currentFanta && isFantaViceOrAdmin;
+  // Creare un'asta è aperto a qualsiasi membro della lega, non solo
+  // admin/vice (decisione prodotto, non un residuo del vecchio bug):
+  // gestire un'asta già avviata (start/pausa/chiusura/annullamento/
+  // assegnazione manuale) resta invece riservata ad admin/vice tramite
+  // `isAdmin`, invariato.
+  const canCreateAuction = !!user && !!currentFanta && !!currentMember;
   const seasonStarted = !!currentFanta?.settings.seasonStarted;
 
   // Carica dati precompilati da localStorage (da pagina import), una sola volta al mount
@@ -437,7 +444,7 @@ export default function AuctionsPage() {
           </p>
         </div>
 
-        {isAdmin && !seasonStarted && (
+        {canCreateAuction && !seasonStarted && (
           <Dialog open={isCreateAuctionOpen} onOpenChange={setIsCreateAuctionOpen}>
             <DialogTrigger asChild>
               <Button>Crea Nuova Asta</Button>
