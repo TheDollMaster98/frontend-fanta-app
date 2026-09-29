@@ -39,8 +39,15 @@ import {
   MIN_COUNTDOWN_SECONDS,
   MAX_COUNTDOWN_SECONDS,
   DEFAULT_TEAM_SCORING_WEIGHTS,
+  PLAYOFF_CIRCUITS,
 } from "@/lib/constants";
 import { generateRoundRobin } from "@/lib/roundRobin";
+import {
+  seedFirstRound,
+  isRoundComplete,
+  nextRoundFromWinners,
+  rankGroupMembers,
+} from "@/lib/bracket";
 import {
   getFantasyPlayerStats,
   getFantasyTeamStats,
@@ -57,6 +64,9 @@ import type {
   JoinRequest,
   Auction,
   CalendarRound,
+  FantaGroup,
+  BracketRound,
+  BracketMatch,
   ManualPlayerStats,
   ManualTeamStats,
   DraftState,
@@ -169,6 +179,23 @@ interface FantaContextType {
   // è true.
   startSeason: () => Promise<void>;
   setSeasonStarted: (value: boolean) => void;
+
+  // Doppia fase gironi + eliminazione diretta (step 5, solo circuiti
+  // WORLDS/MSI — vedi PLAYOFF_CIRCUITS in lib/constants.ts). Per i circuiti
+  // normali groups e bracketRounds restano vuoti e calendar/generateCalendar
+  // funzionano come sempre (fase singola).
+  groups: FantaGroup[];
+  bracketRounds: BracketRound[];
+  generateGroups: (
+    groupCount: number,
+    startDate?: Date,
+    roundLengthDays?: number,
+  ) => Promise<void>;
+  generateBracket: (
+    qualifiersPerGroup?: number,
+    startDate?: Date,
+    roundLengthDays?: number,
+  ) => Promise<void>;
 
   // Scoperta leghe e richieste di ingresso
   discoverableFantas: Fanta[];
@@ -319,6 +346,28 @@ function mapCalendarRoundDoc(
     fixtures: (data.fixtures as CalendarRound["fixtures"]) || [],
     startDate: toDate(data.startDate as Timestamp | Date | undefined),
     endDate: toDate(data.endDate as Timestamp | Date | undefined),
+    ...(typeof data.groupId === "string" ? { groupId: data.groupId } : {}),
+  };
+}
+
+function mapGroupDoc(id: string, data: Record<string, unknown>): FantaGroup {
+  return {
+    id,
+    name: (data.name as string) || "",
+    memberIds: (data.memberIds as string[]) || [],
+  };
+}
+
+function mapBracketRoundDoc(
+  id: string,
+  data: Record<string, unknown>,
+): BracketRound {
+  return {
+    id,
+    roundIndex: (data.roundIndex as number) ?? 0,
+    matches: (data.matches as BracketRound["matches"]) || [],
+    startDate: toDate(data.startDate as Timestamp | Date | undefined),
+    endDate: toDate(data.endDate as Timestamp | Date | undefined),
   };
 }
 
@@ -373,6 +422,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   const [draftState, setDraftState] = useState<DraftState | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [calendar, setCalendar] = useState<CalendarRound[]>([]);
+  const [groups, setGroups] = useState<FantaGroup[]>([]);
+  const [bracketRounds, setBracketRounds] = useState<BracketRound[]>([]);
   const [memberProfiles, setMemberProfiles] = useState<
     Record<string, { name: string; email: string }>
   >({});
@@ -835,6 +886,65 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     );
   }, [currentFanta]);
 
+  // Ascolta gruppi e tabellone a eliminazione della fase 2 (WORLDS/MSI):
+  // vuoti finché generateGroups/generateBracket non vengono lanciati, non
+  // usati affatto dai circuiti a fase singola.
+  useEffect(() => {
+    if (!currentFanta) {
+      setGroups([]);
+      return;
+    }
+
+    const groupsQuery = query(
+      collection(db, "fantas", currentFanta.id, "groups"),
+      orderBy("name", "asc"),
+    );
+
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          groupsQuery,
+          (snapshot) => {
+            setGroups(
+              snapshot.docs.map((docSnap) =>
+                mapGroupDoc(docSnap.id, docSnap.data()),
+              ),
+            );
+          },
+          onError,
+        ),
+      "groups",
+    );
+  }, [currentFanta]);
+
+  useEffect(() => {
+    if (!currentFanta) {
+      setBracketRounds([]);
+      return;
+    }
+
+    const bracketQuery = query(
+      collection(db, "fantas", currentFanta.id, "bracket"),
+      orderBy("roundIndex", "asc"),
+    );
+
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          bracketQuery,
+          (snapshot) => {
+            setBracketRounds(
+              snapshot.docs.map((docSnap) =>
+                mapBracketRoundDoc(docSnap.id, docSnap.data()),
+              ),
+            );
+          },
+          onError,
+        ),
+      "bracket",
+    );
+  }, [currentFanta]);
+
   // Genera (o rigenera da capo) il calendario a girone all'italiana tra i
   // membri della lega corrente, col metodo del cerchio: cancella i turni
   // precedenti prima di scrivere i nuovi, altrimenti si accumulerebbero.
@@ -877,6 +987,116 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     await batch.commit();
   };
 
+  // Fase 1 dei circuiti a eliminazione (WORLDS/MSI, vedi PLAYOFF_CIRCUITS):
+  // distribuisce i membri della lega in `groupCount` gruppi (in sequenza,
+  // round-robin sull'elenco membri — non c'è uno storico su cui bilanciare
+  // la forza dei gruppi) e genera per ciascuno un proprio girone
+  // all'italiana (stesso metodo del cerchio di generateCalendar), scritto
+  // nella stessa collection `calendar` ma taggato con groupId. Rigenerare
+  // cancella e ricrea da capo gruppi, calendario E il tabellone a
+  // eliminazione (dipende dai gruppi precedenti, non ha più senso tenerlo).
+  const generateGroups = async (
+    groupCount: number,
+    startDate: Date = new Date(),
+    roundLengthDays = 7,
+  ): Promise<void> => {
+    if (!currentFanta || groupCount < 1) return;
+    const memberIds = fantaMembers.map((m) => m.userId);
+
+    const groupsCollection = collection(db, "fantas", currentFanta.id, "groups");
+    const calendarCollection = collection(db, "fantas", currentFanta.id, "calendar");
+    const bracketCollection = collection(db, "fantas", currentFanta.id, "bracket");
+    const [existingGroups, existingCalendar, existingBracket] = await Promise.all([
+      getDocs(groupsCollection),
+      getDocs(calendarCollection),
+      getDocs(bracketCollection),
+    ]);
+
+    const batch = writeBatch(db);
+    existingGroups.docs.forEach((d) => batch.delete(d.ref));
+    existingCalendar.docs.forEach((d) => batch.delete(d.ref));
+    existingBracket.docs.forEach((d) => batch.delete(d.ref));
+
+    const groupMemberIds: string[][] = Array.from({ length: groupCount }, () => []);
+    memberIds.forEach((id, index) => {
+      groupMemberIds[index % groupCount].push(id);
+    });
+
+    groupMemberIds.forEach((groupMembers, groupIndex) => {
+      if (groupMembers.length === 0) return;
+      const groupRef = doc(groupsCollection);
+      const groupName = `Gruppo ${String.fromCharCode(65 + groupIndex)}`;
+      batch.set(groupRef, { name: groupName, memberIds: groupMembers });
+
+      const rounds = generateRoundRobin(groupMembers);
+      rounds.forEach((fixtures, roundIndex) => {
+        const roundStart = new Date(
+          startDate.getTime() + roundIndex * roundLengthDays * 86400000,
+        );
+        const roundEnd = new Date(
+          roundStart.getTime() + roundLengthDays * 86400000,
+        );
+        batch.set(doc(calendarCollection), {
+          roundNumber: roundIndex + 1,
+          fixtures,
+          startDate: Timestamp.fromDate(roundStart),
+          endDate: Timestamp.fromDate(roundEnd),
+          groupId: groupRef.id,
+        });
+      });
+    });
+
+    await batch.commit();
+  };
+
+  // Fase 2 (dopo i gironi): calcola i qualificati di ogni gruppo — ordinati
+  // per vittorie nel proprio girone (fixture con più punti), poi punti
+  // fatti nel girone, poi punteggio cumulativo totale come ultimo
+  // spareggio — e genera il primo turno del tabellone a eliminazione
+  // diretta con seeding standard (vedi lib/bracket.ts), interlacciando i
+  // gruppi (1° gruppo A, 1° gruppo B, ..., 2° gruppo A, 2° gruppo B, ...)
+  // così che chi viene dallo stesso gruppo si incontri il più tardi
+  // possibile. Rigenerare cancella e ricrea da capo il tabellone.
+  const generateBracket = async (
+    qualifiersPerGroup = 2,
+    startDate: Date = new Date(),
+    roundLengthDays = 7,
+  ): Promise<void> => {
+    if (!currentFanta || groups.length === 0) return;
+
+    const standingsByUserId = new Map(standings.map((s) => [s.userId, s.totalPoints]));
+    const qualifiersByGroup = groups.map((group) =>
+      rankGroupMembers(group, calendar, standingsByUserId).slice(0, qualifiersPerGroup),
+    );
+
+    const seeds: string[] = [];
+    for (let rank = 0; rank < qualifiersPerGroup; rank++) {
+      qualifiersByGroup.forEach((qualifiers) => {
+        if (qualifiers[rank]) seeds.push(qualifiers[rank]);
+      });
+    }
+    if (seeds.length < 2) return;
+
+    const bracketCollection = collection(db, "fantas", currentFanta.id, "bracket");
+    const existing = await getDocs(bracketCollection);
+    const batch = writeBatch(db);
+    existing.docs.forEach((d) => batch.delete(d.ref));
+
+    const roundEnd = new Date(startDate.getTime() + roundLengthDays * 86400000);
+    batch.set(doc(bracketCollection), {
+      roundIndex: 0,
+      matches: seedFirstRound(seeds),
+      startDate: Timestamp.fromDate(startDate),
+      endDate: Timestamp.fromDate(roundEnd),
+    });
+
+    await batch.commit();
+    updateFanta({
+      ...currentFanta,
+      settings: { ...currentFanta.settings, bracketRoundLengthDays: roundLengthDays },
+    });
+  };
+
   // Chiude il mercato (niente più aste nuove/offerte/pick di draft/rimozioni
   // dai membri normali, vedi i guard su createAuction/placeBid/startDraft/
   // makeDraftPick/removePlayerFromTeam sopra) e genera il calendario, in
@@ -885,7 +1105,15 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   // aperte (aste attive da chiudere, draft da completare a mano).
   const startSeason = async (): Promise<void> => {
     if (!currentFanta) return;
-    await generateCalendar();
+    // Per i circuiti a eliminazione (WORLDS/MSI) il calendario non si
+    // genera qui: serve prima scegliere il numero di gruppi, quindi
+    // l'admin usa "Genera Gironi" in Classifica dopo aver avviato la
+    // stagione (stesso motivo per cui "Genera Calendario" è comunque un
+    // pulsante separato anche in fase singola: chiudere il mercato e
+    // decidere le date/i gruppi sono due azioni distinte).
+    if (!PLAYOFF_CIRCUITS.includes(currentFanta.settings.circuitType || "")) {
+      await generateCalendar();
+    }
     updateFanta({
       ...currentFanta,
       settings: { ...currentFanta.settings, seasonStarted: true },
@@ -1057,6 +1285,143 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       }
 
       if (hasRoundWrites) await roundBatch.commit();
+    }
+
+    // Punteggio del tabellone a eliminazione diretta (fase 2, solo
+    // WORLDS/MSI): stessa logica del calendario a girone sopra, applicata a
+    // ogni turno del bracket. Quando un turno risulta completamente deciso
+    // (ogni match ha un vincitore, bye inclusi) e il turno successivo non
+    // esiste ancora, lo genera in automatico accoppiando i vincitori (vedi
+    // lib/bracket.ts) — nessun cron: basta premere di nuovo "Ricalcola
+    // Punteggi" per far avanzare il tabellone di un turno alla volta.
+    if (bracketRounds.length > 0) {
+      const bracketBatch = writeBatch(db);
+      let hasBracketWrites = false;
+      const sortedRounds = [...bracketRounds].sort(
+        (a, b) => a.roundIndex - b.roundIndex,
+      );
+
+      for (const round of sortedRounds) {
+        const involvedUserIds = Array.from(
+          new Set(
+            round.matches.flatMap((m) =>
+              [m.homeUserId, m.awayUserId].filter(
+                (id): id is string => !!id,
+              ),
+            ),
+          ),
+        );
+        const roundPlayerNames = new Set<string>();
+        const roundTeamNames = new Set<string>();
+        involvedUserIds.forEach((uid) => {
+          const member = fantaMembers.find((m) => m.userId === uid);
+          member?.team.forEach((pick) => {
+            if (pick.pickType === "player" || pick.pickType === "jolly") {
+              roundPlayerNames.add(pick.playerName);
+            } else if (pick.pickType === "team") {
+              roundTeamNames.add(pick.playerName);
+            } else if (pick.pickType === "coach" && pick.playerTeam) {
+              roundTeamNames.add(pick.playerTeam);
+            }
+          });
+        });
+
+        const dateRange = { start: round.startDate, end: round.endDate };
+        const [roundPlayerStats, roundTeamStats] = await Promise.all([
+          getFantasyPlayerStats(
+            Array.from(roundPlayerNames),
+            circuitType,
+            dateRange,
+          ),
+          getFantasyTeamStats(
+            Array.from(roundTeamNames),
+            circuitType,
+            dateRange,
+          ),
+        ]);
+
+        const memberBracketPoints = (userId: string): number => {
+          const member = fantaMembers.find((m) => m.userId === userId);
+          if (!member) return 0;
+          return member.team.reduce((sum, pick) => {
+            const points = computeAutoPoints(
+              pick,
+              roundPlayerStats,
+              roundTeamStats,
+              roleWeights,
+              teamWeights,
+            );
+            return sum + (points || 0);
+          }, 0);
+        };
+
+        let roundChanged = false;
+        const updatedMatches: BracketMatch[] = round.matches.map((match) => {
+          // Già deciso (giocato o bye) oppure ancora TBD in attesa del
+          // turno precedente: niente da calcolare qui.
+          if (match.winnerUserId || !match.homeUserId || !match.awayUserId) {
+            return match;
+          }
+          const homePoints =
+            Math.round(memberBracketPoints(match.homeUserId) * 100) / 100;
+          const awayPoints =
+            Math.round(memberBracketPoints(match.awayUserId) * 100) / 100;
+          const winnerUserId =
+            homePoints > awayPoints
+              ? match.homeUserId
+              : awayPoints > homePoints
+                ? match.awayUserId
+                : undefined;
+          if (
+            homePoints !== match.homePoints ||
+            awayPoints !== match.awayPoints ||
+            winnerUserId !== match.winnerUserId
+          ) {
+            roundChanged = true;
+          }
+          return {
+            ...match,
+            homePoints,
+            awayPoints,
+            ...(winnerUserId ? { winnerUserId } : {}),
+          };
+        });
+
+        if (roundChanged) {
+          hasBracketWrites = true;
+          bracketBatch.update(
+            doc(db, "fantas", currentFanta.id, "bracket", round.id),
+            { matches: updatedMatches },
+          );
+        }
+
+        const nextRoundExists = sortedRounds.some(
+          (r) => r.roundIndex === round.roundIndex + 1,
+        );
+        if (!nextRoundExists && isRoundComplete(updatedMatches)) {
+          const nextMatches = nextRoundFromWinners(updatedMatches);
+          if (nextMatches.length > 0) {
+            const nextRoundLengthDays =
+              currentFanta.settings.bracketRoundLengthDays || 7;
+            const nextStart = round.endDate;
+            const nextEnd = new Date(
+              nextStart.getTime() + nextRoundLengthDays * 86400000,
+            );
+            hasBracketWrites = true;
+            bracketBatch.set(
+              doc(collection(db, "fantas", currentFanta.id, "bracket")),
+              {
+                roundIndex: round.roundIndex + 1,
+                matches: nextMatches,
+                startDate: Timestamp.fromDate(nextStart),
+                endDate: Timestamp.fromDate(nextEnd),
+              },
+            );
+          }
+        }
+      }
+
+      if (hasBracketWrites) await bracketBatch.commit();
     }
   };
 
@@ -1721,6 +2086,10 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         recalculateScores,
         startSeason,
         setSeasonStarted,
+        groups,
+        bracketRounds,
+        generateGroups,
+        generateBracket,
         discoverableFantas,
         myJoinRequests,
         pendingJoinRequests,

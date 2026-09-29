@@ -37,8 +37,9 @@ import {
   type TeamGameLog,
 } from "@/lib/leaguepediaApi";
 import { computeManualBonus, totalPickPoints } from "@/lib/scoring";
-import type { TeamPick, TeamPickType } from "@/types";
-import { DEFAULT_TEAM_SCORING_WEIGHTS } from "@/lib/constants";
+import { rankGroupMembers } from "@/lib/bracket";
+import type { TeamPick, TeamPickType, CalendarRound } from "@/types";
+import { DEFAULT_TEAM_SCORING_WEIGHTS, PLAYOFF_CIRCUITS } from "@/lib/constants";
 import { toast } from "sonner";
 
 // Campi delle statistiche manuali per pickType: chiave del form -> etichetta.
@@ -75,6 +76,87 @@ function formatGameDate(raw: string): string {
     : parsed.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+// Fixture di un turno di calendario (girone unico o girone di un gruppo,
+// non il tabellone a eliminazione, che ha una sua struttura a parte).
+// Estratto per non duplicarlo tra fase singola e fase a gironi.
+function RoundFixturesList({
+  round,
+  getMemberName,
+}: {
+  round: CalendarRound;
+  getMemberName: (userId: string, fallback?: string) => string;
+}) {
+  return (
+    <div>
+      <p className="text-sm font-medium text-foreground mb-2">
+        Turno {round.roundNumber}
+        <span className="text-muted-foreground font-normal ml-2">
+          {round.startDate.toLocaleDateString("it-IT", {
+            day: "2-digit",
+            month: "2-digit",
+          })}
+          {" – "}
+          {round.endDate.toLocaleDateString("it-IT", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          })}
+        </span>
+      </p>
+      <div className="grid md:grid-cols-2 gap-2">
+        {round.fixtures.map((fixture, idx) => {
+          const hasResult =
+            fixture.homePoints !== undefined && fixture.awayPoints !== undefined;
+          const homeWins =
+            hasResult && fixture.homePoints! > fixture.awayPoints!;
+          const awayWins =
+            hasResult && fixture.awayPoints! > fixture.homePoints!;
+          return (
+            <div
+              key={idx}
+              className="flex items-center justify-between p-2 bg-raised border border-border rounded text-sm"
+            >
+              <span
+                className={
+                  homeWins ? "text-success font-semibold" : "text-foreground"
+                }
+              >
+                {getMemberName(fixture.homeUserId)}
+                {hasResult && (
+                  <span className="text-muted-foreground font-normal ml-1">
+                    ({fixture.homePoints})
+                  </span>
+                )}
+              </span>
+              {fixture.awayUserId ? (
+                <>
+                  <span className="text-muted-foreground">
+                    {hasResult ? (homeWins || awayWins ? "-" : "pareggio") : "vs"}
+                  </span>
+                  <span
+                    className={
+                      awayWins ? "text-success font-semibold" : "text-foreground"
+                    }
+                  >
+                    {hasResult && (
+                      <span className="text-muted-foreground font-normal mr-1">
+                        ({fixture.awayPoints})
+                      </span>
+                    )}
+                    {getMemberName(fixture.awayUserId)}
+                  </span>
+                </>
+              ) : (
+                <span className="text-muted-foreground">riposo</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function StandingsPage() {
   const {
     currentFanta,
@@ -87,6 +169,10 @@ export default function StandingsPage() {
     isFantaAdmin,
     isFantaViceOrAdmin,
     getMemberName,
+    groups,
+    bracketRounds,
+    generateGroups,
+    generateBracket,
   } = useFanta();
   const [selectedMember, setSelectedMember] = useState<FantaMemberProfile | null>(
     null,
@@ -98,6 +184,23 @@ export default function StandingsPage() {
     () => new Date().toISOString().slice(0, 10),
   );
   const [roundLengthDays, setRoundLengthDays] = useState(7);
+
+  // Fase a gironi + eliminazione diretta (solo circuiti WORLDS/MSI)
+  const [isGroupsDialogOpen, setIsGroupsDialogOpen] = useState(false);
+  const [isGeneratingGroups, setIsGeneratingGroups] = useState(false);
+  const [groupCount, setGroupCount] = useState(2);
+  const [groupsStartDate, setGroupsStartDate] = useState(
+    () => new Date().toISOString().slice(0, 10),
+  );
+  const [groupsRoundLengthDays, setGroupsRoundLengthDays] = useState(7);
+
+  const [isBracketDialogOpen, setIsBracketDialogOpen] = useState(false);
+  const [isGeneratingBracket, setIsGeneratingBracket] = useState(false);
+  const [qualifiersPerGroup, setQualifiersPerGroup] = useState(2);
+  const [bracketStartDate, setBracketStartDate] = useState(
+    () => new Date().toISOString().slice(0, 10),
+  );
+  const [bracketRoundLengthDays, setBracketRoundLengthDays] = useState(7);
 
   // Drill-down step 3: click su un pick della rosa -> log partita per
   // partita (data, avversario/champion, stats, punti). Caricato al volo
@@ -157,6 +260,38 @@ export default function StandingsPage() {
     }
   };
 
+  const handleGenerateGroups = async () => {
+    setIsGeneratingGroups(true);
+    try {
+      await generateGroups(groupCount, new Date(groupsStartDate), groupsRoundLengthDays);
+      toast.success("Gironi generati");
+      setIsGroupsDialogOpen(false);
+    } catch (error) {
+      console.error("Errore nella generazione dei gironi:", error);
+      toast.error("Errore nella generazione dei gironi");
+    } finally {
+      setIsGeneratingGroups(false);
+    }
+  };
+
+  const handleGenerateBracket = async () => {
+    setIsGeneratingBracket(true);
+    try {
+      await generateBracket(
+        qualifiersPerGroup,
+        new Date(bracketStartDate),
+        bracketRoundLengthDays,
+      );
+      toast.success("Tabellone generato");
+      setIsBracketDialogOpen(false);
+    } catch (error) {
+      console.error("Errore nella generazione del tabellone:", error);
+      toast.error("Errore nella generazione del tabellone");
+    } finally {
+      setIsGeneratingBracket(false);
+    }
+  };
+
   const openDrillDown = async (pick: TeamPick, memberId: string) => {
     if (!currentFanta?.settings.circuitType) return;
     setDrillPick(pick);
@@ -193,6 +328,12 @@ export default function StandingsPage() {
   if (!currentFanta) return null;
 
   const circuitMissing = !currentFanta.settings.circuitType;
+  const isPlayoffCircuit = PLAYOFF_CIRCUITS.includes(
+    currentFanta.settings.circuitType || "",
+  );
+  const cumulativePointsByUserId = new Map(
+    standings.map((s) => [s.userId, s.totalPoints]),
+  );
   const roleWeights = currentFanta.settings.scoringWeights || {};
   const drillWeights =
     drillPick?.playerRole ? roleWeights[drillPick.playerRole] : undefined;
@@ -247,64 +388,212 @@ export default function StandingsPage() {
           </p>
         </div>
         {isFantaAdmin && (
-          <div className="flex gap-2">
-            <Dialog open={isCalendarDialogOpen} onOpenChange={setIsCalendarDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline">
-                  <CalendarDays className="mr-2 h-4 w-4" />
-                  Genera Calendario
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Genera Calendario</DialogTitle>
-                  <DialogDescription>
-                    Girone all&apos;italiana tra i membri della lega: ogni
-                    turno copre una finestra di giorni consecutivi, usata per
-                    il confronto diretto a punti tra i due membri di ogni
-                    fixture (vedi &quot;Ricalcola Punteggi&quot;). Rigenerare
-                    cancella e ricrea tutti i turni da capo.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="calendarStartDate">
-                      Data di inizio del primo turno
-                    </Label>
-                    <Input
-                      id="calendarStartDate"
-                      type="date"
-                      value={calendarStartDate}
-                      onChange={(e) => setCalendarStartDate(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="roundLengthDays">
-                      Durata di ogni turno (giorni)
-                    </Label>
-                    <Input
-                      id="roundLengthDays"
-                      type="number"
-                      min={1}
-                      max={60}
-                      value={roundLengthDays}
-                      onChange={(e) =>
-                        setRoundLengthDays(
-                          Math.max(1, Number(e.target.value) || 1),
-                        )
-                      }
-                    />
-                  </div>
-                  <Button
-                    onClick={handleGenerateCalendar}
-                    disabled={isGenerating}
-                    className="w-full"
-                  >
-                    {isGenerating ? "Genero..." : "Genera Calendario"}
+          <div className="flex gap-2 flex-wrap">
+            {isPlayoffCircuit ? (
+              <>
+                <Dialog open={isGroupsDialogOpen} onOpenChange={setIsGroupsDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline">
+                      <CalendarDays className="mr-2 h-4 w-4" />
+                      Genera Gironi
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Genera Gironi</DialogTitle>
+                      <DialogDescription>
+                        Circuito a eliminazione ({currentFanta.settings.circuitType}):
+                        i membri vengono divisi in gruppi, ognuno gioca un
+                        proprio girone all&apos;italiana. Rigenerare cancella
+                        e ricrea gruppi, calendario e tabellone da capo.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="groupCount">Numero di gruppi</Label>
+                        <Input
+                          id="groupCount"
+                          type="number"
+                          min={1}
+                          max={fantaMembers.length || 1}
+                          value={groupCount}
+                          onChange={(e) =>
+                            setGroupCount(Math.max(1, Number(e.target.value) || 1))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="groupsStartDate">
+                          Data di inizio del primo turno
+                        </Label>
+                        <Input
+                          id="groupsStartDate"
+                          type="date"
+                          value={groupsStartDate}
+                          onChange={(e) => setGroupsStartDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="groupsRoundLengthDays">
+                          Durata di ogni turno (giorni)
+                        </Label>
+                        <Input
+                          id="groupsRoundLengthDays"
+                          type="number"
+                          min={1}
+                          max={60}
+                          value={groupsRoundLengthDays}
+                          onChange={(e) =>
+                            setGroupsRoundLengthDays(
+                              Math.max(1, Number(e.target.value) || 1),
+                            )
+                          }
+                        />
+                      </div>
+                      <Button
+                        onClick={handleGenerateGroups}
+                        disabled={isGeneratingGroups}
+                        className="w-full"
+                      >
+                        {isGeneratingGroups ? "Genero..." : "Genera Gironi"}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+                <Dialog open={isBracketDialogOpen} onOpenChange={setIsBracketDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" disabled={groups.length === 0}>
+                      <Trophy className="mr-2 h-4 w-4" />
+                      Genera Fase Eliminazione
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Genera Fase Eliminazione</DialogTitle>
+                      <DialogDescription>
+                        I migliori di ogni gruppo (per vittorie/punti nel
+                        proprio girone) passano al tabellone a eliminazione
+                        diretta. Lancia prima &quot;Ricalcola Punteggi&quot;
+                        se i gironi non hanno ancora un risultato aggiornato.
+                        Rigenerare cancella e ricrea il tabellone da capo.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="qualifiersPerGroup">
+                          Qualificati per gruppo
+                        </Label>
+                        <Input
+                          id="qualifiersPerGroup"
+                          type="number"
+                          min={1}
+                          max={8}
+                          value={qualifiersPerGroup}
+                          onChange={(e) =>
+                            setQualifiersPerGroup(
+                              Math.max(1, Number(e.target.value) || 1),
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="bracketStartDate">
+                          Data di inizio del primo turno
+                        </Label>
+                        <Input
+                          id="bracketStartDate"
+                          type="date"
+                          value={bracketStartDate}
+                          onChange={(e) => setBracketStartDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="bracketRoundLengthDays">
+                          Durata di ogni turno (giorni)
+                        </Label>
+                        <Input
+                          id="bracketRoundLengthDays"
+                          type="number"
+                          min={1}
+                          max={60}
+                          value={bracketRoundLengthDays}
+                          onChange={(e) =>
+                            setBracketRoundLengthDays(
+                              Math.max(1, Number(e.target.value) || 1),
+                            )
+                          }
+                        />
+                      </div>
+                      <Button
+                        onClick={handleGenerateBracket}
+                        disabled={isGeneratingBracket}
+                        className="w-full"
+                      >
+                        {isGeneratingBracket ? "Genero..." : "Genera Fase Eliminazione"}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </>
+            ) : (
+              <Dialog open={isCalendarDialogOpen} onOpenChange={setIsCalendarDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <CalendarDays className="mr-2 h-4 w-4" />
+                    Genera Calendario
                   </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Genera Calendario</DialogTitle>
+                    <DialogDescription>
+                      Girone all&apos;italiana tra i membri della lega: ogni
+                      turno copre una finestra di giorni consecutivi, usata per
+                      il confronto diretto a punti tra i due membri di ogni
+                      fixture (vedi &quot;Ricalcola Punteggi&quot;). Rigenerare
+                      cancella e ricrea tutti i turni da capo.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="calendarStartDate">
+                        Data di inizio del primo turno
+                      </Label>
+                      <Input
+                        id="calendarStartDate"
+                        type="date"
+                        value={calendarStartDate}
+                        onChange={(e) => setCalendarStartDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="roundLengthDays">
+                        Durata di ogni turno (giorni)
+                      </Label>
+                      <Input
+                        id="roundLengthDays"
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={roundLengthDays}
+                        onChange={(e) =>
+                          setRoundLengthDays(
+                            Math.max(1, Number(e.target.value) || 1),
+                          )
+                        }
+                      />
+                    </div>
+                    <Button
+                      onClick={handleGenerateCalendar}
+                      disabled={isGenerating}
+                      className="w-full"
+                    >
+                      {isGenerating ? "Genero..." : "Genera Calendario"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
             <Button
               onClick={handleRecalculateScores}
               disabled={isRecalculating || circuitMissing}
@@ -372,110 +661,214 @@ export default function StandingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-foreground">
-            Calendario ({calendar.length} turni)
-          </CardTitle>
-          <CardDescription className="text-muted-foreground">
-            Girone all&apos;italiana tra i membri della lega. Ogni turno
-            copre una finestra di date: il punteggio di un confronto diretto
-            è la somma dei punti fantasy ottenuti dai due roster SOLO nelle
-            partite pro giocate in quella finestra (non il totale
-            cumulativo della Classifica Generale sopra). Aggiornato da
-            &quot;Ricalcola Punteggi&quot;.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {calendar.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Nessun calendario generato
-              {isFantaAdmin ? ': usa "Genera Calendario" qui sopra.' : "."}
-            </p>
+      {isPlayoffCircuit ? (
+        <>
+          {groups.length === 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-foreground">Gironi</CardTitle>
+                <CardDescription className="text-muted-foreground">
+                  Nessun girone generato
+                  {isFantaAdmin ? ': usa "Genera Gironi" qui sopra.' : "."}
+                </CardDescription>
+              </CardHeader>
+            </Card>
           ) : (
-            <div className="space-y-4">
-              {calendar.map((round) => (
-                <div key={round.id}>
-                  <p className="text-sm font-medium text-foreground mb-2">
-                    Turno {round.roundNumber}
-                    <span className="text-muted-foreground font-normal ml-2">
-                      {round.startDate.toLocaleDateString("it-IT", {
-                        day: "2-digit",
-                        month: "2-digit",
-                      })}
-                      {" – "}
-                      {round.endDate.toLocaleDateString("it-IT", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })}
-                    </span>
-                  </p>
-                  <div className="grid md:grid-cols-2 gap-2">
-                    {round.fixtures.map((fixture, idx) => {
-                      const hasResult =
-                        fixture.homePoints !== undefined &&
-                        fixture.awayPoints !== undefined;
-                      const homeWins =
-                        hasResult && fixture.homePoints! > fixture.awayPoints!;
-                      const awayWins =
-                        hasResult && fixture.awayPoints! > fixture.homePoints!;
-                      return (
+            groups.map((group) => {
+              const ranked = rankGroupMembers(
+                group,
+                calendar,
+                cumulativePointsByUserId,
+              );
+              const groupRounds = calendar.filter(
+                (round) => round.groupId === group.id,
+              );
+              return (
+                <Card key={group.id}>
+                  <CardHeader>
+                    <CardTitle className="text-foreground">
+                      {group.name}
+                    </CardTitle>
+                    <CardDescription className="text-muted-foreground">
+                      Girone all&apos;italiana tra i membri del gruppo.
+                      Classifica per vittorie, poi punti fatti nel girone.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1">
+                      {ranked.map((userId, index) => (
                         <div
-                          key={idx}
-                          className="flex items-center justify-between p-2 bg-raised border border-border rounded text-sm"
+                          key={userId}
+                          className="flex items-center justify-between text-sm p-2 bg-raised border border-border rounded"
                         >
-                          <span
-                            className={
-                              homeWins
-                                ? "text-success font-semibold"
-                                : "text-foreground"
-                            }
-                          >
-                            {getMemberName(fixture.homeUserId)}
-                            {hasResult && (
-                              <span className="text-muted-foreground font-normal ml-1">
-                                ({fixture.homePoints})
-                              </span>
-                            )}
+                          <span className="text-foreground">
+                            <span className="text-muted-foreground font-mono mr-2">
+                              {index + 1}
+                            </span>
+                            {getMemberName(userId)}
                           </span>
-                          {fixture.awayUserId ? (
-                            <>
-                              <span className="text-muted-foreground">
-                                {hasResult
-                                  ? homeWins || awayWins
-                                    ? "-"
-                                    : "pareggio"
-                                  : "vs"}
-                              </span>
-                              <span
-                                className={
-                                  awayWins
-                                    ? "text-success font-semibold"
-                                    : "text-foreground"
-                                }
-                              >
-                                {hasResult && (
-                                  <span className="text-muted-foreground font-normal mr-1">
-                                    ({fixture.awayPoints})
-                                  </span>
-                                )}
-                                {getMemberName(fixture.awayUserId)}
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-muted-foreground">riposo</span>
+                          {index < qualifiersPerGroup && (
+                            <Badge variant="secondary">Qualificato</Badge>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
+                      ))}
+                    </div>
+                    {groupRounds.map((round) => (
+                      <RoundFixturesList
+                        key={round.id}
+                        round={round}
+                        getMemberName={getMemberName}
+                      />
+                    ))}
+                  </CardContent>
+                </Card>
+              );
+            })
           )}
-        </CardContent>
-      </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-foreground">Tabellone</CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Eliminazione diretta tra i qualificati dei gironi. Un turno
+                avanza automaticamente al successivo quando tutti i match
+                sono decisi, alla prossima &quot;Ricalcola Punteggi&quot;.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {bracketRounds.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nessun tabellone generato
+                  {isFantaAdmin
+                    ? ': usa "Genera Fase Eliminazione" qui sopra.'
+                    : "."}
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {[...bracketRounds]
+                    .sort((a, b) => a.roundIndex - b.roundIndex)
+                    .map((round) => (
+                      <div key={round.id}>
+                        <p className="text-sm font-medium text-foreground mb-2">
+                          {round.matches.length === 1
+                            ? "Finale"
+                            : `Turno ${round.roundIndex + 1}`}
+                          <span className="text-muted-foreground font-normal ml-2">
+                            {round.startDate.toLocaleDateString("it-IT", {
+                              day: "2-digit",
+                              month: "2-digit",
+                            })}
+                            {" – "}
+                            {round.endDate.toLocaleDateString("it-IT", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            })}
+                          </span>
+                        </p>
+                        <div className="grid md:grid-cols-2 gap-2">
+                          {round.matches.map((match, idx) => {
+                            const hasResult =
+                              match.homePoints !== undefined &&
+                              match.awayPoints !== undefined;
+                            const homeWins =
+                              match.winnerUserId &&
+                              match.winnerUserId === match.homeUserId;
+                            const awayWins =
+                              match.winnerUserId &&
+                              match.winnerUserId === match.awayUserId;
+                            return (
+                              <div
+                                key={idx}
+                                className="flex items-center justify-between p-2 bg-raised border border-border rounded text-sm"
+                              >
+                                <span
+                                  className={
+                                    homeWins
+                                      ? "text-success font-semibold"
+                                      : "text-foreground"
+                                  }
+                                >
+                                  {match.homeUserId
+                                    ? getMemberName(match.homeUserId)
+                                    : "TBD"}
+                                  {hasResult && (
+                                    <span className="text-muted-foreground font-normal ml-1">
+                                      ({match.homePoints})
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {!match.homeUserId || !match.awayUserId
+                                    ? match.winnerUserId
+                                      ? "bye"
+                                      : "vs"
+                                    : hasResult
+                                      ? "-"
+                                      : "vs"}
+                                </span>
+                                <span
+                                  className={
+                                    awayWins
+                                      ? "text-success font-semibold"
+                                      : "text-foreground"
+                                  }
+                                >
+                                  {hasResult && (
+                                    <span className="text-muted-foreground font-normal mr-1">
+                                      ({match.awayPoints})
+                                    </span>
+                                  )}
+                                  {match.awayUserId
+                                    ? getMemberName(match.awayUserId)
+                                    : "TBD"}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-foreground">
+              Calendario ({calendar.length} turni)
+            </CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Girone all&apos;italiana tra i membri della lega. Ogni turno
+              copre una finestra di date: il punteggio di un confronto diretto
+              è la somma dei punti fantasy ottenuti dai due roster SOLO nelle
+              partite pro giocate in quella finestra (non il totale
+              cumulativo della Classifica Generale sopra). Aggiornato da
+              &quot;Ricalcola Punteggi&quot;.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {calendar.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nessun calendario generato
+                {isFantaAdmin ? ': usa "Genera Calendario" qui sopra.' : "."}
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {calendar.map((round) => (
+                  <RoundFixturesList
+                    key={round.id}
+                    round={round}
+                    getMemberName={getMemberName}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Dettaglio membro: rosa con i punti di ogni pick */}
       <Dialog
