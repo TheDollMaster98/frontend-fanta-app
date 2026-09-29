@@ -38,16 +38,17 @@ export default function SettingsPage() {
   } = useFanta();
   const {
     user,
-    setIsDeveloper,
+    isPreviewingAsNonDeveloper,
+    setPreviewAsNonDeveloper,
     updateUserProfile,
     updateUserEmail,
     updateUserPhoto,
     changePassword,
   } = useAuth();
-  // Una volta visto come developer in questa sessione, il controllo resta
-  // visibile anche se lo disattivi: così puoi riattivarlo senza dover
-  // passare da Firestore Console. Un reload rivaluta lo stato vero.
-  const [canToggleDeveloper] = useState(() => !!user?.isDeveloper);
+  // Il controllo compare solo per chi è REALMENTE developer (Firestore,
+  // immutabile dal client): l'anteprima sotto non tocca mai quel flag,
+  // quindi restare visibile per tutta la sessione è sicuro.
+  const canToggleDeveloper = !!user?.isDeveloper;
 
   const [name, setName] = useState(user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
@@ -276,20 +277,23 @@ export default function SettingsPage() {
                       Modalità Developer
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      Accesso universale a tutte le leghe, senza bisogno di
-                      farne parte o di essere admin. Puoi attivarla e
-                      disattivarla liberamente
+                      Hai accesso universale a tutte le leghe. L&apos;anteprima
+                      qui sotto nasconde quell&apos;accesso solo in questo
+                      browser (per vedere l&apos;app come la vedrebbe un
+                      utente normale) senza toglierti davvero i permessi:
+                      spegnila per tornare subito developer a tutti gli
+                      effetti.
                     </p>
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        id="isDeveloper"
+                        id="previewAsNonDeveloper"
                         className="w-4 h-4"
-                        checked={!!user?.isDeveloper}
-                        onChange={(e) => setIsDeveloper(e.target.checked)}
+                        checked={isPreviewingAsNonDeveloper}
+                        onChange={(e) => setPreviewAsNonDeveloper(e.target.checked)}
                       />
-                      <Label htmlFor="isDeveloper" className="cursor-pointer">
-                        Modalità developer attiva
+                      <Label htmlFor="previewAsNonDeveloper" className="cursor-pointer">
+                        Anteprima come utente normale
                       </Label>
                     </div>
                   </div>

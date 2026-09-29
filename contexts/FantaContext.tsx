@@ -489,7 +489,7 @@ function mapHistoryDoc(id: string, data: Record<string, unknown>): HistoryEntry 
 }
 
 export function FantaProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, isPreviewingAsNonDeveloper } = useAuth();
   const [allFantas, setAllFantas] = useState<Fanta[]>([]);
   const [fantasLoaded, setFantasLoaded] = useState(false);
   const [allMemberships, setAllMemberships] = useState<MembershipDoc[]>([]);
@@ -590,7 +590,11 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     );
   }, [user]);
 
-  const isDeveloper = !!user?.isDeveloper;
+  // Il flag vero (user.isDeveloper) non è mai toccato qui: l'anteprima
+  // "vista da non-dev" (AuthContext.isPreviewingAsNonDeveloper, solo
+  // locale/sessionStorage) lo maschera senza modificarlo, così si torna
+  // developer a pieno accesso semplicemente spegnendo l'anteprima.
+  const isDeveloper = !!user?.isDeveloper && !isPreviewingAsNonDeveloper;
 
   // Un "developer" ha accesso universale: vede/gestisce tutte le leghe.
   const fantas = useMemo(() => {

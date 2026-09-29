@@ -39,7 +39,17 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  setIsDeveloper: (value: boolean) => Promise<void>;
+  // Anteprima locale "vista da utente normale" per chi ha davvero
+  // isDeveloper:true (vedi user.isDeveloper, mai toccato da questo): non
+  // scrive niente su Firestore, resta nel browser (sessionStorage) — solo
+  // per guardare l'app come la vedrebbe un non-developer, senza
+  // rinunciare davvero all'accesso. Il flag isDeveloper vero e proprio è
+  // immutabile dal client (firestore.rules) da quando si autopromuoveva
+  // chiunque da console del browser: questo sostituisce quel vecchio
+  // toggle risolvendo lo stesso bisogno (vedere la vista non-dev) senza
+  // riaprire il buco.
+  isPreviewingAsNonDeveloper: boolean;
+  setPreviewAsNonDeveloper: (value: boolean) => void;
   updateUserProfile: (name: string) => Promise<void>;
   updateUserEmail: (email: string) => Promise<void>;
   updateUserPhoto: (file: File) => Promise<void>;
@@ -143,10 +153,34 @@ async function loadOrCreateUserProfile(
   };
 }
 
+const PREVIEW_AS_NON_DEVELOPER_KEY = "fanta:previewAsNonDeveloper";
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+
+  // sessionStorage, non Firestore: resta nel browser, non richiede alcun
+  // permesso di scrittura e non tocca isDeveloper vero. Letto in modo
+  // difensivo (può lanciare in navigazione privata/con storage bloccato).
+  const [isPreviewingAsNonDeveloper, setIsPreviewingAsNonDeveloperState] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return sessionStorage.getItem(PREVIEW_AS_NON_DEVELOPER_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const setPreviewAsNonDeveloper = (value: boolean) => {
+    setIsPreviewingAsNonDeveloperState(value);
+    try {
+      sessionStorage.setItem(PREVIEW_AS_NON_DEVELOPER_KEY, value ? "true" : "false");
+    } catch {
+      // storage bloccato: l'anteprima resta comunque attiva per questo
+      // render, semplicemente non sopravvive a un reload.
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -197,23 +231,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await signOut(auth);
     router.push("/");
-  };
-
-  // Nascondere il toggle in UI a chi non è già developer NON basta come
-  // controllo: chiunque può chiamare updateDoc direttamente dalla console
-  // del browser bypassando questo componente. Il guard vero è in
-  // firestore.rules su users/{uid}: da false a true il campo può essere
-  // scritto solo a mano dalla Firebase Console, mai da qui — questa
-  // funzione può solo lasciarlo invariato o, una volta già true almeno una
-  // volta, spegnerlo/riaccenderlo liberamente (da cui il "true" non
-  // rifiutato qui: se il valore non doveva salire, ci pensa la regola).
-  const setIsDeveloper = async (value: boolean) => {
-    if (!auth.currentUser) return;
-    await updateDoc(doc(db, "users", auth.currentUser.uid), {
-      isDeveloper: value,
-      updatedAt: serverTimestamp(),
-    });
-    setUser((prev) => (prev ? { ...prev, isDeveloper: value } : prev));
   };
 
   const updateUserProfile = async (name: string) => {
@@ -282,7 +299,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loginWithGoogle,
         register,
         logout,
-        setIsDeveloper,
+        isPreviewingAsNonDeveloper,
+        setPreviewAsNonDeveloper,
         updateUserProfile,
         updateUserEmail,
         updateUserPhoto,
