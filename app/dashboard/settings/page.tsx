@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
@@ -285,12 +286,10 @@ export default function SettingsPage() {
                       effetti.
                     </p>
                     <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         id="previewAsNonDeveloper"
-                        className="w-4 h-4"
                         checked={isPreviewingAsNonDeveloper}
-                        onChange={(e) => setPreviewAsNonDeveloper(e.target.checked)}
+                        onCheckedChange={(checked) => setPreviewAsNonDeveloper(checked === true)}
                       />
                       <Label htmlFor="previewAsNonDeveloper" className="cursor-pointer">
                         Anteprima come utente normale
@@ -418,14 +417,12 @@ export default function SettingsPage() {
                       Ricevi notifiche quando inizia una nuova asta
                     </p>
                   </div>
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4"
+                  <Checkbox
                     checked={notificationPrefs.newAuctions}
-                    onChange={(e) =>
+                    onCheckedChange={(checked) =>
                       setNotificationPrefs({
                         ...notificationPrefs,
-                        newAuctions: e.target.checked,
+                        newAuctions: checked === true,
                       })
                     }
                   />
@@ -440,14 +437,12 @@ export default function SettingsPage() {
                       Notifica quando vinci un&apos;asta
                     </p>
                   </div>
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4"
+                  <Checkbox
                     checked={notificationPrefs.auctionsWon}
-                    onChange={(e) =>
+                    onCheckedChange={(checked) =>
                       setNotificationPrefs({
                         ...notificationPrefs,
-                        auctionsWon: e.target.checked,
+                        auctionsWon: checked === true,
                       })
                     }
                   />
@@ -462,14 +457,12 @@ export default function SettingsPage() {
                       Notifica quando l&apos;admin modifica le impostazioni
                     </p>
                   </div>
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4"
+                  <Checkbox
                     checked={notificationPrefs.settingsChanges}
-                    onChange={(e) =>
+                    onCheckedChange={(checked) =>
                       setNotificationPrefs({
                         ...notificationPrefs,
-                        settingsChanges: e.target.checked,
+                        settingsChanges: checked === true,
                       })
                     }
                   />

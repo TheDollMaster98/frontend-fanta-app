@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -373,12 +374,10 @@ export default function ImportLoLPlayersPage() {
               </Button>
             </div>
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="worldsOnly"
-                className="w-4 h-4"
                 checked={teamSearchWorldsOnly}
-                onChange={(e) => setTeamSearchWorldsOnly(e.target.checked)}
+                onCheckedChange={(checked) => setTeamSearchWorldsOnly(checked === true)}
               />
               <Label htmlFor="worldsOnly" className="cursor-pointer">
                 Solo roster Mondiali (con o senza squadra/anno)

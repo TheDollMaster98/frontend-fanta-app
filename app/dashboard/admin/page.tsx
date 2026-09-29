@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -634,17 +635,15 @@ function AdminPageContent({
                 )}
 
                 <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     id="allowCustomBids"
                     checked={settings.allowCustomBids}
-                    onChange={(e) =>
+                    onCheckedChange={(checked) =>
                       setSettings({
                         ...settings,
-                        allowCustomBids: e.target.checked,
+                        allowCustomBids: checked === true,
                       })
                     }
-                    className="w-4 h-4"
                   />
                   <Label htmlFor="allowCustomBids" className="cursor-pointer">
                     Permetti puntate personalizzate
