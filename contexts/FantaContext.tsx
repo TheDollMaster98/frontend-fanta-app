@@ -52,7 +52,13 @@ import {
   getFantasyPlayerStats,
   getFantasyTeamStats,
 } from "@/lib/leaguepediaApi";
-import { totalPickPoints, computeAutoPoints } from "@/lib/scoring";
+import {
+  findLeagueId,
+  getTeamGameIdsInRange,
+  getGamePlayerStats,
+  stripTeamTagFromSummonerName,
+} from "@/lib/lolesportsApi";
+import { totalPickPoints, computeAutoPoints, computeLolesportsBonusPoints } from "@/lib/scoring";
 import { buildDraftSlots, getDraftTurnUserId, advanceDraftTurn } from "@/lib/draft";
 import type {
   Fanta,
@@ -67,6 +73,7 @@ import type {
   FantaGroup,
   BracketRound,
   BracketMatch,
+  RoleScoringWeights,
   ManualPlayerStats,
   ManualTeamStats,
   DraftState,
@@ -369,6 +376,80 @@ function mapBracketRoundDoc(
     startDate: toDate(data.startDate as Timestamp | Date | undefined),
     endDate: toDate(data.endDate as Timestamp | Date | undefined),
   };
+}
+
+// Bonus CS + proxy Vision Score (wards) da lolesports per un turno
+// (calendario a girone o bracket): per ogni membro coinvolto, somma il
+// bonus dei suoi pick player/jolly con playerTeam impostato, dalle
+// partite reali della loro squadra in [dateRange.start, dateRange.end).
+// Usata SOLO per i turni (finestra di date nota): il totale cumulativo
+// (TeamPick.points, "Classifica Generale") resta solo Leaguepedia — qui
+// servirebbe sfogliare tutto lo storico del circuito squadra per squadra,
+// un costo che Leaguepedia non ha (query diretta via Cargo). leagueId
+// null (circuito senza corrispondente lolesports, es. "ALTRO") o nessun
+// pick con playerTeam -> mappa vuota, nessun errore.
+async function computeLolesportsRoundBonuses(
+  involvedUserIds: string[],
+  dateRange: { start: Date; end: Date },
+  leagueId: string | null,
+  roleWeights: RoleScoringWeights,
+  fantaMembers: FantaMemberProfile[],
+): Promise<Map<string, number>> {
+  const bonuses = new Map<string, number>();
+  if (!leagueId) return bonuses;
+
+  const picksByTeam = new Map<
+    string,
+    { userId: string; playerName: string; playerRole?: string }[]
+  >();
+  involvedUserIds.forEach((uid) => {
+    const member = fantaMembers.find((m) => m.userId === uid);
+    member?.team.forEach((pick) => {
+      if ((pick.pickType === "player" || pick.pickType === "jolly") && pick.playerTeam) {
+        const list = picksByTeam.get(pick.playerTeam) || [];
+        list.push({ userId: uid, playerName: pick.playerName, playerRole: pick.playerRole });
+        picksByTeam.set(pick.playerTeam, list);
+      }
+    });
+  });
+
+  const teamNames = Array.from(picksByTeam.keys());
+  if (teamNames.length === 0) return bonuses;
+
+  const gameIds = await getTeamGameIdsInRange(leagueId, teamNames, dateRange);
+  if (gameIds.length === 0) return bonuses;
+
+  const gamesStats = await Promise.all(gameIds.map((id) => getGamePlayerStats(id)));
+
+  const statsByStrippedName = new Map<
+    string,
+    { creepScore: number; wardsPlaced: number; wardsDestroyed: number }
+  >();
+  gamesStats.flat().forEach((p) => {
+    const name = stripTeamTagFromSummonerName(p.summonerName).trim().toLowerCase();
+    const prev = statsByStrippedName.get(name) || {
+      creepScore: 0,
+      wardsPlaced: 0,
+      wardsDestroyed: 0,
+    };
+    statsByStrippedName.set(name, {
+      creepScore: prev.creepScore + p.creepScore,
+      wardsPlaced: prev.wardsPlaced + p.wardsPlaced,
+      wardsDestroyed: prev.wardsDestroyed + p.wardsDestroyed,
+    });
+  });
+
+  picksByTeam.forEach((picks) => {
+    picks.forEach(({ userId, playerName, playerRole }) => {
+      const weights = playerRole ? roleWeights[playerRole] : undefined;
+      const stats = statsByStrippedName.get(playerName.trim().toLowerCase());
+      if (!weights || !stats) return;
+      const points = computeLolesportsBonusPoints(stats, weights);
+      bonuses.set(userId, (bonuses.get(userId) || 0) + points);
+    });
+  });
+
+  return bonuses;
 }
 
 function mapDraftStateDoc(data: Record<string, unknown>): DraftState {
@@ -1138,10 +1219,14 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   // set separato (teamScoringWeights) per le pick team/coach. Nessun
   // automatismo: va rilanciato a mano (bottone admin/dev) quando si
   // vogliono punti aggiornati, non c'è un cron/Cloud Function che lo fa da
-  // solo. NOTA: CS/Vision Score (player) e obiettivi/CS/oro (team) NON
-  // vengono ancora calcolati qui — solo kill/morti/assist/vittoria, gli
-  // unici campi Leaguepedia confermati. Vedi l'avvertenza su ScoringWeights
-  // e TeamScoringWeights in types/index.ts.
+  // solo. CS + proxy Vision Score (wardsPlaced+wardsDestroyed, vedi
+  // lib/lolesportsApi.ts) si sommano SOLO ai punti di un turno (calendario
+  // a girone o bracket, finestra di date nota) via
+  // computeLolesportsRoundBonuses, non al totale cumulativo qui sopra:
+  // lolesports non supporta una query diretta "tutte le partite di sempre"
+  // come il Cargo di Leaguepedia. Obiettivi di squadra/CS-oro team/
+  // pentakill/ban restano NON calcolati automaticamente — vedi
+  // l'avvertenza su ScoringWeights/TeamScoringWeights in types/index.ts.
   const recalculateScores = async (): Promise<void> => {
     if (!currentFanta) return;
     const circuitType = currentFanta.settings.circuitType;
@@ -1149,6 +1234,10 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     const roleWeights = currentFanta.settings.scoringWeights || {};
     const teamWeights =
       currentFanta.settings.teamScoringWeights || DEFAULT_TEAM_SCORING_WEIGHTS;
+    // Risolto una volta sola per tutta la chiamata: null per i circuiti
+    // senza corrispondente lolesports (es. "ALTRO"), nel qual caso i bonus
+    // CS/wards restano semplicemente 0 per ogni turno, senza errori.
+    const leagueId = await findLeagueId(circuitType);
 
     const playerNames = new Set<string>();
     const teamNames = new Set<string>();
@@ -1234,7 +1323,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         });
 
         const dateRange = { start: round.startDate, end: round.endDate };
-        const [roundPlayerStats, roundTeamStats] = await Promise.all([
+        const [roundPlayerStats, roundTeamStats, lolesportsBonuses] = await Promise.all([
           getFantasyPlayerStats(
             Array.from(roundPlayerNames),
             circuitType,
@@ -1245,12 +1334,19 @@ export function FantaProvider({ children }: { children: ReactNode }) {
             circuitType,
             dateRange,
           ),
+          computeLolesportsRoundBonuses(
+            involvedUserIds,
+            dateRange,
+            leagueId,
+            roleWeights,
+            fantaMembers,
+          ),
         ]);
 
         const memberRoundPoints = (userId: string): number => {
           const member = fantaMembers.find((m) => m.userId === userId);
           if (!member) return 0;
-          return member.team.reduce((sum, pick) => {
+          const autoPoints = member.team.reduce((sum, pick) => {
             const points = computeAutoPoints(
               pick,
               roundPlayerStats,
@@ -1260,6 +1356,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
             );
             return sum + (points || 0);
           }, 0);
+          return autoPoints + (lolesportsBonuses.get(userId) || 0);
         };
 
         let roundChanged = false;
@@ -1327,7 +1424,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         });
 
         const dateRange = { start: round.startDate, end: round.endDate };
-        const [roundPlayerStats, roundTeamStats] = await Promise.all([
+        const [roundPlayerStats, roundTeamStats, lolesportsBonuses] = await Promise.all([
           getFantasyPlayerStats(
             Array.from(roundPlayerNames),
             circuitType,
@@ -1338,12 +1435,19 @@ export function FantaProvider({ children }: { children: ReactNode }) {
             circuitType,
             dateRange,
           ),
+          computeLolesportsRoundBonuses(
+            involvedUserIds,
+            dateRange,
+            leagueId,
+            roleWeights,
+            fantaMembers,
+          ),
         ]);
 
         const memberBracketPoints = (userId: string): number => {
           const member = fantaMembers.find((m) => m.userId === userId);
           if (!member) return 0;
-          return member.team.reduce((sum, pick) => {
+          const autoPoints = member.team.reduce((sum, pick) => {
             const points = computeAutoPoints(
               pick,
               roundPlayerStats,
@@ -1353,6 +1457,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
             );
             return sum + (points || 0);
           }, 0);
+          return autoPoints + (lolesportsBonuses.get(userId) || 0);
         };
 
         let roundChanged = false;

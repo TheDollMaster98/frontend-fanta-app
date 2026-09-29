@@ -32,13 +32,14 @@
  *   "participants"), void grub/rift herald/atakhan non ancora verificati
  *   come campi distinti — non ancora wirati, fuori da questo giro.
  *
- * ANCORA MANCANTE — la pipeline che trova i gameId giocati da una squadra
- * in una finestra di date: getSchedule(leagueId) restituisce eventi con
- * match.id, ma la forma esatta di match.teams (nome/tag della squadra per
- * abbinarla al roster fantasy) non è ancora stata vista su una risposta
- * reale — LolesportsScheduleEvent va verificato prima di usarlo per
- * cercare le partite di una squadra specifica, stesso principio di tutto
- * il resto in questo file: non indovinare uno schema.
+ * SCHEDULE — verificato con una chiamata reale a getSchedule(leagueId) per
+ * LEC: ogni evento ha startTime/state/match.id e match.teams[] con "name"
+ * (es. "Karmine Corp") e "code" (es. "KC", lo stesso tag che precede il
+ * nome in summonerName). Una singola pagina copre già un intero split
+ * (visto: da aprile a settembre in una chiamata sola), pages.older/newer
+ * sono i cursori per andare indietro — la paginazione stessa non è stata
+ * testata dal vivo (nessun caso reale l'ha ancora richiesta), ma la forma
+ * del cursore è quella restituita davvero dall'API, non indovinata.
  */
 
 // Toglie il tag squadra iniziale da un summonerName lolesports ("SK Wunder"
@@ -96,8 +97,11 @@ export async function getLeagues(): Promise<LolesportsLeague[]> {
 export interface LolesportsScheduleEvent {
   startTime: string;
   state: "completed" | "unstarted" | "inProgress";
-  league: { id: string; name: string; slug: string };
-  match: { id: string; teams: { result?: { gameWins: number } }[] };
+  blockName: string;
+  match: {
+    id: string;
+    teams: { name: string; code: string }[];
+  };
 }
 
 /** Calendario/partite di un circuito. pageToken (da schedule.pages.older) per andare indietro nel tempo. */
@@ -118,6 +122,92 @@ export async function getSchedule(
     ...(pageToken ? { pageToken } : {}),
   });
   return { events: data.schedule.events, olderPageToken: data.schedule.pages.older };
+}
+
+// Cache in memoria (dura quanto la sessione del browser): getLeagues() non
+// cambia mai durante una sessione, non ha senso richiamarla ad ogni turno
+// ricalcolato.
+let leaguesCache: LolesportsLeague[] | null = null;
+
+/**
+ * Risolve un circuitType di lega ("LEC", "WORLDS", ...) nel leagueId
+ * lolesports corrispondente, confrontando su slug/name (case-insensitive)
+ * — non un elenco statico di id copiati a mano, che si romperebbe silenzio-
+ * samente se lolesports li cambiasse. null se il circuito non ha un
+ * corrispondente lolesports (es. "ALTRO", circuiti minori non elencati).
+ */
+export async function findLeagueId(circuitType: string): Promise<string | null> {
+  if (!leaguesCache) {
+    leaguesCache = await getLeagues();
+  }
+  const normalized = circuitType.trim().toLowerCase();
+  const match = leaguesCache.find(
+    (l) => l.slug.toLowerCase() === normalized || l.name.toLowerCase() === normalized,
+  );
+  return match?.id ?? null;
+}
+
+const MAX_SCHEDULE_PAGES = 5;
+
+/**
+ * Trova tutti i gameId (singole partite Bo1/Bo3/Bo5 già concluse) giocati
+ * da una qualsiasi delle squadre indicate in un circuito, in una finestra
+ * di date — l'equivalente lolesports della query Cargo diretta di
+ * Leaguepedia (SG.DateTime_UTC), ma qui bisogna sfogliare il calendario
+ * evento per evento perché questa API non supporta un filtro per data.
+ * Confronta sia il nome squadra completo ("Karmine Corp") sia il tag
+ * ("KC"), case-insensitive, contro i nomi già in rosa (Leaguepedia usa lo
+ * stesso nome completo). Pagina all'indietro finché l'evento più vecchio
+ * della pagina è ancora dentro la finestra richiesta, con un tetto di
+ * MAX_SCHEDULE_PAGES per non rincorrere all'infinito una lega con uno
+ * storico enorme.
+ */
+export async function getTeamGameIdsInRange(
+  leagueId: string,
+  teamNames: string[],
+  dateRange: { start: Date; end: Date },
+): Promise<string[]> {
+  const targets = new Set(teamNames.map((n) => n.trim().toLowerCase()).filter(Boolean));
+  if (targets.size === 0) return [];
+
+  const gameIds: string[] = [];
+  let pageToken: string | undefined;
+
+  for (let page = 0; page < MAX_SCHEDULE_PAGES; page++) {
+    const { events, olderPageToken } = await getSchedule(leagueId, pageToken);
+
+    const matchingEvents = events.filter((event) => {
+      if (event.state !== "completed") return false;
+      const eventTime = new Date(event.startTime).getTime();
+      if (eventTime < dateRange.start.getTime() || eventTime >= dateRange.end.getTime()) {
+        return false;
+      }
+      return event.match.teams.some(
+        (t) => targets.has(t.name.trim().toLowerCase()) || targets.has(t.code.trim().toLowerCase()),
+      );
+    });
+
+    const eventGames = await Promise.all(
+      matchingEvents.map((event) => getEventDetails(event.match.id)),
+    );
+    eventGames.forEach(({ games }) => {
+      games.forEach((g) => {
+        if (g.state === "completed") gameIds.push(g.id);
+      });
+    });
+
+    // events è ordinato dal più vecchio al più recente all'interno della
+    // pagina (verificato sulla risposta reale): se il primo elemento è già
+    // prima dell'inizio della finestra richiesta, le pagine "older"
+    // successive conterrebbero solo eventi ancora più vecchi, inutili.
+    const oldestEventTime = events.length > 0 ? new Date(events[0].startTime).getTime() : null;
+    if (!olderPageToken || (oldestEventTime !== null && oldestEventTime <= dateRange.start.getTime())) {
+      break;
+    }
+    pageToken = olderPageToken;
+  }
+
+  return gameIds;
 }
 
 export interface LolesportsGame {
