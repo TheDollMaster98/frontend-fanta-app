@@ -183,6 +183,9 @@ interface FantaContextType {
     pickId: string,
     stats: { manualPlayerStats?: ManualPlayerStats; manualTeamStats?: ManualTeamStats },
   ) => void;
+  // Solo leghe "custom": punteggio inserito come numero diretto, niente
+  // scomposizione in statistiche (vedi il commento sull'implementazione).
+  updatePickPoints: (userId: string, pickId: string, points: number) => void;
 
   // Gestione membri/vice-admin (solo isFantaAdmin)
   addViceAdmin: (userId: string) => void;
@@ -881,6 +884,31 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       }
       return next;
     });
+
+    updateDoc(doc(db, "fantas", currentFanta.id, "members", userId), {
+      team: updatedTeam,
+    });
+  };
+
+  // Leghe "custom" (30/9): niente ruoli fissi, niente Leaguepedia, quindi
+  // niente scoringWeights/manualPlayerStats/manualTeamStats sensati (sono
+  // tutti pensati per statistiche LoL specifiche — CS, Vision Score, kill).
+  // Il punteggio va inserito direttamente come numero, senza nessuna
+  // scomposizione in statistiche: admin/vice decidono quanto vale un pick,
+  // punto e basta, coerente con "regole completamente tue".
+  const updatePickPoints = (
+    userId: string,
+    pickId: string,
+    points: number,
+  ): void => {
+    if (!currentFanta) return;
+    const member = fantaMembers.find((m) => m.userId === userId);
+    if (!member) return;
+    if (!member.team.some((p) => p.id === pickId)) return;
+
+    const updatedTeam = member.team.map((p): TeamPick =>
+      p.id === pickId ? { ...p, points } : p,
+    );
 
     updateDoc(doc(db, "fantas", currentFanta.id, "members", userId), {
       team: updatedTeam,
@@ -2269,6 +2297,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         getPlayersByUser,
         removePlayerFromTeam,
         updatePickManualStats,
+        updatePickPoints,
         addViceAdmin,
         removeViceAdmin,
         removeMember,

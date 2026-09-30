@@ -44,7 +44,7 @@ import { RoleScoringWeightsEditor } from "@/components/RoleScoringWeightsEditor"
 import {
   MIN_COUNTDOWN_SECONDS,
   MAX_COUNTDOWN_SECONDS,
-  SPORT_TEMPLATES,
+  getFantaRoles,
   CIRCUIT_TYPES,
   LOL_ROLES,
   DEFAULT_ROLE_SCORING_WEIGHTS,
@@ -127,7 +127,7 @@ function AdminPageContent({
       ...currentFanta.settings.teamScoringWeights,
     },
   });
-  const availableRoles = SPORT_TEMPLATES[currentFanta.sportType]?.roles || [];
+  const availableRoles = getFantaRoles(currentFanta);
   const [generalInfo, setGeneralInfo] = useState({
     name: currentFanta.name,
     description: currentFanta.description || "",
@@ -412,8 +412,6 @@ function AdminPageContent({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="lol">League of Legends</SelectItem>
-                      <SelectItem value="calcio">Calcio</SelectItem>
-                      <SelectItem value="basket">Basket</SelectItem>
                       <SelectItem value="custom">Personalizzato</SelectItem>
                     </SelectContent>
                   </Select>

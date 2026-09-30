@@ -166,6 +166,7 @@ export default function StandingsPage() {
     generateCalendar,
     recalculateScores,
     updatePickManualStats,
+    updatePickPoints,
     isFantaAdmin,
     isFantaViceOrAdmin,
     getMemberName,
@@ -215,7 +216,14 @@ export default function StandingsPage() {
   // Vision Score/Pentakill/obiettivi in automatico — vedi lib/scoring.ts).
   // Ripopolato dal pick ogni volta che si apre un nuovo drill-down.
   const [manualForm, setManualForm] = useState<Record<string, string>>({});
+  // Solo leghe "custom": punti inseriti come numero diretto (vedi il campo
+  // "Punti" nel drill-down). undefined finché l'admin non lo tocca, il
+  // salvataggio usa comunque drillPick.points come fallback.
+  const [customPointsInput, setCustomPointsInput] = useState<string | undefined>(
+    undefined,
+  );
   useEffect(() => {
+    setCustomPointsInput(undefined);
     if (!drillPick) {
       setManualForm({});
       return;
@@ -293,11 +301,15 @@ export default function StandingsPage() {
   };
 
   const openDrillDown = async (pick: TeamPick, memberId: string) => {
-    if (!currentFanta?.settings.circuitType) return;
+    if (!currentFanta) return;
     setDrillPick(pick);
     setDrillMemberId(memberId);
     setPlayerLog([]);
     setTeamLog([]);
+    // Leghe "custom" (30/9): niente circuitType, niente Leaguepedia dietro
+    // — il drill-down deve comunque aprirsi (serve per inserire i punti a
+    // mano), solo il log partite non ha senso e va saltato.
+    if (!currentFanta.settings.circuitType) return;
     setIsLoadingLog(true);
     try {
       if (pick.pickType === "player" || pick.pickType === "jolly") {
@@ -959,12 +971,45 @@ export default function StandingsPage() {
                   {drillPick.pickType === "coach" && drillPick.playerTeam
                     ? ` — squadra allenata: ${drillPick.playerTeam}`
                     : ""}
-                  {" — partite nel circuito "}
-                  {currentFanta.settings.circuitType || "N/D"}
+                  {currentFanta.sportType === "lol" &&
+                    ` — partite nel circuito ${currentFanta.settings.circuitType || "N/D"}`}
                 </DialogDescription>
               </DialogHeader>
 
-              {isFantaViceOrAdmin && (
+              {isFantaViceOrAdmin && currentFanta.sportType === "custom" && (
+                <div className="space-y-2 rounded-md border border-border p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Lega personalizzata: il punteggio va inserito a mano,
+                    nessuna fonte automatica dietro un ruolo custom.
+                  </p>
+                  <div className="flex items-end gap-2">
+                    <div className="space-y-1 flex-1">
+                      <Label htmlFor="customPoints" className="text-xs font-normal">
+                        Punti
+                      </Label>
+                      <Input
+                        id="customPoints"
+                        type="number"
+                        defaultValue={drillPick.points ?? 0}
+                        onChange={(e) => setCustomPointsInput(e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (!drillMemberId) return;
+                        const value = Number(customPointsInput ?? drillPick.points ?? 0);
+                        if (Number.isNaN(value)) return;
+                        updatePickPoints(drillMemberId, drillPick.id, value);
+                      }}
+                    >
+                      Salva
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {isFantaViceOrAdmin && currentFanta.sportType === "lol" && (
                 <div className="space-y-2 rounded-md border border-border p-3">
                   <p className="text-xs text-muted-foreground">
                     Statistiche inserite a mano (CS/Vision Score/Pentakill/

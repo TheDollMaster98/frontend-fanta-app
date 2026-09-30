@@ -49,7 +49,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   DEFAULT_BID_PRESETS,
-  SPORT_TEMPLATES,
+  getFantaRoles,
   MIN_COUNTDOWN_SECONDS,
   MAX_COUNTDOWN_SECONDS,
   PLAYOFF_CIRCUIT_TOURNAMENT_QUERY,
@@ -276,10 +276,9 @@ export default function AuctionsPage() {
   });
   const maxJollySetting = currentFanta?.settings.maxJolly || 0;
 
-  // Ruoli disponibili in base al tipo di sport della lega corrente
-  const availableRoles = currentFanta
-    ? SPORT_TEMPLATES[currentFanta.sportType]?.roles || []
-    : [];
+  // Ruoli disponibili in base al tipo di sport della lega corrente (per
+  // "custom" arrivano da settings.customRoles, scelti dall'admin)
+  const availableRoles = currentFanta ? getFantaRoles(currentFanta) : [];
 
   // Con un circuito a eliminazione (Mondiali/MSI, vedi PLAYOFF_CIRCUITS) non
   // ha senso chiedere "quale torneo": ce n'è uno solo, quello della lega

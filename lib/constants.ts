@@ -3,6 +3,7 @@ import {
   ScoringWeights,
   RoleScoringWeights,
   TeamScoringWeights,
+  Fanta,
 } from "@/types";
 
 // Default bid presets
@@ -110,16 +111,21 @@ export const DEFAULT_FANTA_SETTINGS = {
 
 // Esempi di ruoli per diversi sport/giochi (personalizzabili)
 export const SPORT_TEMPLATES = {
-  calcio: {
-    roles: ["Portiere", "Difensore", "Centrocampista", "Attaccante"],
-  },
   lol: {
     roles: LOL_ROLES,
-  },
-  basket: {
-    roles: ["Playmaker", "Guardia", "Ala Piccola", "Ala Grande", "Centro"],
   },
   custom: {
     roles: [] as string[],
   },
 };
+
+// I ruoli di una lega "custom" non sono un elenco fisso come per lol: li
+// sceglie l'admin in creazione (Fanta.settings.customRoles). Helper
+// centralizzato (30/9) invece di ripetere lo stesso ternario ovunque nel
+// codice leggeva SPORT_TEMPLATES[sportType] direttamente.
+export function getFantaRoles(
+  fanta: Pick<Fanta, "sportType" | "settings">,
+): string[] {
+  if (fanta.sportType === "custom") return fanta.settings.customRoles || [];
+  return SPORT_TEMPLATES[fanta.sportType]?.roles || [];
+}

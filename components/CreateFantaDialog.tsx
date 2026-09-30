@@ -37,7 +37,7 @@ import {
 } from "@/lib/constants";
 import { generateInviteCode } from "@/lib/utils";
 import type { DraftMode, SportType } from "@/types";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
 const INITIAL_FORM = {
   name: "",
@@ -47,6 +47,9 @@ const INITIAL_FORM = {
   maxJolly: 0,
   scoringWeights: { ...DEFAULT_ROLE_SCORING_WEIGHTS },
   teamScoringWeights: { ...DEFAULT_TEAM_SCORING_WEIGHTS },
+  // Solo per sportType "custom": ruoli scelti liberamente dall'admin,
+  // niente elenco fisso come lol (vedi Fanta.settings.customRoles).
+  customRoles: [] as string[],
   draftMode: "auction" as DraftMode,
   draftPickSeconds: MIN_COUNTDOWN_SECONDS,
   defaultCountdown: MIN_COUNTDOWN_SECONDS,
@@ -57,11 +60,30 @@ export function CreateFantaDialog() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState(INITIAL_FORM);
+  const [newRoleName, setNewRoleName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const isLol = formData.sportType === "lol";
+  const isCustom = formData.sportType === "custom";
+
+  const addCustomRole = () => {
+    const name = newRoleName.trim();
+    if (!name || formData.customRoles.includes(name)) return;
+    setFormData({ ...formData, customRoles: [...formData.customRoles, name] });
+    setNewRoleName("");
+  };
+
+  const removeCustomRole = (role: string) => {
+    setFormData({
+      ...formData,
+      customRoles: formData.customRoles.filter((r) => r !== role),
+    });
+  };
+
+  const canCreate =
+    !!formData.name && !isCreating && (!isCustom || formData.customRoles.length > 0);
 
   const handleCreate = async () => {
-    if (!user || !formData.name || isCreating) return;
+    if (!user || !canCreate) return;
 
     const newFantaId = doc(collection(db, "fantas")).id;
     setIsCreating(true);
@@ -84,6 +106,7 @@ export function CreateFantaDialog() {
                 teamScoringWeights: formData.teamScoringWeights,
               }
             : {}),
+          ...(isCustom ? { customRoles: formData.customRoles } : {}),
         },
         inviteCode: generateInviteCode(),
         createdAt: new Date(),
@@ -141,13 +164,13 @@ export function CreateFantaDialog() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="lol">League of Legends</SelectItem>
-                <SelectItem value="calcio">Calcio</SelectItem>
-                <SelectItem value="basket">Basket</SelectItem>
                 <SelectItem value="custom">Personalizzato</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              I ruoli disponibili cambieranno in base al tipo selezionato
+              {isLol
+                ? "Punteggio calcolato in automatico da Leaguepedia (kill, morti, assist, CS, vision...)."
+                : "Regole completamente tue: scegli i ruoli, il punteggio va inserito a mano da admin/vice."}
             </p>
           </div>
 
@@ -305,12 +328,63 @@ export function CreateFantaDialog() {
               />
             </>
           )}
+
+          {isCustom && (
+            <div className="space-y-2">
+              <Label htmlFor="newRole">Ruoli *</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="newRole"
+                  value={newRoleName}
+                  onChange={(e) => setNewRoleName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCustomRole();
+                    }
+                  }}
+                  placeholder="Es: Portiere"
+                />
+                <Button type="button" variant="outline" onClick={addCustomRole}>
+                  Aggiungi
+                </Button>
+              </div>
+              {formData.customRoles.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Serve almeno un ruolo per poter creare aste/draft.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {formData.customRoles.map((role) => (
+                    <span
+                      key={role}
+                      className="flex items-center gap-1.5 rounded-full bg-raised px-3 py-1 text-sm"
+                    >
+                      {role}
+                      <button
+                        type="button"
+                        onClick={() => removeCustomRole(role)}
+                        className="text-muted-foreground hover:text-foreground"
+                        aria-label={`Rimuovi ruolo ${role}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Il punteggio dei giocatori/pick andrà inserito a mano da
+                admin/vice: nessuna fonte automatica per ruoli personalizzati.
+              </p>
+            </div>
+          )}
         </div>
         <div className="flex gap-2 justify-end">
           <Button variant="outline" onClick={() => setOpen(false)}>
             Annulla
           </Button>
-          <Button onClick={handleCreate} disabled={!formData.name || isCreating}>
+          <Button onClick={handleCreate} disabled={!canCreate}>
             {isCreating ? "Creazione..." : "Crea Lega"}
           </Button>
         </div>
