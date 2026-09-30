@@ -61,8 +61,17 @@ function detectYearFromTournament(tournament: string): string | null {
   return match ? match[0] : null;
 }
 
+// Select invece di un input libero (30/9): un numero digitato a mano non
+// aiutava a capire quale stagione stesse davvero cercando l'admin. 2011 è
+// la prima stagione competitiva di League of Legends; +1 sull'anno
+// corrente per poter già cercare la stagione in corso/appena iniziata.
+const TEAM_SEARCH_YEARS = Array.from(
+  { length: new Date().getFullYear() + 1 - 2011 + 1 },
+  (_, i) => new Date().getFullYear() + 1 - i,
+);
+
 export default function ImportLoLPlayersPage() {
-  const { currentFanta } = useFanta();
+  const { currentFanta, isFantaViceOrAdmin } = useFanta();
   const router = useRouter();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -74,7 +83,14 @@ export default function ImportLoLPlayersPage() {
   const [playerStats, setPlayerStats] = useState<LeaguepediaPlayerStats[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
-  const [apiError, setApiError] = useState(false);
+  // Prima un solo booleano confondeva "Leaguepedia ha davvero fallito la
+  // chiamata" (rate limit, Bot Password sbagliata, rete giù) con "la
+  // ricerca è andata a buon fine ma zero giocatori corrispondono" (es. nome
+  // scritto male) — stesso messaggio allarmante per due situazioni molto
+  // diverse, segnalato come confusionario in produzione (30/9).
+  const [searchOutcome, setSearchOutcome] = useState<"idle" | "empty" | "error">(
+    "idle",
+  );
   const [selectedPlayerImage, setSelectedPlayerImage] = useState<string | null>(
     null,
   );
@@ -118,26 +134,32 @@ export default function ImportLoLPlayersPage() {
     loadLeagues();
   }, []);
 
-  // Verifica che siamo in una lega LoL
+  // Verifica che siamo in una lega LoL e che chi guarda possa davvero
+  // gestirla: prima la pagina era raggiungibile digitando l'URL a mano da
+  // un membro qualsiasi, il link in sidebar era l'unica protezione
+  // (richiesto di restringerlo, 30/9) — stesso pattern già in uso per
+  // /dashboard/admin.
   useEffect(() => {
     if (currentFanta?.sportType !== "lol") {
       router.push("/dashboard/auctions");
+    } else if (!isFantaViceOrAdmin) {
+      router.push("/dashboard");
     }
-  }, [currentFanta, router]);
+  }, [currentFanta, isFantaViceOrAdmin, router]);
 
   // Cerca giocatori per nome
   const handleSearch = async () => {
     if (!searchTerm.trim()) return;
 
     setIsLoading(true);
-    setApiError(false);
+    setSearchOutcome("idle");
     try {
       const results = await searchPlayers(searchTerm);
       setPlayers(results);
-      setApiError(results.length === 0);
+      setSearchOutcome(results.length === 0 ? "empty" : "idle");
     } catch (error) {
       console.error("Errore nella ricerca:", error);
-      setApiError(true);
+      setSearchOutcome("error");
     } finally {
       setIsLoading(false);
     }
@@ -148,14 +170,14 @@ export default function ImportLoLPlayersPage() {
     if (!selectedLeague) return;
 
     setIsLoading(true);
-    setApiError(false);
+    setSearchOutcome("idle");
     try {
       const results = await getPlayersByLeague(selectedLeague);
       setPlayers(results);
-      setApiError(results.length === 0);
+      setSearchOutcome(results.length === 0 ? "empty" : "idle");
     } catch (error) {
       console.error("Errore nel caricamento lega:", error);
-      setApiError(true);
+      setSearchOutcome("error");
     } finally {
       setIsLoading(false);
     }
@@ -173,7 +195,7 @@ export default function ImportLoLPlayersPage() {
     if (!canSearchByTeam) return;
 
     setIsLoading(true);
-    setApiError(false);
+    setSearchOutcome("idle");
     try {
       const results = await getTeamRosterHistory({
         team: teamSearch,
@@ -181,10 +203,10 @@ export default function ImportLoLPlayersPage() {
         worldsOnly: teamSearchWorldsOnly,
       });
       setPlayers(results);
-      setApiError(results.length === 0);
+      setSearchOutcome(results.length === 0 ? "empty" : "idle");
     } catch (error) {
       console.error("Errore nella ricerca per squadra:", error);
-      setApiError(true);
+      setSearchOutcome("error");
     } finally {
       setIsLoading(false);
     }
@@ -358,13 +380,24 @@ export default function ImportLoLPlayersPage() {
                 onChange={(e) => setTeamSearch(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleTeamSearch()}
               />
-              <Input
-                type="number"
-                placeholder="Anno (es: 2026)"
-                value={teamSearchYear}
-                onChange={(e) => setTeamSearchYear(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleTeamSearch()}
-              />
+              <Select
+                value={teamSearchYear || "ANY"}
+                onValueChange={(value) =>
+                  setTeamSearchYear(value === "ANY" ? "" : value)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Anno" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ANY">Qualsiasi anno</SelectItem>
+                  {TEAM_SEARCH_YEARS.map((year) => (
+                    <SelectItem key={year} value={String(year)}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 onClick={handleTeamSearch}
                 disabled={isLoading || !canSearchByTeam}
@@ -750,9 +783,11 @@ export default function ImportLoLPlayersPage() {
       {!isLoading && players.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            {apiError
-              ? "Leaguepedia non ha restituito giocatori. Controlla le Bot Password nel file .env.local."
-              : "Cerca un giocatore o carica una lega per iniziare"}
+            {searchOutcome === "error"
+              ? "Errore nel contattare Leaguepedia. Spesso è temporaneo (troppe richieste ravvicinate): riprova tra qualche secondo. Se continua a fallire, controlla le Bot Password nel file .env.local."
+              : searchOutcome === "empty"
+                ? "Nessun giocatore trovato per questa ricerca. Controlla nome, squadra o anno — magari è solo un typo."
+                : "Cerca un giocatore o carica una lega per iniziare"}
           </CardContent>
         </Card>
       )}
