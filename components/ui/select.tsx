@@ -53,7 +53,14 @@ function SelectTrigger({
 function SelectContent({
   className,
   children,
-  position = "item-aligned",
+  // "item-aligned" (default Radix) può forzare lo scroll del contenitore
+  // antenato per allineare l'elemento selezionato sotto il trigger — dentro
+  // un Dialog scrollabile (es. "Crea Nuova Asta") questo produce un salto
+  // di UI quando si apre o si seleziona da una lista lunga (bug segnalato
+  // in produzione, 30/9). "popper" ancora il menu al trigger come un
+  // dropdown normale, senza toccare lo scroll di chi lo contiene — fix
+  // applicato qui per tutte le Select dell'app in un colpo solo.
+  position = "popper",
   align = "center",
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
