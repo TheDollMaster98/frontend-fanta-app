@@ -96,16 +96,23 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { name: "Impostazioni", href: "/dashboard/settings", icon: Settings },
   ];
 
-  // Aggiungi "Importa LoL" e "Classifica" solo per leghe di tipo lol: il
-  // motore di punteggio reale (step 2) interroga Leaguepedia, che ha senso
-  // solo per questo sport.
+  // "Classifica" per tutte le leghe lol, chiunque ne faccia parte (sola
+  // lettura). "Importa LoL" invece scrive nel pool condiviso di pro player
+  // (proplayers) usato per creare le aste: riservato a chi gestisce la
+  // lega (developer/admin/vice), non un membro qualsiasi — prima era
+  // visibile a chiunque, richiesto esplicitamente di restringerlo (30/9).
   if (currentFanta?.sportType === "lol") {
-    navigation.splice(3, 0, {
-      name: "Importa LoL",
-      href: "/dashboard/import-lol",
-      icon: Users,
-    });
-    navigation.splice(4, 0, {
+    if (isFantaViceOrAdmin) {
+      navigation.splice(3, 0, {
+        name: "Importa LoL",
+        href: "/dashboard/import-lol",
+        icon: Users,
+      });
+    }
+    const standingsIndex = navigation.findIndex(
+      (item) => item.href === "/dashboard/team",
+    );
+    navigation.splice(standingsIndex + 1, 0, {
       name: "Classifica",
       href: "/dashboard/standings",
       icon: Trophy,
