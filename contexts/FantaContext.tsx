@@ -32,6 +32,7 @@ import {
   Timestamp,
   type FirestoreError,
   type Unsubscribe,
+  type DocumentReference,
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
@@ -151,8 +152,11 @@ interface FantaContextType {
   currentFanta: Fanta | null;
   fantas: Fanta[];
   setCurrentFanta: (fanta: Fanta) => void;
-  addFanta: (fanta: Fanta) => void;
+  addFanta: (fanta: Fanta) => Promise<void>;
   updateFanta: (fanta: Fanta) => void;
+  // Cancella la lega e tutto il suo contenuto (admin/vice/developer, vedi
+  // isAdminOrVice() in firestore.rules). Irreversibile.
+  deleteFanta: (fantaId: string) => Promise<void>;
   isLoading: boolean;
 
   // Membri della lega corrente: ruolo, budget, rosa, uniti al profilo utente
@@ -656,10 +660,22 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const addFanta = (fanta: Fanta): void => {
+  // NON un writeBatch atomico (era così fino al 30/9): la regola di
+  // members/create per il bootstrap-admin fa un get() su fantas/{fantaId}
+  // per verificarne il createdBy, ma dentro un writeBatch quel get() vede
+  // lo stato DA PRIMA del batch — il documento fanta creato nello stesso
+  // batch non esiste ancora dal suo punto di vista. Risultato: l'intero
+  // batch falliva SEMPRE con permission-denied (Null value error sul
+  // get().data di un doc inesistente), per chiunque, non solo in rari
+  // casi — "Crea Nuovo Fanta" era di fatto rotto in produzione dal deploy
+  // delle regole di stamattina, mascherato solo per i developer (isDeveloper
+  // gli dà comunque accesso pieno più avanti, anche senza un vero member
+  // doc). Scritture sequenziali risolvono alla radice: quando si crea il
+  // membro admin, il documento fanta è già committato e quel get() lo vede
+  // per davvero. Verificato con l'emulatore.
+  const addFanta = async (fanta: Fanta): Promise<void> => {
     if (!user) return;
-    const batch = writeBatch(db);
-    batch.set(doc(db, "fantas", fanta.id), { ...fanta, createdBy: user.id });
+    await setDoc(doc(db, "fantas", fanta.id), { ...fanta, createdBy: user.id });
     const memberRef = doc(db, "fantas", fanta.id, "members", user.id);
     const generalBudget = fanta.settings.generalBudget;
     const adminMember: FantaMember = {
@@ -671,8 +687,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       budgetSpent: 0,
       budgetLeft: generalBudget,
     };
-    batch.set(memberRef, adminMember);
-    batch.commit();
+    await setDoc(memberRef, adminMember);
     setCurrentFanta(fanta);
   };
 
