@@ -1,4 +1,4 @@
-import { SPORT_TEMPLATES } from "@/lib/constants";
+import { getFantaRoles } from "@/lib/constants";
 import type { DraftSlot, Fanta } from "@/types";
 
 // Sequenza degli "slot" del draft a turni, nell'ordine in cui si giocano i
@@ -17,7 +17,7 @@ export function buildDraftSlots(
     slots.push({ pickType: "coach" });
   }
 
-  const roles = SPORT_TEMPLATES[fanta.sportType]?.roles || [];
+  const roles = getFantaRoles(fanta);
   roles.forEach((role) => slots.push({ pickType: "player", role }));
 
   if (isLol) {
