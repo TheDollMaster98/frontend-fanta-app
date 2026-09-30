@@ -1,8 +1,9 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -44,6 +45,32 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       router.push("/auth/login");
     }
   }, [user, isLoading, router]);
+
+  // Valvola di sicurezza: se lo spinner qui sotto resta bloccato troppo a
+  // lungo (i listener Firestore di FantaContext non superano mai
+  // fantasLoaded/membershipsLoaded, es. propagazione del token lenta dopo
+  // un login o una sessione ormai invalida) l'utente restava bloccato a
+  // vita senza nessun redirect, doveva navigare a mano (bug reale
+  // segnalato in produzione, 30/9). Dopo 15s si forza un logout pulito e
+  // si torna alla landing, con un avviso invece di sparire nel nulla.
+  const stuckLoading = (isLoading || fantaLoading) && !!user;
+  // logout non è memoizzata in AuthContext (nuova identità ad ogni render):
+  // metterla nelle dep dell'effect sotto avrebbe resettato il timeout ad
+  // ogni render mentre stuckLoading resta true (es. per gli stessi retry
+  // dei listener), vanificando i 15s. Una ref la tiene aggiornata senza
+  // far ripartire l'effect quando cambia solo lei.
+  const logoutRef = useRef(logout);
+  useEffect(() => {
+    logoutRef.current = logout;
+  });
+  useEffect(() => {
+    if (!stuckLoading) return;
+    const timeout = setTimeout(() => {
+      toast.error("Sessione scaduta o connessione lenta, accedi di nuovo");
+      logoutRef.current();
+    }, 15000);
+    return () => clearTimeout(timeout);
+  }, [stuckLoading]);
 
   // Aspetta anche il caricamento dei fanta: senza, per un attimo si vedeva
   // "0 leghe" prima che i dati reali arrivassero da Firestore.

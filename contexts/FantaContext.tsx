@@ -86,25 +86,38 @@ const DEFAULT_TEAM_NAME = "I Campioni";
 // solo: nella frazione di secondo subito dopo il login il token appena
 // emesso può non essere ancora pienamente propagato al canale Firestore, e
 // senza questo wrapper quel primo permission-denied ucciderebbe il listener
-// per tutta la sessione (nessun altro punto lo riattacca). Un solo retry
-// dopo un breve delay copre questa race; se fallisce anche il retry il
-// problema è reale (regole/permessi) e resta comunque loggato in console
-// invece di sparire silenziosamente come faceva onSnapshot senza onError.
+// per tutta la sessione (nessun altro punto lo riattacca). Su una rete lenta
+// o un login appena fatto la propagazione può richiedere più di un
+// tentativo: 3 retry con backoff (1.5s/3s/5s, ~9.5s totali) invece di uno
+// solo — un solo tentativo (29/9) lasciava isLoading bloccato a true per
+// sempre se quel retry ricadeva ancora nella stessa race, con lo spinner di
+// dashboard/layout.tsx che girava senza uscita (bug reale segnalato in
+// produzione, "gira" senza mai risolvere). Se anche l'ultimo retry fallisce
+// il problema è reale (regole/permessi), resta comunque loggato in console
+// invece di sparire silenziosamente come faceva onSnapshot senza onError —
+// dashboard/layout.tsx ha comunque un timeout di sicurezza che non lascia
+// più l'utente bloccato a vita sullo spinner in quel caso.
 function attachWithPermissionRetry(
   subscribe: (onError: (error: FirestoreError) => void) => Unsubscribe,
   label: string,
 ): Unsubscribe {
   let unsubscribe: Unsubscribe;
-  let retried = false;
+  let retryCount = 0;
+  const RETRY_DELAYS_MS = [1500, 3000, 5000];
 
   const handleError = (error: FirestoreError) => {
     console.error(`[Firestore] listener "${label}":`, error.code, error.message);
-    if (error.code === "permission-denied" && auth.currentUser && !retried) {
-      retried = true;
+    if (
+      error.code === "permission-denied" &&
+      auth.currentUser &&
+      retryCount < RETRY_DELAYS_MS.length
+    ) {
+      const delay = RETRY_DELAYS_MS[retryCount];
+      retryCount += 1;
       setTimeout(() => {
         unsubscribe();
         unsubscribe = subscribe(handleError);
-      }, 1500);
+      }, delay);
     }
   };
 
