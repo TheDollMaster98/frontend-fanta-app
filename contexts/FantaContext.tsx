@@ -695,6 +695,55 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     setDoc(doc(db, "fantas", fanta.id), fanta);
   };
 
+  // Elimina una lega e TUTTO il suo contenuto (30/9, "Elimina Lega" in
+  // Gestione): il solo documento fantas/{id} non basta, altrimenti ogni
+  // sottocollezione (membri, aste, draft, storico, calendario, gironi,
+  // tabellone, richieste d'ingresso) resterebbe orfana su Firestore —
+  // invisibile in UI ma ancora leggibile da chiunque avesse l'id.
+  // In chunk da 450 (sotto al limite di 500 operazioni per writeBatch): una
+  // lega di amici non arriva mai a queste dimensioni, ma se succedesse un
+  // singolo commit atomico da 1000+ operazioni fallirebbe comunque.
+  const deleteDocsInBatches = async (refs: DocumentReference[]): Promise<void> => {
+    const CHUNK_SIZE = 450;
+    for (let i = 0; i < refs.length; i += CHUNK_SIZE) {
+      const batch = writeBatch(db);
+      refs.slice(i, i + CHUNK_SIZE).forEach((ref) => batch.delete(ref));
+      await batch.commit();
+    }
+  };
+
+  const SUBCOLLECTIONS_TO_DELETE = [
+    "members",
+    "auctions",
+    "draft",
+    "history",
+    "calendar",
+    "groups",
+    "bracket",
+    "joinRequests",
+  ] as const;
+
+  const deleteFanta = async (fantaId: string): Promise<void> => {
+    for (const sub of SUBCOLLECTIONS_TO_DELETE) {
+      const snap = await getDocs(collection(db, "fantas", fantaId, sub));
+      if (sub === "auctions") {
+        // Le aste hanno a loro volta una sottocollezione "bids": va svuotata
+        // prima, altrimenti resterebbe orfana sotto un'asta già cancellata.
+        for (const auctionDoc of snap.docs) {
+          const bidsSnap = await getDocs(
+            collection(db, "fantas", fantaId, "auctions", auctionDoc.id, "bids"),
+          );
+          await deleteDocsInBatches(bidsSnap.docs.map((d) => d.ref));
+        }
+      }
+      await deleteDocsInBatches(snap.docs.map((d) => d.ref));
+    }
+    await deleteDoc(doc(db, "fantas", fantaId));
+    // currentFanta è derivato (fantas.find(...) || fantas[0]): appena il
+    // listener rifletterà la cancellazione, si aggiorna da solo su un'altra
+    // lega o null, nessun cleanup manuale di stato/localStorage necessario.
+  };
+
   // Membri del fanta attualmente selezionato, uniti al profilo (nome/email)
   const rawFantaMembers = useMemo(
     () =>
@@ -2204,6 +2253,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         setCurrentFanta,
         addFanta,
         updateFanta,
+        deleteFanta,
         isLoading,
         fantaMembers,
         currentMember,
