@@ -23,6 +23,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Bell } from "lucide-react";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
@@ -64,39 +65,6 @@ export default function SettingsPage() {
   const [teamName, setTeamName] = useState(
     user ? getTeamName(user.id) : "",
   );
-
-  const [notificationPrefs, setNotificationPrefs] = useState({
-    newAuctions: true,
-    auctionsWon: true,
-    settingsChanges: true,
-  });
-
-  // Nessun sistema di notifiche esiste ancora in quest'app (niente push,
-  // email o centro notifiche in-app): questi checkbox prima non salvavano
-  // nulla ed erano sempre spuntati al refresh. Ora almeno la scelta viene
-  // ricordata nel browser, ma resta una preferenza senza nulla che la
-  // legga davvero finché non esiste un meccanismo di invio.
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("fanta-notification-prefs");
-      if (stored) setNotificationPrefs(JSON.parse(stored));
-    } catch {
-      // localStorage non disponibile o dati corrotti: restano i default
-    }
-  }, []);
-
-  const handleNotificationPrefsUpdate = (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      localStorage.setItem(
-        "fanta-notification-prefs",
-        JSON.stringify(notificationPrefs),
-      );
-      toast.success("Preferenze salvate su questo dispositivo");
-    } catch {
-      toast.error("Impossibile salvare le preferenze");
-    }
-  };
 
   // Il nome team è per-lega: va ricaricato sia al primo arrivo dei dati da
   // Firestore sia quando l'utente cambia "Lega Attiva" qui sotto, altrimenti
@@ -170,13 +138,17 @@ export default function SettingsPage() {
         <p className="text-muted-foreground mt-2">
           Gestisci il tuo profilo e le preferenze
         </p>
+        <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1.5">
+          <Bell className="w-4 h-4" />
+          Le notifiche (richieste di ingresso, aste in partenza, ecc.) sono
+          ora nella campanella in alto nella barra di navigazione.
+        </p>
       </div>
 
       <Tabs defaultValue="profile" className="space-y-4">
         <TabsList>
           <TabsTrigger value="profile">Profilo</TabsTrigger>
           <TabsTrigger value="team">Team e Fanta</TabsTrigger>
-          <TabsTrigger value="notifications">Notifiche</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile">
@@ -412,83 +384,6 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="notifications">
-          <Card>
-            <CardHeader>
-              <CardTitle>Preferenze Notifiche</CardTitle>
-              <CardDescription>
-                Scegli quando ricevere notifiche. Nota: l&apos;app non invia
-                ancora notifiche vere (push o email) — questa scelta viene
-                solo ricordata su questo dispositivo per quando ci saranno.
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={handleNotificationPrefsUpdate}>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Nuove Aste</p>
-                    <p className="text-sm text-muted-foreground">
-                      Ricevi notifiche quando inizia una nuova asta
-                    </p>
-                  </div>
-                  <Checkbox
-                    checked={notificationPrefs.newAuctions}
-                    onCheckedChange={(checked) =>
-                      setNotificationPrefs({
-                        ...notificationPrefs,
-                        newAuctions: checked === true,
-                      })
-                    }
-                  />
-                </div>
-
-                <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Aste Vinte</p>
-                    <p className="text-sm text-muted-foreground">
-                      Notifica quando vinci un&apos;asta
-                    </p>
-                  </div>
-                  <Checkbox
-                    checked={notificationPrefs.auctionsWon}
-                    onCheckedChange={(checked) =>
-                      setNotificationPrefs({
-                        ...notificationPrefs,
-                        auctionsWon: checked === true,
-                      })
-                    }
-                  />
-                </div>
-
-                <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Modifiche Impostazioni</p>
-                    <p className="text-sm text-muted-foreground">
-                      Notifica quando l&apos;admin modifica le impostazioni
-                    </p>
-                  </div>
-                  <Checkbox
-                    checked={notificationPrefs.settingsChanges}
-                    onCheckedChange={(checked) =>
-                      setNotificationPrefs({
-                        ...notificationPrefs,
-                        settingsChanges: checked === true,
-                      })
-                    }
-                  />
-                </div>
-
-                <Button type="submit" className="mt-4">
-                  Salva Preferenze
-                </Button>
-              </CardContent>
-            </form>
-          </Card>
-        </TabsContent>
       </Tabs>
     </div>
   );

@@ -24,6 +24,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFanta } from "@/contexts/FantaContext";
+import { NotificationCenter } from "@/components/NotificationCenter";
 import { Home, Crown, Zap, Users, Settings, Trophy, Menu } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -208,6 +209,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               {/* Selector Lega: visibile in header solo da lg in su, sotto
                   vive nel drawer mobile insieme alla nav. */}
               <div className="hidden lg:block">{leagueSelect}</div>
+
+              {currentFanta && <NotificationCenter key={currentFanta.id} />}
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
