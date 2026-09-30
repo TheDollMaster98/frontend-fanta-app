@@ -1,7 +1,11 @@
 import type { TeamPick } from "./team-pick.types";
 
-// Fanta (League) types
-export type SportType = "calcio" | "lol" | "basket" | "custom";
+// Fanta (League) types. calcio/basket rimossi (30/9, richiesto
+// esplicitamente): erano solo un elenco fisso di ruoli senza nessuna
+// automazione dietro (niente equivalente di Leaguepedia), stessa cosa che
+// "custom" fa già ma lasciando i ruoli a scelta dell'admin invece di un
+// elenco predefinito — restavano solo un'opzione ridondante e incompleta.
+export type SportType = "lol" | "custom";
 
 export interface Fanta {
   id: string;
@@ -89,6 +93,12 @@ export interface FantaSettings {
   allowCustomBids: boolean; // Se permettere puntate custom
   maxPlayersTotal?: number; // Limite rosa totale per utente (0/assente = nessun limite)
   maxPlayersPerRole?: Record<string, number>; // Limite per ruolo (assente = nessun limite per quel ruolo)
+  // Solo per leghe "custom" (30/9): ruoli scelti liberamente dall'admin in
+  // creazione, al posto dell'elenco fisso di SPORT_TEMPLATES usato da lol.
+  // Il punteggio in una lega custom è SEMPRE inserito a mano (vedi
+  // TeamPick.points e FantaContext.updatePickPoints): non c'è nessuna
+  // fonte automatica dietro un ruolo inventato dall'admin.
+  customRoles?: string[];
   // Solo per leghe LoL: circuito seguito (LCK/LPL/.../WORLDS/MSI/ALTRO) e
   // numero di slot jolly (giocatori extra senza vincolo di ruolo). WORLDS e
   // MSI sono a eliminazione: attiveranno la doppia fase gironi/finale.

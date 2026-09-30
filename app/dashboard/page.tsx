@@ -50,9 +50,7 @@ export default function DashboardPage() {
 
   const getSportTypeLabel = (sportType: string) => {
     const labels: Record<string, string> = {
-      calcio: "Calcio",
       lol: "League of Legends",
-      basket: "Basket",
       custom: "Custom",
     };
     return labels[sportType] || sportType;
