@@ -208,6 +208,13 @@ function AdminPageContent({
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
+  const [copiedLink, setCopiedLink] = useState(false);
+  const copyInviteLink = () => {
+    navigator.clipboard.writeText(`${window.location.origin}/join/${inviteCode}`);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
   const handleAddViceAdmin = async () => {
     const email = newViceEmail.trim();
     if (!email) return;
@@ -723,21 +730,35 @@ function AdminPageContent({
                   </Button>
                 </div>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Gli utenti possono inserire questo codice durante la
-                  registrazione o dalle impostazioni
+                  Solo per chi ha già un account: entra in questa lega
+                  aprendo &quot;Altre leghe disponibili&quot; nella dashboard
+                  e inserendo questo codice, oppure con il link diretto qui
+                  sotto. Per registrare un account nuovo serve invece un
+                  invito separato, da Impostazioni.
                 </p>
               </div>
 
               <Alert>
                 <AlertDescription className="text-foreground">
-                  <strong>Link diretto:</strong> Condividi questo link:
-                  <br />
-                  <code className="mt-2 inline-block rounded bg-background px-2 py-1 text-sm">
-                    {typeof window !== "undefined"
-                      ? window.location.origin
-                      : ""}
-                    /join/{inviteCode}
-                  </code>
+                  <strong>Link diretto:</strong> chi lo apre entra
+                  automaticamente in questa lega (deve avere già un account,
+                  altrimenti gli viene chiesto di accedere prima).
+                  <div className="mt-2 flex items-center gap-2">
+                    <code className="inline-block flex-1 truncate rounded bg-background px-2 py-1 text-sm">
+                      {typeof window !== "undefined"
+                        ? window.location.origin
+                        : ""}
+                      /join/{inviteCode}
+                    </code>
+                    <Button
+                      size="sm"
+                      variant={copiedLink ? "default" : "outline"}
+                      onClick={copyInviteLink}
+                    >
+                      <Copy className="w-4 h-4 mr-2" />
+                      {copiedLink ? "Copiato!" : "Copia"}
+                    </Button>
+                  </div>
                 </AlertDescription>
               </Alert>
             </CardContent>
@@ -915,13 +936,32 @@ function AdminPageContent({
                                 : "Membro"}
                           </Badge>
                           {!isCreator && canManageMembers && (
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleRemoveMember(member.userId)}
-                            >
-                              Rimuovi
-                            </Button>
+                            <>
+                              {isVice ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => removeViceAdmin(member.userId)}
+                                >
+                                  Togli da Vice
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => addViceAdmin(member.userId)}
+                                >
+                                  Rendi Vice
+                                </Button>
+                              )}
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleRemoveMember(member.userId)}
+                              >
+                                Rimuovi
+                              </Button>
+                            </>
                           )}
                         </div>
                       </div>
