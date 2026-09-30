@@ -32,6 +32,7 @@ import {
   Timestamp,
   type FirestoreError,
   type Unsubscribe,
+  type DocumentReference,
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
@@ -86,25 +87,38 @@ const DEFAULT_TEAM_NAME = "I Campioni";
 // solo: nella frazione di secondo subito dopo il login il token appena
 // emesso può non essere ancora pienamente propagato al canale Firestore, e
 // senza questo wrapper quel primo permission-denied ucciderebbe il listener
-// per tutta la sessione (nessun altro punto lo riattacca). Un solo retry
-// dopo un breve delay copre questa race; se fallisce anche il retry il
-// problema è reale (regole/permessi) e resta comunque loggato in console
-// invece di sparire silenziosamente come faceva onSnapshot senza onError.
+// per tutta la sessione (nessun altro punto lo riattacca). Su una rete lenta
+// o un login appena fatto la propagazione può richiedere più di un
+// tentativo: 3 retry con backoff (1.5s/3s/5s, ~9.5s totali) invece di uno
+// solo — un solo tentativo (29/9) lasciava isLoading bloccato a true per
+// sempre se quel retry ricadeva ancora nella stessa race, con lo spinner di
+// dashboard/layout.tsx che girava senza uscita (bug reale segnalato in
+// produzione, "gira" senza mai risolvere). Se anche l'ultimo retry fallisce
+// il problema è reale (regole/permessi), resta comunque loggato in console
+// invece di sparire silenziosamente come faceva onSnapshot senza onError —
+// dashboard/layout.tsx ha comunque un timeout di sicurezza che non lascia
+// più l'utente bloccato a vita sullo spinner in quel caso.
 function attachWithPermissionRetry(
   subscribe: (onError: (error: FirestoreError) => void) => Unsubscribe,
   label: string,
 ): Unsubscribe {
   let unsubscribe: Unsubscribe;
-  let retried = false;
+  let retryCount = 0;
+  const RETRY_DELAYS_MS = [1500, 3000, 5000];
 
   const handleError = (error: FirestoreError) => {
     console.error(`[Firestore] listener "${label}":`, error.code, error.message);
-    if (error.code === "permission-denied" && auth.currentUser && !retried) {
-      retried = true;
+    if (
+      error.code === "permission-denied" &&
+      auth.currentUser &&
+      retryCount < RETRY_DELAYS_MS.length
+    ) {
+      const delay = RETRY_DELAYS_MS[retryCount];
+      retryCount += 1;
       setTimeout(() => {
         unsubscribe();
         unsubscribe = subscribe(handleError);
-      }, 1500);
+      }, delay);
     }
   };
 
@@ -138,8 +152,11 @@ interface FantaContextType {
   currentFanta: Fanta | null;
   fantas: Fanta[];
   setCurrentFanta: (fanta: Fanta) => void;
-  addFanta: (fanta: Fanta) => void;
+  addFanta: (fanta: Fanta) => Promise<void>;
   updateFanta: (fanta: Fanta) => void;
+  // Cancella la lega e tutto il suo contenuto (admin/vice/developer, vedi
+  // isAdminOrVice() in firestore.rules). Irreversibile.
+  deleteFanta: (fantaId: string) => Promise<void>;
   isLoading: boolean;
 
   // Membri della lega corrente: ruolo, budget, rosa, uniti al profilo utente
@@ -643,10 +660,22 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const addFanta = (fanta: Fanta): void => {
+  // NON un writeBatch atomico (era così fino al 30/9): la regola di
+  // members/create per il bootstrap-admin fa un get() su fantas/{fantaId}
+  // per verificarne il createdBy, ma dentro un writeBatch quel get() vede
+  // lo stato DA PRIMA del batch — il documento fanta creato nello stesso
+  // batch non esiste ancora dal suo punto di vista. Risultato: l'intero
+  // batch falliva SEMPRE con permission-denied (Null value error sul
+  // get().data di un doc inesistente), per chiunque, non solo in rari
+  // casi — "Crea Nuovo Fanta" era di fatto rotto in produzione dal deploy
+  // delle regole di stamattina, mascherato solo per i developer (isDeveloper
+  // gli dà comunque accesso pieno più avanti, anche senza un vero member
+  // doc). Scritture sequenziali risolvono alla radice: quando si crea il
+  // membro admin, il documento fanta è già committato e quel get() lo vede
+  // per davvero. Verificato con l'emulatore.
+  const addFanta = async (fanta: Fanta): Promise<void> => {
     if (!user) return;
-    const batch = writeBatch(db);
-    batch.set(doc(db, "fantas", fanta.id), { ...fanta, createdBy: user.id });
+    await setDoc(doc(db, "fantas", fanta.id), { ...fanta, createdBy: user.id });
     const memberRef = doc(db, "fantas", fanta.id, "members", user.id);
     const generalBudget = fanta.settings.generalBudget;
     const adminMember: FantaMember = {
@@ -658,13 +687,61 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       budgetSpent: 0,
       budgetLeft: generalBudget,
     };
-    batch.set(memberRef, adminMember);
-    batch.commit();
+    await setDoc(memberRef, adminMember);
     setCurrentFanta(fanta);
   };
 
   const updateFanta = (fanta: Fanta): void => {
     setDoc(doc(db, "fantas", fanta.id), fanta);
+  };
+
+  // Elimina una lega e TUTTO il suo contenuto (30/9, "Elimina Lega" in
+  // Gestione): il solo documento fantas/{id} non basta, altrimenti ogni
+  // sottocollezione (membri, aste, draft, storico, calendario, gironi,
+  // tabellone, richieste d'ingresso) resterebbe orfana su Firestore —
+  // invisibile in UI ma ancora leggibile da chiunque avesse l'id.
+  // In chunk da 450 (sotto al limite di 500 operazioni per writeBatch): una
+  // lega di amici non arriva mai a queste dimensioni, ma se succedesse un
+  // singolo commit atomico da 1000+ operazioni fallirebbe comunque.
+  const deleteDocsInBatches = async (refs: DocumentReference[]): Promise<void> => {
+    const CHUNK_SIZE = 450;
+    for (let i = 0; i < refs.length; i += CHUNK_SIZE) {
+      const batch = writeBatch(db);
+      refs.slice(i, i + CHUNK_SIZE).forEach((ref) => batch.delete(ref));
+      await batch.commit();
+    }
+  };
+
+  const SUBCOLLECTIONS_TO_DELETE = [
+    "members",
+    "auctions",
+    "draft",
+    "history",
+    "calendar",
+    "groups",
+    "bracket",
+    "joinRequests",
+  ] as const;
+
+  const deleteFanta = async (fantaId: string): Promise<void> => {
+    for (const sub of SUBCOLLECTIONS_TO_DELETE) {
+      const snap = await getDocs(collection(db, "fantas", fantaId, sub));
+      if (sub === "auctions") {
+        // Le aste hanno a loro volta una sottocollezione "bids": va svuotata
+        // prima, altrimenti resterebbe orfana sotto un'asta già cancellata.
+        for (const auctionDoc of snap.docs) {
+          const bidsSnap = await getDocs(
+            collection(db, "fantas", fantaId, "auctions", auctionDoc.id, "bids"),
+          );
+          await deleteDocsInBatches(bidsSnap.docs.map((d) => d.ref));
+        }
+      }
+      await deleteDocsInBatches(snap.docs.map((d) => d.ref));
+    }
+    await deleteDoc(doc(db, "fantas", fantaId));
+    // currentFanta è derivato (fantas.find(...) || fantas[0]): appena il
+    // listener rifletterà la cancellazione, si aggiorna da solo su un'altra
+    // lega o null, nessun cleanup manuale di stato/localStorage necessario.
   };
 
   // Membri del fanta attualmente selezionato, uniti al profilo (nome/email)
@@ -2176,6 +2253,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         setCurrentFanta,
         addFanta,
         updateFanta,
+        deleteFanta,
         isLoading,
         fantaMembers,
         currentMember,

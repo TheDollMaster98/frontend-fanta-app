@@ -31,14 +31,28 @@ import {
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
+import { generateInviteCode } from "@/lib/utils";
 import type { User } from "@/types";
+
+const INVITE_ERROR_MESSAGE =
+  "Invito non valido, già usato o mancante. Chiedi un nuovo link a chi gestisce la lega.";
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  loginWithGoogle: (inviteCode?: string) => Promise<void>;
+  register: (
+    name: string,
+    email: string,
+    password: string,
+    inviteCode?: string,
+  ) => Promise<void>;
   logout: () => Promise<void>;
+  // Developer-only: genera un nuovo link invito a uso singolo (sezione
+  // "Inviti" in Impostazioni) e ne restituisce il codice, da comporre come
+  // {origin}/auth/register?invite={code}. Vedi firestore.rules
+  // (users/{userId}.create, invites/{code}) per l'enforcement server-side.
+  generateInvite: () => Promise<string>;
   // Anteprima locale "vista da utente normale" per chi ha davvero
   // isDeveloper:true (vedi user.isDeveloper, mai toccato da questo): non
   // scrive niente su Firestore, resta nel browser (sessionStorage) — solo
@@ -85,6 +99,7 @@ function toDate(value: Timestamp | Date | undefined): Date {
 async function loadOrCreateUserProfile(
   firebaseUser: FirebaseUser,
   nameOverride?: string,
+  inviteCode?: string,
 ): Promise<User> {
   const ref = doc(db, "users", firebaseUser.uid);
   const snap = await getDoc(ref);
@@ -139,8 +154,33 @@ async function loadOrCreateUserProfile(
     // campo undefined esplicito in setDoc, quindi il campo va omesso del
     // tutto quando non c'è una foto (es. registrazione email/password).
     ...(firebaseUser.photoURL ? { photoURL: firebaseUser.photoURL } : {}),
+    // Richiesto da firestore.rules (users/{userId}.create, 30/9): senza un
+    // invites/{code} valido e non ancora usato referenziato qui, questo
+    // setDoc viene rifiutato server-side. Se inviteCode è undefined il
+    // campo va omesso (stesso motivo di photoURL sopra), e la regola nega
+    // per assenza — comportamento voluto, non un bug.
+    ...(inviteCode ? { inviteCode } : {}),
   };
   await setDoc(ref, profile);
+
+  // Consuma l'invito SOLO dopo che il profilo è stato creato con successo:
+  // scrittura sequenziale separata, non nello stesso batch/prima del
+  // setDoc sopra — stessa lezione del fix di FantaContext.addFanta di
+  // oggi (un get()/write su un altro documento non deve dipendere da uno
+  // scritto nella stessa operazione atomica). Se questa fallisse per un
+  // problema transitorio l'account resta comunque valido: nel peggiore dei
+  // casi l'invito resta riutilizzabile, preferibile a un utente
+  // "registrato ma rotto" per un dettaglio di bookkeeping.
+  if (inviteCode) {
+    try {
+      await updateDoc(doc(db, "invites", inviteCode), {
+        usedBy: firebaseUser.uid,
+        usedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("Errore nel marcare l'invito come usato:", error);
+    }
+  }
 
   return {
     id: firebaseUser.uid,
@@ -148,6 +188,7 @@ async function loadOrCreateUserProfile(
     name: profile.name,
     photoURL: firebaseUser.photoURL || undefined,
     isDeveloper: profile.isDeveloper,
+    inviteCode,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -205,16 +246,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push("/dashboard");
   };
 
-  const loginWithGoogle = async () => {
+  // inviteCode passato esplicitamente (non letto dal listener
+  // onAuthStateChanged qui sotto, che continua a chiamare
+  // loadOrCreateUserProfile senza invito): per un utente che esiste già
+  // quell'altra chiamata cade nel ramo "profilo esistente" e non tocca
+  // gli inviti, quindi non c'è conflitto. Per un utente Google nuovissimo
+  // SENZA invito (es. da /auth/login, dove inviteCode non viene mai
+  // passato) questa await fallisce e viene gestita qui sotto — la
+  // chiamata "gemella" del listener fallirebbe allo stesso modo in
+  // parallelo, ma logga soltanto in console, non tocca lo stato utente.
+  const loginWithGoogle = async (inviteCode?: string) => {
+    let firebaseUser: FirebaseUser;
     try {
-      await signInWithPopup(auth, new GoogleAuthProvider());
+      const credential = await signInWithPopup(auth, new GoogleAuthProvider());
+      firebaseUser = credential.user;
     } catch (error) {
       throw new Error(mapAuthError(error));
+    }
+    try {
+      await loadOrCreateUserProfile(firebaseUser, undefined, inviteCode);
+    } catch (error) {
+      console.error("Errore nel creare il profilo dopo il login Google:", error);
+      await signOut(auth);
+      throw new Error(INVITE_ERROR_MESSAGE);
     }
     router.push("/dashboard");
   };
 
-  const register = async (name: string, email: string, password: string) => {
+  const register = async (
+    name: string,
+    email: string,
+    password: string,
+    inviteCode?: string,
+  ) => {
     let firebaseUser: FirebaseUser;
     try {
       const credential = await createUserWithEmailAndPassword(auth, email, password);
@@ -224,8 +288,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     await updateProfile(firebaseUser, { displayName: name });
-    await loadOrCreateUserProfile(firebaseUser, name);
+    try {
+      await loadOrCreateUserProfile(firebaseUser, name, inviteCode);
+    } catch (error) {
+      // L'account Firebase Auth esiste ma senza profilo Firestore l'app è
+      // inutilizzabile ovunque (ogni pagina aspetta AuthContext.user):
+      // meglio disconnetterlo subito con un errore chiaro che lasciarlo
+      // "loggato ma rotto".
+      console.error("Errore nel creare il profilo dopo la registrazione:", error);
+      await signOut(auth);
+      throw new Error(INVITE_ERROR_MESSAGE);
+    }
     router.push("/dashboard");
+  };
+
+  const generateInvite = async (): Promise<string> => {
+    if (!auth.currentUser) throw new Error("Devi essere loggato");
+    const code = generateInviteCode();
+    await setDoc(doc(db, "invites", code), {
+      code,
+      createdBy: auth.currentUser.uid,
+      createdAt: serverTimestamp(),
+      usedBy: null,
+      usedAt: null,
+    });
+    return code;
   };
 
   const logout = async () => {
@@ -299,6 +386,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loginWithGoogle,
         register,
         logout,
+        generateInvite,
         isPreviewingAsNonDeveloper,
         setPreviewAsNonDeveloper,
         updateUserProfile,
