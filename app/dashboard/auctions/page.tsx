@@ -52,6 +52,7 @@ import {
   SPORT_TEMPLATES,
   MIN_COUNTDOWN_SECONDS,
   MAX_COUNTDOWN_SECONDS,
+  PLAYOFF_CIRCUIT_TOURNAMENT_QUERY,
 } from "@/lib/constants";
 import {
   getPlayersByLeague,
@@ -280,8 +281,17 @@ export default function AuctionsPage() {
     ? SPORT_TEMPLATES[currentFanta.sportType]?.roles || []
     : [];
 
+  // Con un circuito a eliminazione (Mondiali/MSI, vedi PLAYOFF_CIRCUITS) non
+  // ha senso chiedere "quale torneo": ce n'è uno solo, quello della lega
+  // stessa — prima si chiedeva comunque di scegliere tra le leghe
+  // regionali, sbagliando torneo (bug segnalato in produzione, 30/9).
+  const playoffTournamentQuery = currentFanta
+    ? PLAYOFF_CIRCUIT_TOURNAMENT_QUERY[currentFanta.settings.circuitType || ""]
+    : undefined;
   const selectedAuctionLeague =
-    newAuction.auctionFormat === "free" ? "TUTTI I PRO PLAYER" : newAuction.league;
+    newAuction.auctionFormat === "free"
+      ? "TUTTI I PRO PLAYER"
+      : playoffTournamentQuery || newAuction.league;
   const isLoadingAuctionPlayers =
     currentFanta?.sportType === "lol" &&
     auctionPlayersLeague !== selectedAuctionLeague;
@@ -351,7 +361,9 @@ export default function AuctionsPage() {
       auctionFormat:
         newAuction.auctionFormat === "free"
           ? "Formato libero"
-          : newAuction.league,
+          : playoffTournamentQuery
+            ? currentFanta.settings.circuitType || newAuction.league
+            : newAuction.league,
       description: newAuction.description,
       basePrice: newAuction.basePrice,
       countdownSeconds: newAuction.countdownSeconds,
@@ -534,6 +546,13 @@ export default function AuctionsPage() {
                       <>
                         <div className="space-y-2">
                           <Label>Torneo</Label>
+                          {playoffTournamentQuery ? (
+                            <p className="text-sm text-muted-foreground">
+                              {currentFanta?.settings.circuitType} — i player
+                              vengono presi automaticamente da questo torneo,
+                              non serve scegliere una lega regionale.
+                            </p>
+                          ) : (
                           <Select
                             value={newAuction.league}
                             onValueChange={(value) => {
@@ -562,6 +581,7 @@ export default function AuctionsPage() {
                               <SelectItem value="PCS">PCS</SelectItem>
                             </SelectContent>
                           </Select>
+                          )}
                         </div>
                       </>
                     )}

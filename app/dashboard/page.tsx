@@ -110,6 +110,9 @@ export default function DashboardPage() {
                       </CardTitle>
                       <p className="text-sm text-muted-foreground">
                         {getSportTypeLabel(fanta.sportType)}
+                        {fanta.sportType === "lol" &&
+                          fanta.settings.circuitType &&
+                          ` · ${fanta.settings.circuitType}`}
                       </p>
                     </div>
                     <Badge variant={getRoleBadgeVariant(role)}>
@@ -119,6 +122,14 @@ export default function DashboardPage() {
                       {role}
                     </Badge>
                   </div>
+                  <Badge
+                    variant={fanta.settings.seasonStarted ? "default" : "secondary"}
+                    className="w-fit mb-2"
+                  >
+                    {fanta.settings.seasonStarted
+                      ? "Mercato chiuso"
+                      : "Mercato aperto"}
+                  </Badge>
                   {fanta.description && (
                     <CardDescription className="text-muted-foreground line-clamp-2">
                       {fanta.description}
@@ -205,28 +216,29 @@ export default function DashboardPage() {
                         {getMemberCount(fanta.id)} membri
                       </span>
                     </div>
-                    <div className="flex gap-2 mt-auto">
+                    <div className="flex flex-col gap-2 mt-auto sm:flex-row">
                       <Button
                         variant="outline"
+                        className="w-full sm:w-auto"
                         onClick={() => setInfoFanta(fanta)}
                       >
                         Info
                       </Button>
                       {!myRequest && (
                         <Button
-                          className="flex-1"
+                          className="w-full sm:flex-1"
                           onClick={() => sendJoinRequest(fanta)}
                         >
                           Richiedi di entrare
                         </Button>
                       )}
                       {myRequest?.status === "pending" && (
-                        <Button className="flex-1" variant="outline" disabled>
+                        <Button className="w-full sm:flex-1" variant="outline" disabled>
                           Richiesta inviata
                         </Button>
                       )}
                       {myRequest?.status === "rejected" && (
-                        <Button className="flex-1" variant="outline" disabled>
+                        <Button className="w-full sm:flex-1" variant="outline" disabled>
                           Richiesta rifiutata
                         </Button>
                       )}

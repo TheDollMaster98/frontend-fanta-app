@@ -404,7 +404,7 @@ export async function getTeamRosterHistory(filters: {
   const results = await cargoQuery({
     tables: "Tournaments=T, TournamentPlayers=TP, PlayerRedirects=PR, Players=P",
     fields:
-      "P.Player, P.Name, P.Country, P.Birthdate, P.Residency, P.Role, P.Team, TP.Team=HistoricalTeam, T.Name=TournamentName, T.Year",
+      "P.Player, P.Name, P.Country, P.Birthdate, P.Residency, P.Role, P.Team, T.League, TP.Team=HistoricalTeam, T.Name=TournamentName, T.Year",
     where: whereClauses.join(" AND "),
     join_on:
       "T.OverviewPage=TP.OverviewPage, TP.Player=PR.AllName, PR.OverviewPage=P.OverviewPage",
