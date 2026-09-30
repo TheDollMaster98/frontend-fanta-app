@@ -27,6 +27,10 @@ import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
 import { toast } from "sonner";
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import type { Invite } from "@/types";
+import { Copy } from "lucide-react";
 
 export default function SettingsPage() {
   const {
@@ -296,6 +300,16 @@ export default function SettingsPage() {
                       </Label>
                     </div>
                   </div>
+
+                  <Separator className="my-6" />
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold">Inviti</h3>
+                    <p className="text-sm text-muted-foreground">
+                      La registrazione richiede un link d&apos;invito a uso
+                      singolo. Generane uno e mandalo a chi vuoi far entrare.
+                    </p>
+                    <InviteManager />
+                  </div>
                 </>
               )}
             </CardContent>
@@ -476,6 +490,92 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function InviteManager() {
+  const { generateInvite } = useAuth();
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    const invitesQuery = query(
+      collection(db, "invites"),
+      orderBy("createdAt", "desc"),
+    );
+    return onSnapshot(invitesQuery, (snapshot) => {
+      setInvites(
+        snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            code: docSnap.id,
+            createdBy: data.createdBy,
+            createdAt: data.createdAt?.toDate?.() ?? new Date(),
+            usedBy: data.usedBy ?? null,
+            usedAt: data.usedAt?.toDate?.() ?? null,
+          };
+        }),
+      );
+    });
+  }, []);
+
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    try {
+      const code = generateInvite ? await generateInvite() : "";
+      const url = `${window.location.origin}/auth/register?invite=${code}`;
+      await navigator.clipboard.writeText(url);
+      toast.success("Link invito copiato negli appunti");
+    } catch (error) {
+      console.error("Errore nella generazione dell'invito:", error);
+      toast.error("Errore nella generazione dell'invito");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const copyInviteLink = async (code: string) => {
+    const url = `${window.location.origin}/auth/register?invite=${code}`;
+    await navigator.clipboard.writeText(url);
+    toast.success("Link copiato negli appunti");
+  };
+
+  return (
+    <div className="space-y-3">
+      <Button type="button" onClick={handleGenerate} disabled={isGenerating}>
+        {isGenerating ? "Generazione..." : "Genera Link Invito"}
+      </Button>
+
+      {invites.length > 0 && (
+        <div className="space-y-2">
+          {invites.map((invite) => (
+            <div
+              key={invite.code}
+              className="flex items-center justify-between gap-2 rounded-md border border-border bg-raised px-3 py-2 text-sm"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-mono">{invite.code}</p>
+                <p className="text-xs text-muted-foreground">
+                  {invite.usedBy ? `Usato` : "Libero"} ·{" "}
+                  {invite.createdAt.toLocaleDateString("it-IT")}
+                </p>
+              </div>
+              {!invite.usedBy && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => copyInviteLink(invite.code)}
+                  aria-label="Copia link"
+                >
+                  <Copy className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

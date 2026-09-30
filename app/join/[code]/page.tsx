@@ -97,17 +97,16 @@ export default function JoinFantaPage() {
           <CardHeader>
             <CardTitle className="text-foreground">Accedi per continuare</CardTitle>
             <CardDescription className="text-muted-foreground">
-              Devi avere un account per unirti a questa lega. Dopo aver
-              effettuato l&apos;accesso o la registrazione, riapri questo
-              stesso link.
+              Devi avere un account per unirti a questa lega. Se non ce l&apos;hai
+              ancora, la registrazione richiede un link d&apos;invito separato
+              (chiedilo a chi gestisce la app, non basta questo link della
+              lega). Dopo aver effettuato l&apos;accesso o la registrazione,
+              riapri questo stesso link.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex gap-3">
+          <CardContent>
             <Button asChild>
               <Link href="/auth/login">Accedi</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/auth/register">Registrati</Link>
             </Button>
           </CardContent>
         </Card>
