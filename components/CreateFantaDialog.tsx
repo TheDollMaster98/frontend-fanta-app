@@ -21,6 +21,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { collection, doc } from "firebase/firestore";
+import { toast } from "sonner";
 import { db } from "@/lib/firebase";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -56,38 +57,47 @@ export function CreateFantaDialog() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState(INITIAL_FORM);
+  const [isCreating, setIsCreating] = useState(false);
   const isLol = formData.sportType === "lol";
 
-  const handleCreate = () => {
-    if (!user || !formData.name) return;
+  const handleCreate = async () => {
+    if (!user || !formData.name || isCreating) return;
 
     const newFantaId = doc(collection(db, "fantas")).id;
-    addFanta({
-      id: newFantaId,
-      name: formData.name,
-      description: formData.description,
-      sportType: formData.sportType,
-      settings: {
-        ...DEFAULT_FANTA_SETTINGS,
-        draftMode: formData.draftMode,
-        draftPickSeconds: formData.draftPickSeconds,
-        defaultCountdown: formData.defaultCountdown,
-        ...(isLol
-          ? {
-              circuitType: formData.circuitType,
-              maxJolly: formData.maxJolly,
-              scoringWeights: formData.scoringWeights,
-              teamScoringWeights: formData.teamScoringWeights,
-            }
-          : {}),
-      },
-      inviteCode: generateInviteCode(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+    setIsCreating(true);
+    try {
+      await addFanta({
+        id: newFantaId,
+        name: formData.name,
+        description: formData.description,
+        sportType: formData.sportType,
+        settings: {
+          ...DEFAULT_FANTA_SETTINGS,
+          draftMode: formData.draftMode,
+          draftPickSeconds: formData.draftPickSeconds,
+          defaultCountdown: formData.defaultCountdown,
+          ...(isLol
+            ? {
+                circuitType: formData.circuitType,
+                maxJolly: formData.maxJolly,
+                scoringWeights: formData.scoringWeights,
+                teamScoringWeights: formData.teamScoringWeights,
+              }
+            : {}),
+        },
+        inviteCode: generateInviteCode(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
 
-    setFormData(INITIAL_FORM);
-    setOpen(false);
+      setFormData(INITIAL_FORM);
+      setOpen(false);
+    } catch (error) {
+      console.error("Errore nella creazione della lega:", error);
+      toast.error("Errore nella creazione della lega, riprova");
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   return (
@@ -300,8 +310,8 @@ export function CreateFantaDialog() {
           <Button variant="outline" onClick={() => setOpen(false)}>
             Annulla
           </Button>
-          <Button onClick={handleCreate} disabled={!formData.name}>
-            Crea Lega
+          <Button onClick={handleCreate} disabled={!formData.name || isCreating}>
+            {isCreating ? "Creazione..." : "Crea Lega"}
           </Button>
         </div>
       </DialogContent>

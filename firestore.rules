@@ -42,11 +42,35 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Globale (non annidata sotto fantas/{fantaId} come le altre funzioni
+    // qui sotto, che dipendono da $(fantaId)): serve anche a users/{userId}
+    // e invites/{code}, entrambi allo stesso livello di fantas, non dentro.
+    // Spostata qui il 30/9 quando è servita la prima volta fuori da
+    // fantas/{fantaId} — prima era duplicata solo lì.
+    function isDeveloper() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isDeveloper', false) == true;
+    }
+
     match /users/{userId} {
       allow read: if request.auth != null;
 
+      // Registrazione a invito (30/9): la app è per un gruppo chiuso di
+      // amici ma il repo è pubblico e chiunque può creare un account
+      // Firebase Auth (Firestore non può impedirlo, non governa
+      // l'autenticazione) — quello che SI può impedire è la creazione del
+      // profilo users/{uid}, senza il quale l'app è inutilizzabile (ogni
+      // pagina della dashboard aspetta AuthContext.user, mappato da questo
+      // documento). Richiede un invites/{code} valido e non ancora usato,
+      // referenziato dal campo inviteCode sul documento stesso — vedi
+      // invites/{code} qui sotto per come si genera/consuma. .get() con
+      // default '' invece di request.resource.data.inviteCode diretto:
+      // altrimenti un create senza quel campo lancerebbe un errore di
+      // valutazione invece di negare in modo pulito.
       allow create: if request.auth != null && request.auth.uid == userId
-        && request.resource.data.get('isDeveloper', false) == false;
+        && request.resource.data.get('isDeveloper', false) == false
+        && exists(/databases/$(database)/documents/invites/$(request.resource.data.get('inviteCode', '')))
+        && get(/databases/$(database)/documents/invites/$(request.resource.data.get('inviteCode', ''))).data.usedBy == null;
 
       // isDeveloper (accesso developer universale a tutta l'app) è
       // IMMUTABILE da qui, in entrambe le direzioni: un self-toggle
@@ -69,6 +93,35 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
+    // Link invito per la registrazione (30/9): vedi il commento su
+    // users/{userId}.create per il perché. Un solo uso a testa, generati
+    // solo da un developer nella sezione "Inviti" di Impostazioni.
+    match /invites/{code} {
+      // Server-side, non solo nascosto in UI: altrimenti chiunque
+      // potrebbe autogenerarsi un invito dalla console del browser e
+      // aggirare il gate sulla registrazione qui sopra.
+      allow create: if request.auth != null && isDeveloper()
+        && request.resource.data.usedBy == null
+        && request.resource.data.createdBy == request.auth.uid;
+
+      // Serve poter leggere il documento per validare un codice PRIMA di
+      // creare il proprio users/{uid} (subito dopo l'autenticazione
+      // Firebase, che non passa da qui): aperta a chiunque sia
+      // autenticato, stesso schema già in uso in tutto il resto del file.
+      // Non espone nulla di sensibile: solo chi l'ha usato e quando.
+      allow read: if request.auth != null;
+
+      // Consumare un invito: SOLO passare da usedBy:null a usedBy:se
+      // stesso, nient'altro — non si può "rubare" un invito già usato, non
+      // si può liberarlo di nuovo, non si può assegnarlo a qualcun altro.
+      allow update: if request.auth != null
+        && resource.data.usedBy == null
+        && request.resource.data.usedBy == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy', 'usedAt']);
+
+      allow delete: if request.auth != null && isDeveloper();
+    }
+
     match /fantas/{fantaId} {
       allow read: if request.auth != null;
       // Creare una nuova lega è self-service (bottone "Crea Nuovo Fanta"):
@@ -88,23 +141,18 @@ service cloud.firestore {
           .data.settings.get('seasonStarted', false) == true;
       }
 
-      // Un developer (users/{uid}.isDeveloper, vedi la nota su
-      // immutabilità in quella regola) ha "accesso universale a tutte le
-      // leghe, senza bisogno di farne parte o di essere admin" — testo
-      // letterale della UI in Impostazioni. Prima di stringere le regole
-      // (29/9) questo era vero per costruzione: tutto era aperto a
-      // chiunque, quindi il flag non serviva lato server. Ora che
-      // isAdminOrVice/isAdmin controllano il ruolo vero, un developer
-      // senza un member doc reale in quella lega (o con ruolo "membro")
-      // veniva bloccato da Firestore pur vedendo i pulsanti in UI — bug
-      // vero, trovato testando la creazione di un'asta. exists() prima di
-      // get() evita che un utente senza ancora un documento users/{uid}
-      // faccia fallire l'intera funzione (get() su un doc assente lancia,
-      // vedi il commento sotto su isAdminOrVice).
-      function isDeveloper() {
-        return exists(/databases/$(database)/documents/users/$(request.auth.uid))
-          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isDeveloper', false) == true;
-      }
+      // isDeveloper() è globale (vedi in cima al file, subito dentro
+      // match /databases/{database}/documents): un developer (users/{uid}.
+      // isDeveloper, vedi la nota su immutabilità in quella regola) ha
+      // "accesso universale a tutte le leghe, senza bisogno di farne parte
+      // o di essere admin" — testo letterale della UI in Impostazioni.
+      // Prima di stringere le regole (29/9) questo era vero per
+      // costruzione: tutto era aperto a chiunque, quindi il flag non
+      // serviva lato server. Ora che isAdminOrVice/isAdmin controllano il
+      // ruolo vero, un developer senza un member doc reale in quella lega
+      // (o con ruolo "membro") veniva bloccato da Firestore pur vedendo i
+      // pulsanti in UI — bug vero, trovato testando la creazione di
+      // un'asta.
 
       // Ruolo di chi sta scrivendo IN QUESTA lega (non il ruolo di un
       // pick/giocatore pro, tutt'altra cosa), o developer. isDeveloper()

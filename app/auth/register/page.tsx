@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +16,17 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 
+// useSearchParams() richiede un Suspense boundary in App Router, altrimenti
+// il build fallisce ("should be wrapped in a suspense boundary").
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterForm />
+    </Suspense>
+  );
+}
+
+function RegisterForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,6 +35,12 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const { register, loginWithGoogle } = useAuth();
+  const searchParams = useSearchParams();
+  // App per un gruppo chiuso di amici, registrazione a invito (30/9): senza
+  // un ?invite=CODE valido in query, users/{uid}.create viene rifiutato
+  // lato server (firestore.rules) comunque — bloccare qui il form invece
+  // di far compilare tutto e fallire al submit.
+  const inviteCode = searchParams.get("invite") || "";
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +54,7 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      await register(name, email, password);
+      await register(name, email, password, inviteCode);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Errore durante la registrazione",
@@ -52,7 +69,7 @@ export default function RegisterPage() {
     setIsGoogleLoading(true);
 
     try {
-      await loginWithGoogle();
+      await loginWithGoogle(inviteCode);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Errore durante la registrazione",
@@ -61,6 +78,35 @@ export default function RegisterPage() {
       setIsGoogleLoading(false);
     }
   };
+
+  if (!inviteCode) {
+    return (
+      <div className="auth-shell">
+        <Card className="w-full max-w-md">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl font-semibold text-white">
+              Serve un invito
+            </CardTitle>
+            <CardDescription className="text-muted-foreground">
+              La registrazione è possibile solo tramite un link d&apos;invito.
+              Chiedi un link a chi gestisce la lega.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center text-sm text-muted-foreground">
+              Hai già un account?{" "}
+              <Link
+                href="/auth/login"
+                className="text-foreground underline-offset-4 hover:underline"
+              >
+                Accedi
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-shell">

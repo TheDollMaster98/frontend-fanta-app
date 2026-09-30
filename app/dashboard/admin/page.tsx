@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -91,6 +91,7 @@ function AdminPageContent({
   currentFanta: Fanta;
   updateFanta: (fanta: Fanta) => void;
 }) {
+  const router = useRouter();
   const {
     pendingJoinRequests,
     approveJoinRequest,
@@ -102,6 +103,7 @@ function AdminPageContent({
     removeMember,
     startSeason,
     setSeasonStarted,
+    deleteFanta,
   } = useFanta();
   // I vice-admin possono entrare in Gestione Lega e toccare le
   // impostazioni (budget, circuito, pesi punteggio, ecc.), ma non gestire
@@ -135,6 +137,7 @@ function AdminPageContent({
   const [newViceEmail, setNewViceEmail] = useState("");
   const [isAddingVice, setIsAddingVice] = useState(false);
   const [isStartingSeason, setIsStartingSeason] = useState(false);
+  const [isDeletingFanta, setIsDeletingFanta] = useState(false);
   const members = fantaMembers;
   const inviteCode = currentFanta.inviteCode;
   const seasonStarted = !!currentFanta.settings.seasonStarted;
@@ -152,6 +155,23 @@ function AdminPageContent({
   const handleReopenMarket = () => {
     setSeasonStarted(false);
     toast.success("Mercato riaperto");
+  };
+
+  // Cancellazione a cascata (membri, aste, draft, storico, calendario,
+  // gironi, tabellone, richieste) vive in FantaContext.deleteFanta: qui solo
+  // l'azione e il redirect via, non c'è più nessuna lega corrente da
+  // mostrare in Gestione dopo il successo.
+  const handleDeleteFanta = async () => {
+    setIsDeletingFanta(true);
+    try {
+      await deleteFanta(currentFanta.id);
+      toast.success("Lega eliminata");
+      router.push("/dashboard");
+    } catch (error) {
+      console.error("Errore nell'eliminazione della lega:", error);
+      toast.error("Errore nell'eliminazione della lega, riprova");
+      setIsDeletingFanta(false);
+    }
   };
 
   const handleGeneralInfoUpdate = (e: React.FormEvent) => {
@@ -328,6 +348,24 @@ function AdminPageContent({
                   </AlertDialogContent>
                 </AlertDialog>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-destructive/50">
+            <CardHeader>
+              <CardTitle className="text-destructive">Zona Pericolosa</CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Elimina la lega e tutto il suo contenuto: membri, aste,
+                draft, storico, calendario, gironi/tabellone, richieste
+                d&apos;ingresso. Non si può annullare.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DeleteFantaDialog
+                fantaName={currentFanta.name}
+                isDeleting={isDeletingFanta}
+                onConfirm={handleDeleteFanta}
+              />
             </CardContent>
           </Card>
 
@@ -896,5 +934,55 @@ function AdminPageContent({
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// Conferma testuale (nome esatto della lega) invece di un semplice "sei
+// sicuro?": è un'azione irreversibile che cancella anche i dati di tutti
+// gli altri membri, non solo i propri.
+function DeleteFantaDialog({
+  fantaName,
+  isDeleting,
+  onConfirm,
+}: {
+  fantaName: string;
+  isDeleting: boolean;
+  onConfirm: () => void;
+}) {
+  const [confirmText, setConfirmText] = useState("");
+  const canConfirm = confirmText === fantaName && !isDeleting;
+
+  return (
+    <AlertDialog onOpenChange={(open) => !open && setConfirmText("")}>
+      <AlertDialogTrigger asChild>
+        <Button variant="destructive">Elimina Lega</Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Eliminare &quot;{fantaName}&quot;?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Cancella la lega e tutto il suo contenuto per tutti i membri:
+            membri, aste, draft, storico, calendario, gironi/tabellone,
+            richieste d&apos;ingresso. Non si può annullare. Scrivi{" "}
+            <strong>{fantaName}</strong> per confermare.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <Input
+          value={confirmText}
+          onChange={(e) => setConfirmText(e.target.value)}
+          placeholder={fantaName}
+        />
+        <AlertDialogFooter>
+          <AlertDialogCancel>Indietro</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={!canConfirm}
+            onClick={onConfirm}
+            className={buttonVariants({ variant: "destructive" })}
+          >
+            {isDeleting ? "Eliminazione..." : "Elimina Definitivamente"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
