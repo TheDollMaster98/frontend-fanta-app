@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useFanta } from "@/contexts/FantaContext";
+import { findLeagueId, getSchedule } from "@/lib/lolesportsApi";
 
 interface AppNotification {
   id: string;
@@ -28,15 +29,22 @@ const MAX_NOTIFICATIONS = 30;
 // Centro notifiche reale (30/9), al posto del vecchio form "Preferenze
 // Notifiche" in Impostazioni che non era mai collegato a nulla (salvava
 // solo in localStorage, l'app non ha mai inviato una notifica vera).
-// Tutto qui viene da dati già real-time nel context, nessuna
-// sottoscrizione Firestore nuova: richieste di ingresso da approvare,
-// esito delle proprie richieste, aste che partono. "Partite finite" non
-// c'è ancora — richiede di interrogare periodicamente lolesports
-// (nessun cron in quest'app), lavoro a parte.
+// Richieste di ingresso/esiti/aste vengono da dati già real-time nel
+// context, nessuna sottoscrizione Firestore nuova. "Partite finite"
+// (1/10) invece interroga lolesports a polling mentre la pagina è
+// aperta — quest'app non ha un cron/backend, quindi non può avvisare
+// chi non ha la dashboard aperta in quel momento, stesso limite del
+// toast "l'asta è partita" qui sotto.
 export function NotificationCenter() {
   const router = useRouter();
-  const { pendingJoinRequests, myJoinRequests, auctions, isFantaViceOrAdmin } =
-    useFanta();
+  const {
+    currentFanta,
+    fantaMembers,
+    pendingJoinRequests,
+    myJoinRequests,
+    auctions,
+    isFantaViceOrAdmin,
+  } = useFanta();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const seenJoinRequestIds = useRef<Set<string>>(new Set());
@@ -126,6 +134,89 @@ export function NotificationCenter() {
       prevMap.set(a.id, a.status);
     });
   }, [auctions, router]);
+
+  // Partite finite: polling periodico sullo schedule lolesports del
+  // circuito della lega (findLeagueId/getSchedule, stessa fonte usata da
+  // Ricalcola Punteggi in FantaContext), filtrato alle sole squadre
+  // presenti in almeno una rosa di questa lega — altrimenti ogni partita
+  // dell'intero circuito genererebbe una notifica, rumore inutile per chi
+  // ha in rosa 1-2 squadre su 10+. Solo transizioni verso "completed",
+  // stesso schema del toast asta: il primo poll segna come "già visti"
+  // tutti i match già completati (non si notificano partite vecchie
+  // appena apri l'app), quelli dopo notificano solo i nuovi completamenti.
+  const seenFinishedMatchIds = useRef<Set<string> | null>(null);
+  const rosterTeamNames = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const names = new Set<string>();
+    fantaMembers.forEach((m) => {
+      m.team.forEach((pick) => {
+        const teamName =
+          pick.pickType === "team" ? pick.playerName : pick.playerTeam;
+        if (teamName) names.add(teamName.trim().toLowerCase());
+      });
+    });
+    rosterTeamNames.current = names;
+  }, [fantaMembers]);
+
+  useEffect(() => {
+    if (currentFanta?.sportType !== "lol" || !currentFanta.settings.circuitType) {
+      return;
+    }
+    const circuitType = currentFanta.settings.circuitType;
+    let cancelled = false;
+    seenFinishedMatchIds.current = null;
+
+    const poll = async () => {
+      const leagueId = await findLeagueId(circuitType);
+      if (!leagueId || cancelled) return;
+      const { events } = await getSchedule(leagueId);
+      if (cancelled) return;
+
+      const relevant = events.filter((e) =>
+        e.match.teams.some(
+          (t) =>
+            rosterTeamNames.current.has(t.name.trim().toLowerCase()) ||
+            rosterTeamNames.current.has(t.code.trim().toLowerCase()),
+        ),
+      );
+
+      if (seenFinishedMatchIds.current === null) {
+        seenFinishedMatchIds.current = new Set(
+          relevant.filter((e) => e.state === "completed").map((e) => e.match.id),
+        );
+        return;
+      }
+
+      relevant.forEach((e) => {
+        if (e.state !== "completed" || seenFinishedMatchIds.current!.has(e.match.id)) {
+          return;
+        }
+        seenFinishedMatchIds.current!.add(e.match.id);
+        const teamNames = e.match.teams.map((t) => t.name).join(" vs ");
+        const text = `Partita finita: ${teamNames}`;
+        toast(text, { description: e.blockName });
+        setNotifications((prevN) =>
+          [
+            {
+              id: `match-finished-${e.match.id}`,
+              text,
+              createdAt: new Date(),
+              read: false,
+              href: "/dashboard/standings",
+            },
+            ...prevN,
+          ].slice(0, MAX_NOTIFICATIONS),
+        );
+      });
+    };
+
+    poll();
+    const interval = setInterval(poll, 90_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [currentFanta?.sportType, currentFanta?.settings.circuitType]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
