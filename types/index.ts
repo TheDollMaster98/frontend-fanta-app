@@ -10,6 +10,7 @@ export * from "./join-request.types";
 export * from "./calendar.types";
 export * from "./draft.types";
 export * from "./pickem.types";
+export * from "./championpick.types";
 
 // Context types for state management
 import type { User } from "./user.types";

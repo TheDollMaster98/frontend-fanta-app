@@ -383,6 +383,47 @@ service cloud.firestore {
         );
       }
 
+      // Pick/ban campione settimanale (1/10). Stato del turno (closed):
+      // solo admin/vice/developer lo scrive, chiunque autenticato lo
+      // legge (serve a tutti per sapere se un turno è ancora "al buio").
+      match /championPickRounds/{roundId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && isAdminOrVice();
+      }
+
+      // Un pick per (turno, membro): docId "{roundId}_{userId}" — né un
+      // id auto-generato Firestore né uno uid Firebase Auth contengono
+      // mai "_", quindi split('_') su due soli pezzi è sicuro. Lettura:
+      // sempre il proprietario, chiunque altro SOLO dopo che il turno è
+      // stato chiuso (altrimenti si vedrebbe la scelta altrui prima che
+      // il turno sia stato giocato, vanificando lo scommettere "alla
+      // cieca" — qui la regola stessa nega la lettura, non è un filtro
+      // lato UI). Scrittura dal proprietario solo mentre il turno non è
+      // ancora chiuso (dopo, il pick resta fissato per calcolare punti
+      // su un valore stabile); admin/vice può sempre scrivere, serve per
+      // assegnare "points" in chiusura di turno.
+      match /championPicks/{pickDocId} {
+        allow read: if request.auth != null && (
+          pickDocId.split('_')[1] == request.auth.uid
+          || (
+            exists(/databases/$(database)/documents/fantas/$(fantaId)/championPickRounds/$(pickDocId.split('_')[0]))
+            && get(/databases/$(database)/documents/fantas/$(fantaId)/championPickRounds/$(pickDocId.split('_')[0])).data.closed == true
+          )
+        );
+        allow create, update: if request.auth != null && (
+          isAdminOrVice()
+          || (
+            pickDocId.split('_')[1] == request.auth.uid
+            && request.resource.data.userId == request.auth.uid
+            && (
+              !exists(/databases/$(database)/documents/fantas/$(fantaId)/championPickRounds/$(pickDocId.split('_')[0]))
+              || get(/databases/$(database)/documents/fantas/$(fantaId)/championPickRounds/$(pickDocId.split('_')[0])).data.closed != true
+            )
+          )
+        );
+        allow delete: if request.auth != null && isAdminOrVice();
+      }
+
       match /joinRequests/{requestId} {
         allow read: if request.auth != null;
         // Si può creare una richiesta solo come se stessi, non a nome di
