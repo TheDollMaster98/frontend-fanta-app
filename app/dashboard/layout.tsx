@@ -25,7 +25,17 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { useAuth } from "@/contexts/AuthContext";
 import { useFanta } from "@/contexts/FantaContext";
 import { NotificationCenter } from "@/components/NotificationCenter";
-import { Home, Crown, Zap, Users, Settings, Trophy, Menu } from "lucide-react";
+import { PLAYOFF_CIRCUITS } from "@/lib/constants";
+import {
+  Home,
+  Crown,
+  Zap,
+  Users,
+  Settings,
+  Trophy,
+  Menu,
+  ListChecks,
+} from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -118,6 +128,20 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       href: "/dashboard/standings",
       icon: Trophy,
     });
+
+    // Pick'em (1/10): pronostico sul bracket vero del torneo, ha senso solo
+    // per i circuiti a eliminazione diretta (WORLDS/MSI), non per un
+    // campionato normale che non ha un bracket da pronosticare.
+    if (PLAYOFF_CIRCUITS.includes(currentFanta.settings.circuitType || "")) {
+      const pickemIndex = navigation.findIndex(
+        (item) => item.href === "/dashboard/standings",
+      );
+      navigation.splice(pickemIndex + 1, 0, {
+        name: "Pick'em",
+        href: "/dashboard/pickem",
+        icon: ListChecks,
+      });
+    }
   }
 
   // Mostra "Gestione" a chi può davvero entrarci: creatore, vice-admin o
