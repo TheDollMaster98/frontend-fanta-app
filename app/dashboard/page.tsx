@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -22,6 +22,8 @@ import { CreateFantaDialog } from "@/components/CreateFantaDialog";
 import { MIN_COUNTDOWN_SECONDS } from "@/lib/constants";
 import { Trophy, Users, Crown, Zap } from "lucide-react";
 import type { Fanta } from "@/types";
+import { collection, getCountFromServer, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export default function DashboardPage() {
   const {
@@ -34,6 +36,38 @@ export default function DashboardPage() {
     getMemberCount,
   } = useFanta();
   const [infoFanta, setInfoFanta] = useState<Fanta | null>(null);
+
+  // Conteggio aste pending/active per card: prima era un placeholder fisso a
+  // 0 (mai contato davvero). Solo un conteggio via getCountFromServer, non
+  // un listener live: qui serve solo un numero indicativo in una card, non
+  // serve che si aggiorni in tempo reale mentre la dashboard è aperta.
+  const [auctionCounts, setAuctionCounts] = useState<Record<string, number>>(
+    {},
+  );
+  useEffect(() => {
+    const auctionFantas = fantas.filter(
+      (f) => f.settings.draftMode === "auction",
+    );
+    if (auctionFantas.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      auctionFantas.map(async (fanta) => {
+        const snap = await getCountFromServer(
+          query(
+            collection(db, "fantas", fanta.id, "auctions"),
+            where("status", "in", ["pending", "active"]),
+          ),
+        );
+        return [fanta.id, snap.data().count] as const;
+      }),
+    ).then((entries) => {
+      if (!cancelled) setAuctionCounts(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fantas.map((f) => f.id).join(",")]);
 
   const getUserRole = (fantaId: string) => {
     const role = getMyRoleFor(fantaId);
@@ -92,7 +126,7 @@ export default function DashboardPage() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {fantas.map((fanta) => {
             const role = getUserRole(fanta.id);
-            const activeAuctions = 0; // TODO: Contare aste attive da Firebase
+            const activeAuctions = auctionCounts[fanta.id] ?? 0;
 
             return (
               <Card
