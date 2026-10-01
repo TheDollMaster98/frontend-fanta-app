@@ -52,6 +52,7 @@ import {
 import {
   getFantasyPlayerStats,
   getFantasyTeamStats,
+  getPickedChampionsInRange,
 } from "@/lib/leaguepediaApi";
 import {
   findLeagueId,
@@ -82,6 +83,8 @@ import type {
   PickemBracket,
   PickemRound,
   PickemPrediction,
+  ChampionPick,
+  ChampionPickRoundState,
 } from "@/types";
 
 const DEFAULT_TEAM_NAME = "I Campioni";
@@ -243,6 +246,16 @@ interface FantaContextType {
   ) => Promise<void>;
   submitPickemPrediction: (picks: Record<string, string>) => Promise<void>;
   getPickemPoints: (userId: string) => number;
+
+  // Pick/ban campione settimanale (1/10): solo leghe a campionato
+  // normale (CalendarRound esiste), vedi types/championpick.types.ts.
+  // championPickRounds/championPicks contengono SOLO ciò che le regole
+  // Firestore permettono di leggere (proprio pick sempre, altrui solo a
+  // turno chiuso) — niente da filtrare ulteriormente lato client.
+  championPickRounds: ChampionPickRoundState[];
+  championPicks: ChampionPick[];
+  submitChampionPick: (roundId: string, championName: string) => Promise<void>;
+  closeChampionPickRound: (roundId: string) => Promise<void>;
 
   // Scoperta leghe e richieste di ingresso
   discoverableFantas: Fanta[];
@@ -553,6 +566,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   const [bracketRounds, setBracketRounds] = useState<BracketRound[]>([]);
   const [pickemBracket, setPickemBracket] = useState<PickemBracket | null>(null);
   const [pickemPredictions, setPickemPredictions] = useState<PickemPrediction[]>([]);
+  const [championPickRounds, setChampionPickRounds] = useState<ChampionPickRoundState[]>([]);
+  const [championPicks, setChampionPicks] = useState<ChampionPick[]>([]);
   const [memberProfiles, setMemberProfiles] = useState<
     Record<string, { name: string; email: string }>
   >({});
@@ -747,6 +762,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     "bracket",
     "joinRequests",
     "pickem",
+    "championPickRounds",
+    "championPicks",
   ] as const;
 
   const deleteFanta = async (fantaId: string): Promise<void> => {
@@ -1211,6 +1228,75 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     );
   }, [currentFanta]);
 
+  // Pick/ban campione settimanale: due listener separati (round state +
+  // picks) invece di uno solo come pickem, perché qui le regole negano
+  // la LETTURA stessa dei pick altrui finché il turno non è chiuso (non
+  // sono nella stessa collection con un id convenzionale da smistare
+  // come "bracket" vs "prediction_x": sono due collection distinte).
+  // championPicks arriva già filtrato dalle regole Firestore stesse
+  // (proprio pick sempre presente, altrui solo a turno chiuso): nessun
+  // filtro aggiuntivo lato client.
+  useEffect(() => {
+    if (!currentFanta) {
+      setChampionPickRounds([]);
+      return;
+    }
+    const roundsQuery = collection(
+      db,
+      "fantas",
+      currentFanta.id,
+      "championPickRounds",
+    );
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          roundsQuery,
+          (snapshot) => {
+            setChampionPickRounds(
+              snapshot.docs.map((docSnap) => ({
+                roundId: docSnap.id,
+                closed: !!docSnap.data().closed,
+              })),
+            );
+          },
+          onError,
+        ),
+      "championPickRounds",
+    );
+  }, [currentFanta]);
+
+  useEffect(() => {
+    if (!currentFanta) {
+      setChampionPicks([]);
+      return;
+    }
+    const picksQuery = collection(db, "fantas", currentFanta.id, "championPicks");
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          picksQuery,
+          (snapshot) => {
+            setChampionPicks(
+              snapshot.docs.map((docSnap) => {
+                const data = docSnap.data();
+                return {
+                  id: docSnap.id,
+                  userId: data.userId as string,
+                  roundId: data.roundId as string,
+                  championName: data.championName as string,
+                  ...(typeof data.points === "number"
+                    ? { points: data.points as number }
+                    : {}),
+                };
+              }),
+            );
+          },
+          onError,
+        ),
+      "championPicks",
+    );
+  }, [currentFanta]);
+
   // Genera (o rigenera da capo) il calendario a girone all'italiana tra i
   // membri della lega corrente, col metodo del cerchio: cancella i turni
   // precedenti prima di scrivere i nuovi, altrimenti si accumulerebbero.
@@ -1449,6 +1535,71 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       }, 0);
       return total + roundPoints;
     }, 0);
+  };
+
+  // Il membro invia il proprio pick settimanale — un solo documento per
+  // (turno, membro), id "{roundId}_{userId}" (vedi firestore.rules per
+  // il motivo di questo formato). Il blocco reale è lato regole
+  // (negano la scrittura a turno chiuso); qui solo un controllo UX per
+  // un messaggio chiaro invece di un errore Firestore grezzo.
+  const submitChampionPick = async (
+    roundId: string,
+    championName: string,
+  ): Promise<void> => {
+    if (!currentFanta || !currentMember) return;
+    const round = championPickRounds.find((r) => r.roundId === roundId);
+    if (round?.closed) return;
+    await setDoc(
+      doc(
+        db,
+        "fantas",
+        currentFanta.id,
+        "championPicks",
+        `${roundId}_${currentMember.userId}`,
+      ),
+      { userId: currentMember.userId, roundId, championName },
+    );
+  };
+
+  // Admin/vice/developer: chiude il turno (rivela le scelte di tutti,
+  // vedi firestore.rules) e assegna i punti, in due scritture SEPARATE
+  // non in batch — la seconda deve rileggere i pick appena resi
+  // visibili dalla prima, e un batch non vedrebbe comunque quella
+  // stessa scrittura precedente (stessa lezione di addFanta/invite già
+  // vista altrove in questo file: get()/exists() dentro le regole non
+  // vede scritture pendenti dello stesso batch).
+  const closeChampionPickRound = async (roundId: string): Promise<void> => {
+    if (!currentFanta) return;
+    const round = calendar.find((r) => r.id === roundId);
+    if (!round) return;
+
+    await setDoc(
+      doc(db, "fantas", currentFanta.id, "championPickRounds", roundId),
+      { closed: true },
+    );
+
+    const picksSnap = await getDocs(
+      query(
+        collection(db, "fantas", currentFanta.id, "championPicks"),
+        where("roundId", "==", roundId),
+      ),
+    );
+    if (picksSnap.empty) return;
+
+    const pickedChampions = await getPickedChampionsInRange(
+      currentFanta.settings.circuitType || "",
+      { start: round.startDate, end: round.endDate },
+    );
+
+    const batch = writeBatch(db);
+    picksSnap.docs.forEach((docSnap) => {
+      const championName = (docSnap.data().championName as string) || "";
+      const points = pickedChampions.has(championName.trim().toLowerCase())
+        ? 2
+        : 0;
+      batch.update(docSnap.ref, { points });
+    });
+    await batch.commit();
   };
 
   // Chiude il mercato (niente più aste nuove/offerte/pick di draft/rimozioni
@@ -2477,6 +2628,10 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         setPickemMatchWinner,
         submitPickemPrediction,
         getPickemPoints,
+        championPickRounds,
+        championPicks,
+        submitChampionPick,
+        closeChampionPickRound,
         discoverableFantas,
         myJoinRequests,
         pendingJoinRequests,

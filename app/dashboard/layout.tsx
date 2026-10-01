@@ -141,6 +141,18 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         href: "/dashboard/pickem",
         icon: ListChecks,
       });
+    } else {
+      // Pick/ban campione settimanale (1/10): l'opposto del Pick'em,
+      // serve il calendario a girone (CalendarRound) che i circuiti a
+      // eliminazione non hanno finché non entrano in fase a eliminazione.
+      const standingsIdx = navigation.findIndex(
+        (item) => item.href === "/dashboard/standings",
+      );
+      navigation.splice(standingsIdx + 1, 0, {
+        name: "Pick/Ban",
+        href: "/dashboard/championpick",
+        icon: ListChecks,
+      });
     }
   }
 

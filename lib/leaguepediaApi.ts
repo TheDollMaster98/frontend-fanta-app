@@ -772,6 +772,53 @@ export async function getFantasyTeamStats(
   return stats;
 }
 
+/**
+ * Campioni pickati (giocati da una delle due squadre) in almeno una
+ * partita del circuito in una finestra di date — usato dal pick/ban
+ * settimanale (1/10): un campione scelto da un membro vale punti se
+ * risulta qui, a prescindere dal fatto che in un'altra partita della
+ * stessa finestra sia stato anche bannato (un ban non toglie i punti
+ * già guadagnati da un pick altrove). Team1Picks/Team2Picks verificati
+ * con una query reale contro l'endpoint di produzione (1/10): liste di
+ * nomi campione separate da virgola, es. "Aatrox,Lee Sin,Ahri,...".
+ */
+export async function getPickedChampionsInRange(
+  circuitType: string,
+  dateRange: { start: Date; end: Date },
+): Promise<Set<string>> {
+  const champions = new Set<string>();
+  const dateClause = ` AND SG.DateTime_UTC >= "${toCargoDateTime(dateRange.start)}" AND SG.DateTime_UTC < "${toCargoDateTime(dateRange.end)}"`;
+  const results: CargoRecord[] = [];
+  const pageSize = 500;
+  let offset = 0;
+
+  while (true) {
+    const page = await cargoQuery({
+      tables: "ScoreboardGames=SG, Tournaments=T",
+      fields: "SG.Team1Picks, SG.Team2Picks",
+      where: `(T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")${dateClause}`,
+      join_on: "SG.OverviewPage=T.OverviewPage",
+      limit: pageSize,
+      offset,
+    });
+
+    results.push(...page);
+    if (page.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  results.forEach((r) => {
+    [...(r.Team1Picks || "").split(","), ...(r.Team2Picks || "").split(",")].forEach(
+      (name) => {
+        const trimmed = name.trim().toLowerCase();
+        if (trimmed) champions.add(trimmed);
+      },
+    );
+  });
+
+  return champions;
+}
+
 export interface PlayerGameLog {
   gameId: string;
   date: string; // DateTime_UTC grezzo da Leaguepedia
