@@ -53,6 +53,7 @@ const INITIAL_FORM = {
   draftMode: "auction" as DraftMode,
   draftPickSeconds: MIN_COUNTDOWN_SECONDS,
   defaultCountdown: MIN_COUNTDOWN_SECONDS,
+  generalBudget: DEFAULT_FANTA_SETTINGS.generalBudget,
 };
 
 export function CreateFantaDialog() {
@@ -98,6 +99,9 @@ export function CreateFantaDialog() {
           draftMode: formData.draftMode,
           draftPickSeconds: formData.draftPickSeconds,
           defaultCountdown: formData.defaultCountdown,
+          ...(formData.draftMode === "auction"
+            ? { generalBudget: formData.generalBudget }
+            : {}),
           ...(isLol
             ? {
                 circuitType: formData.circuitType,
@@ -251,6 +255,28 @@ export function CreateFantaDialog() {
               />
               <p className="text-xs text-muted-foreground">
                 Tra {MIN_COUNTDOWN_SECONDS}s e {MAX_COUNTDOWN_SECONDS}s.
+                Cambiabile in seguito da Gestione Lega.
+              </p>
+            </div>
+          )}
+
+          {formData.draftMode === "auction" && (
+            <div className="space-y-2">
+              <Label htmlFor="generalBudget">Budget Generale (€)</Label>
+              <Input
+                id="generalBudget"
+                type="number"
+                min={1}
+                value={formData.generalBudget}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    generalBudget: Number(e.target.value),
+                  })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Crediti di partenza per ogni membro, da spendere nelle aste.
                 Cambiabile in seguito da Gestione Lega.
               </p>
             </div>
