@@ -35,13 +35,12 @@ export const CIRCUIT_TYPES = [
 ] as const;
 export const PLAYOFF_CIRCUITS: readonly string[] = ["MSI", "WORLDS"];
 
-// Termine da cercare su Leaguepedia (T.Name LIKE) per prendere i player del
-// torneo giusto quando la lega è a eliminazione: "World Championship" è già
-// verificato e in uso (getTeamRosterHistory, filtro "Solo roster Mondiali").
-// "Mid-Season Invitational" segue la stessa convenzione di nomenclatura
-// Leaguepedia ma NON è stato verificato con una query reale in questa
-// sessione (egress bloccato verso lol.fandom.com nell'ambiente di lavoro) —
-// se al primo utilizzo reale MSI risultasse vuoto, va verificato a mano.
+// Valore esatto di Tournaments.League su Leaguepedia per i due circuiti a
+// eliminazione. Entrambi verificati con query dirette all'API di produzione
+// (1/10, vedi getPlayersByLeague con exactMatch): Tournaments.League vale
+// letteralmente "World Championship" per ogni edizione Worlds 2023-2026 e
+// "Mid-Season Invitational" per ogni edizione MSI 2017-2027 — non più
+// un'assunzione, dati reali.
 export const PLAYOFF_CIRCUIT_TOURNAMENT_QUERY: Record<string, string> = {
   WORLDS: "World Championship",
   MSI: "Mid-Season Invitational",

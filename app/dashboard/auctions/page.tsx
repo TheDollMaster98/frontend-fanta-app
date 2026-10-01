@@ -309,17 +309,23 @@ export default function AuctionsPage() {
     }
 
     let cancelled = false;
-    getPlayersByLeague(selectedAuctionLeague).then((players) => {
-      if (!cancelled) {
-        setAuctionPlayers(players);
-        setAuctionPlayersLeague(selectedAuctionLeague);
-      }
-    });
+    // Con un circuito a eliminazione (Worlds/MSI) il torneo è scelto in auto
+    // da PLAYOFF_CIRCUIT_TOURNAMENT_QUERY con un valore esatto verificato:
+    // match esatto su Tournaments.League, non LIKE, altrimenti arrivano
+    // anche tornei non-LoL con "World Championship" nel nome (es. IeSF).
+    getPlayersByLeague(selectedAuctionLeague, !!playoffTournamentQuery).then(
+      (players) => {
+        if (!cancelled) {
+          setAuctionPlayers(players);
+          setAuctionPlayersLeague(selectedAuctionLeague);
+        }
+      },
+    );
 
     return () => {
       cancelled = true;
     };
-  }, [currentFanta?.sportType, selectedAuctionLeague]);
+  }, [currentFanta?.sportType, selectedAuctionLeague, playoffTournamentQuery]);
 
   // Ricerca squadre con debounce: solo quando si sta creando un'asta di
   // tipo "Squadra", altrimenti niente chiamate inutili all'API.

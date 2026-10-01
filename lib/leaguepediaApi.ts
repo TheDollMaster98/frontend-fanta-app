@@ -332,10 +332,18 @@ export async function searchPlayers(
 }
 
 /**
- * Ottiene tutti i giocatori di una specifica lega
+ * Ottiene tutti i giocatori di una specifica lega.
+ *
+ * exactMatch=true cerca Tournaments.League uguale esatto invece di LIKE su
+ * Name/League: serve per Worlds/MSI (vedi PLAYOFF_CIRCUIT_TOURNAMENT_QUERY),
+ * dove il valore esatto è noto e verificato — con LIKE, "World Championship"
+ * prende a bordo anche tornei non-LoL come "IeSF ... World Championship" e
+ * vecchie finali regionali il cui League contiene la stessa sottostringa
+ * (verificato con query reale, 1/10: rumore concreto, non teorico).
  */
 export async function getPlayersByLeague(
   league: string = "TUTTI I PRO PLAYER",
+  exactMatch = false,
 ): Promise<LeaguepediaPlayer[]> {
   const isAllPlayers = league === "TUTTI I PRO PLAYER";
   const results: CargoRecord[] = [];
@@ -350,7 +358,9 @@ export async function getPlayersByLeague(
         "P.Player, P.Name, P.Country, P.Birthdate, P.Residency, P.Role, P.Team, T.Name=League",
       where: isAllPlayers
         ? undefined
-        : `(T.Name LIKE "%${escapeCargoValue(league)}%" OR T.League LIKE "%${escapeCargoValue(league)}%")`,
+        : exactMatch
+          ? `T.League="${escapeCargoValue(league)}"`
+          : `(T.Name LIKE "%${escapeCargoValue(league)}%" OR T.League LIKE "%${escapeCargoValue(league)}%")`,
       join_on:
         "T.OverviewPage=TP.OverviewPage, TP.Player=PR.AllName, PR.OverviewPage=P.OverviewPage",
       order_by: "P.Player",
