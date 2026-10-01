@@ -79,6 +79,9 @@ import type {
   ManualTeamStats,
   DraftState,
   PendingDraftAssignment,
+  PickemBracket,
+  PickemRound,
+  PickemPrediction,
 } from "@/types";
 
 const DEFAULT_TEAM_NAME = "I Campioni";
@@ -223,6 +226,23 @@ interface FantaContextType {
     startDate?: Date,
     roundLengthDays?: number,
   ) => Promise<void>;
+
+  // Pick'em (1/10): pronostico sul bracket vero del torneo (squadre pro),
+  // solo fase a eliminazione diretta, pronostici bloccati tutti insieme
+  // prima dell'inizio, punti crescenti per round — vedi
+  // types/pickem.types.ts per le scelte di prodotto fatte dall'utente.
+  // null finché l'admin non ha ancora creato il bracket.
+  pickemBracket: PickemBracket | null;
+  pickemPredictions: PickemPrediction[];
+  savePickemBracket: (rounds: PickemRound[]) => Promise<void>;
+  setPickemLocked: (locked: boolean) => Promise<void>;
+  setPickemMatchWinner: (
+    roundIndex: number,
+    matchId: string,
+    winner: string,
+  ) => Promise<void>;
+  submitPickemPrediction: (picks: Record<string, string>) => Promise<void>;
+  getPickemPoints: (userId: string) => number;
 
   // Scoperta leghe e richieste di ingresso
   discoverableFantas: Fanta[];
@@ -531,6 +551,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   const [calendar, setCalendar] = useState<CalendarRound[]>([]);
   const [groups, setGroups] = useState<FantaGroup[]>([]);
   const [bracketRounds, setBracketRounds] = useState<BracketRound[]>([]);
+  const [pickemBracket, setPickemBracket] = useState<PickemBracket | null>(null);
+  const [pickemPredictions, setPickemPredictions] = useState<PickemPrediction[]>([]);
   const [memberProfiles, setMemberProfiles] = useState<
     Record<string, { name: string; email: string }>
   >({});
@@ -724,6 +746,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     "groups",
     "bracket",
     "joinRequests",
+    "pickem",
   ] as const;
 
   const deleteFanta = async (fantaId: string): Promise<void> => {
@@ -1141,6 +1164,53 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     );
   }, [currentFanta]);
 
+  // Pick'em: un solo documento "bracket" + un documento "prediction_{uid}"
+  // per membro, tutti nella stessa collection "pickem" (vedi
+  // types/pickem.types.ts e firestore.rules) — un unico listener sull'intera
+  // collection invece di uno per il bracket e N per le predictions, separati
+  // qui in base all'id del documento.
+  useEffect(() => {
+    if (!currentFanta) {
+      setPickemBracket(null);
+      setPickemPredictions([]);
+      return;
+    }
+
+    const pickemQuery = collection(db, "fantas", currentFanta.id, "pickem");
+
+    return attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          pickemQuery,
+          (snapshot) => {
+            let bracket: PickemBracket | null = null;
+            const predictions: PickemPrediction[] = [];
+            snapshot.docs.forEach((docSnap) => {
+              const data = docSnap.data();
+              if (docSnap.id === "bracket") {
+                bracket = {
+                  rounds: (data.rounds as PickemRound[]) || [],
+                  locked: !!data.locked,
+                };
+              } else if (docSnap.id.startsWith("prediction_")) {
+                predictions.push({
+                  userId: docSnap.id.slice("prediction_".length),
+                  picks: (data.picks as Record<string, string>) || {},
+                  submittedAt: toDate(
+                    data.submittedAt as Timestamp | Date | undefined,
+                  ),
+                });
+              }
+            });
+            setPickemBracket(bracket);
+            setPickemPredictions(predictions);
+          },
+          onError,
+        ),
+      "pickem",
+    );
+  }, [currentFanta]);
+
   // Genera (o rigenera da capo) il calendario a girone all'italiana tra i
   // membri della lega corrente, col metodo del cerchio: cancella i turni
   // precedenti prima di scrivere i nuovi, altrimenti si accumulerebbero.
@@ -1291,6 +1361,94 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       ...currentFanta,
       settings: { ...currentFanta.settings, bracketRoundLengthDays: roundLengthDays },
     });
+  };
+
+  // Admin/vice/developer: crea o sostituisce per intero il bracket Pick'em
+  // (tutti i round/match insieme, non un merge incrementale) — stesso
+  // approccio di generateCalendar/generateGroups/generateBracket sopra.
+  // "locked" non viene toccato qui: si cambia solo con setPickemLocked,
+  // altrimenti ogni modifica al bracket (es. aggiungere un round) lo
+  // sbloccherebbe per errore.
+  const savePickemBracket = async (rounds: PickemRound[]): Promise<void> => {
+    if (!currentFanta) return;
+    await setDoc(doc(db, "fantas", currentFanta.id, "pickem", "bracket"), {
+      rounds,
+      locked: pickemBracket?.locked ?? false,
+    });
+  };
+
+  // Blocca/sblocca i pronostici — vedi firestore.rules: una volta locked,
+  // nessun membro (proprietario incluso) può più scrivere il proprio
+  // prediction_{uid}.
+  const setPickemLocked = async (locked: boolean): Promise<void> => {
+    if (!currentFanta) return;
+    await updateDoc(doc(db, "fantas", currentFanta.id, "pickem", "bracket"), {
+      locked,
+    });
+  };
+
+  // Admin/vice/developer: inserisce il vincitore reale di un match dopo che
+  // è stato giocato — nessuna fonte automatica (a differenza del bracket
+  // fantasy, qui non c'è un corrispondente "round" con date certe da
+  // interrogare su lolesports/Leaguepedia prima che il torneo cominci
+  // davvero, e il formato del bracket stesso lo decide l'admin a mano).
+  const setPickemMatchWinner = async (
+    roundIndex: number,
+    matchId: string,
+    winner: string,
+  ): Promise<void> => {
+    if (!currentFanta || !pickemBracket) return;
+    const updatedRounds = pickemBracket.rounds.map((round, idx) =>
+      idx !== roundIndex
+        ? round
+        : {
+            ...round,
+            matches: round.matches.map((m) =>
+              m.id === matchId ? { ...m, winner } : m,
+            ),
+          },
+    );
+    await updateDoc(doc(db, "fantas", currentFanta.id, "pickem", "bracket"), {
+      rounds: updatedRounds,
+    });
+  };
+
+  // Il membro invia/aggiorna il proprio pronostico (un vincitore per ogni
+  // match del bracket). Il blocco vero è lato regole (pickemBracket.locked);
+  // il controllo qui evita solo di mostrare un errore Firestore invece di un
+  // messaggio chiaro in UI.
+  const submitPickemPrediction = async (
+    picks: Record<string, string>,
+  ): Promise<void> => {
+    if (!currentFanta || !currentMember || pickemBracket?.locked) return;
+    await setDoc(
+      doc(
+        db,
+        "fantas",
+        currentFanta.id,
+        "pickem",
+        `prediction_${currentMember.userId}`,
+      ),
+      { picks, submittedAt: serverTimestamp() },
+    );
+  };
+
+  // Punti Pick'em di un membro: round.points per ogni match già deciso
+  // (match.winner presente) il cui pronostico coincide col vincitore reale.
+  // Niente punti per match ancora da giocare o pronostici mancanti.
+  const getPickemPoints = (userId: string): number => {
+    if (!pickemBracket) return 0;
+    const prediction = pickemPredictions.find((p) => p.userId === userId);
+    if (!prediction) return 0;
+    return pickemBracket.rounds.reduce((total, round) => {
+      const roundPoints = round.matches.reduce((sum, match) => {
+        if (match.winner && prediction.picks[match.id] === match.winner) {
+          return sum + round.points;
+        }
+        return sum;
+      }, 0);
+      return total + roundPoints;
+    }, 0);
   };
 
   // Chiude il mercato (niente più aste nuove/offerte/pick di draft/rimozioni
@@ -2312,6 +2470,13 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         bracketRounds,
         generateGroups,
         generateBracket,
+        pickemBracket,
+        pickemPredictions,
+        savePickemBracket,
+        setPickemLocked,
+        setPickemMatchWinner,
+        submitPickemPrediction,
+        getPickemPoints,
         discoverableFantas,
         myJoinRequests,
         pendingJoinRequests,

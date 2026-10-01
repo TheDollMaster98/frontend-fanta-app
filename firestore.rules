@@ -361,6 +361,28 @@ service cloud.firestore {
         allow read, write: if request.auth != null;
       }
 
+      // Pick'em (1/10): un solo documento "bracket" (scritto solo da
+      // admin/vice/developer, incluso il campo locked) + un documento
+      // "prediction_{uid}" per ogni membro (scrivibile solo dal membro
+      // stesso, e solo finché bracket.locked non è true — una volta
+      // bloccato, i pronostici non sono più modificabili da nessuno,
+      // nemmeno dal proprietario). exists() prima di get() perché il
+      // bracket potrebbe non esistere ancora quando un membro prova a
+      // salvare la primissima bozza del proprio pronostico.
+      match /pickem/{docId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && (
+          (docId == "bracket" && isAdminOrVice())
+          || (
+            docId == "prediction_" + request.auth.uid
+            && (
+              !exists(/databases/$(database)/documents/fantas/$(fantaId)/pickem/bracket)
+              || get(/databases/$(database)/documents/fantas/$(fantaId)/pickem/bracket).data.locked != true
+            )
+          )
+        );
+      }
+
       match /joinRequests/{requestId} {
         allow read: if request.auth != null;
         // Si può creare una richiesta solo come se stessi, non a nome di
