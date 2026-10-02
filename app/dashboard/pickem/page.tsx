@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { PLAYOFF_CIRCUITS } from "@/lib/constants";
 import type { PickemRound } from "@/types";
 
 // Stato locale di editing: stessa forma di PickemRound/PickemMatch ma con
@@ -36,9 +38,11 @@ function emptyRound(): PickemRound {
 }
 
 export default function PickemPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const {
     currentFanta,
+    isLoading: fantaLoading,
     fantaMembers,
     currentMember,
     isFantaViceOrAdmin,
@@ -50,6 +54,21 @@ export default function PickemPage() {
     submitPickemPrediction,
     getPickemPoints,
   } = useFanta();
+
+  // Pick'em ha senso solo per i circuiti a eliminazione (WORLDS/MSI): se
+  // si cambia "Lega Attiva" verso una lega che non lo è mentre si è su
+  // questa pagina, rimanda alla dashboard invece di restare su una
+  // sezione che per quella lega non esiste (bug segnalato, 2/10).
+  const isValidForFanta =
+    !!currentFanta &&
+    currentFanta.sportType === "lol" &&
+    PLAYOFF_CIRCUITS.includes(currentFanta.settings.circuitType || "");
+
+  useEffect(() => {
+    if (!fantaLoading && currentFanta && !isValidForFanta) {
+      router.push("/dashboard");
+    }
+  }, [fantaLoading, currentFanta, isValidForFanta, router]);
 
   const [editRounds, setEditRounds] = useState<PickemRound[]>([]);
   const [isSavingBracket, setIsSavingBracket] = useState(false);
@@ -180,6 +199,10 @@ export default function PickemPage() {
       hasPrediction: pickemPredictions.some((p) => p.userId === m.userId),
     }))
     .sort((a, b) => b.points - a.points);
+
+  if (fantaLoading || !currentFanta || !isValidForFanta) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">
