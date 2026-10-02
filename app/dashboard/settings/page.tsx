@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -27,6 +28,7 @@ import { Bell } from "lucide-react";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
+import { DeleteFantaDialog } from "@/components/DeleteFantaDialog";
 import { toast } from "sonner";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -34,6 +36,7 @@ import type { Invite } from "@/types";
 import { Copy } from "lucide-react";
 
 export default function SettingsPage() {
+  const router = useRouter();
   const {
     fantas,
     currentFanta,
@@ -41,7 +44,10 @@ export default function SettingsPage() {
     getTeamName,
     updateTeamName,
     getMemberCount,
+    getMyRoleFor,
+    deleteFanta,
   } = useFanta();
+  const [deletingFantaId, setDeletingFantaId] = useState<string | null>(null);
   const {
     user,
     isPreviewingAsNonDeveloper,
@@ -128,6 +134,31 @@ export default function SettingsPage() {
     if (user && teamName.trim()) {
       updateTeamName(user.id, teamName.trim());
       toast.success("Nome team salvato");
+    }
+  };
+
+  // "Leghe Disponibili" era un elenco di sola lettura, senza nessuna
+  // azione di gestione (segnalato, 2/10): "Gestisci" porta dritto in
+  // Gestione Lega per QUELLA lega (prima bisognava cambiare "Lega
+  // Attiva" dal selettore e poi cercare la voce "Gestione" in sidebar),
+  // "Elimina" usa la stessa conferma testuale di Gestione Lega — niente
+  // di meno sicuro solo perché è un accesso rapido.
+  const handleManageFanta = (fantaId: string) => {
+    const fanta = fantas.find((f) => f.id === fantaId);
+    if (fanta) setCurrentFanta(fanta);
+    router.push("/dashboard/admin");
+  };
+
+  const handleDeleteFanta = async (fantaId: string) => {
+    setDeletingFantaId(fantaId);
+    try {
+      await deleteFanta(fantaId);
+      toast.success("Lega eliminata");
+    } catch (error) {
+      console.error("Errore nell'eliminazione della lega:", error);
+      toast.error("Errore nell'eliminazione, riprova");
+    } finally {
+      setDeletingFantaId(null);
     }
   };
 
@@ -361,22 +392,47 @@ export default function SettingsPage() {
                     Leghe Disponibili
                   </h4>
                   <div className="space-y-2">
-                    {fantas.map((fanta) => (
-                      <div
-                        key={fanta.id}
-                        className="flex items-center justify-between p-3 border border-border rounded hover:bg-raised transition-colors"
-                      >
-                        <div>
-                          <p className="font-medium text-foreground">
-                            {fanta.name}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {fanta.sportType} • {getMemberCount(fanta.id)} membri
-                          </p>
+                    {fantas.map((fanta) => {
+                      const role = getMyRoleFor(fanta.id);
+                      const canManage = role === "admin" || role === "vice";
+                      return (
+                        <div
+                          key={fanta.id}
+                          className="flex flex-wrap items-center justify-between gap-2 p-3 border border-border rounded hover:bg-raised transition-colors"
+                        >
+                          <div>
+                            <p className="font-medium text-foreground">
+                              {fanta.name}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {fanta.sportType} • {getMemberCount(fanta.id)} membri
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {currentFanta?.id === fanta.id && (
+                              <Badge>Attiva</Badge>
+                            )}
+                            {canManage && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleManageFanta(fanta.id)}
+                                >
+                                  Gestisci
+                                </Button>
+                                <DeleteFantaDialog
+                                  fantaName={fanta.name}
+                                  isDeleting={deletingFantaId === fanta.id}
+                                  onConfirm={() => handleDeleteFanta(fanta.id)}
+                                  size="sm"
+                                />
+                              </>
+                            )}
+                          </div>
                         </div>
-                        {currentFanta?.id === fanta.id && <Badge>Attiva</Badge>}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>

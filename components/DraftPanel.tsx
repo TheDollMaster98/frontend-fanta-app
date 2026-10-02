@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { toast } from "sonner";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildDraftSlots, getDraftTurnUserId } from "@/lib/draft";
@@ -132,6 +133,19 @@ export function DraftPanel() {
     fillPendingDraftAssignment,
   } = useFanta();
   const { user } = useAuth();
+  const [isStartingDraft, setIsStartingDraft] = useState(false);
+
+  const handleStartDraft = async () => {
+    setIsStartingDraft(true);
+    try {
+      await startDraft();
+    } catch (error) {
+      console.error("Errore nell'avvio del draft:", error);
+      toast.error("Errore nell'avvio del draft, riprova");
+    } finally {
+      setIsStartingDraft(false);
+    }
+  };
 
   const slots = useMemo(
     () => (currentFanta ? buildDraftSlots(currentFanta) : []),
@@ -255,7 +269,9 @@ export function DraftPanel() {
                 Servono almeno 2 membri nella lega per avviare il draft.
               </p>
             ) : (
-              <Button onClick={startDraft}>Genera ordine e avvia Draft</Button>
+              <Button onClick={handleStartDraft} disabled={isStartingDraft}>
+                {isStartingDraft ? "Avvio..." : "Genera ordine e avvia Draft"}
+              </Button>
             )
           ) : (
             <p className="text-sm text-muted-foreground">

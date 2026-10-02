@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -41,6 +41,7 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import type { Fanta, SportType } from "@/types";
 import { RoleScoringWeightsEditor } from "@/components/RoleScoringWeightsEditor";
+import { DeleteFantaDialog } from "@/components/DeleteFantaDialog";
 import {
   MIN_COUNTDOWN_SECONDS,
   MAX_COUNTDOWN_SECONDS,
@@ -975,52 +976,3 @@ function AdminPageContent({
   );
 }
 
-// Conferma testuale (nome esatto della lega) invece di un semplice "sei
-// sicuro?": è un'azione irreversibile che cancella anche i dati di tutti
-// gli altri membri, non solo i propri.
-function DeleteFantaDialog({
-  fantaName,
-  isDeleting,
-  onConfirm,
-}: {
-  fantaName: string;
-  isDeleting: boolean;
-  onConfirm: () => void;
-}) {
-  const [confirmText, setConfirmText] = useState("");
-  const canConfirm = confirmText === fantaName && !isDeleting;
-
-  return (
-    <AlertDialog onOpenChange={(open) => !open && setConfirmText("")}>
-      <AlertDialogTrigger asChild>
-        <Button variant="destructive">Elimina Lega</Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Eliminare &quot;{fantaName}&quot;?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Cancella la lega e tutto il suo contenuto per tutti i membri:
-            membri, aste, draft, storico, calendario, gironi/tabellone,
-            richieste d&apos;ingresso. Non si può annullare. Scrivi{" "}
-            <strong>{fantaName}</strong> per confermare.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <Input
-          value={confirmText}
-          onChange={(e) => setConfirmText(e.target.value)}
-          placeholder={fantaName}
-        />
-        <AlertDialogFooter>
-          <AlertDialogCancel>Indietro</AlertDialogCancel>
-          <AlertDialogAction
-            disabled={!canConfirm}
-            onClick={onConfirm}
-            className={buttonVariants({ variant: "destructive" })}
-          >
-            {isDeleting ? "Eliminazione..." : "Elimina Definitivamente"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}

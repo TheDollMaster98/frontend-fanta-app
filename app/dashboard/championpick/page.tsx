@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -15,11 +16,14 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { PLAYOFF_CIRCUITS } from "@/lib/constants";
 
 export default function ChampionPickPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const {
     currentFanta,
+    isLoading: fantaLoading,
     fantaMembers,
     currentMember,
     isFantaViceOrAdmin,
@@ -30,6 +34,21 @@ export default function ChampionPickPage() {
     closeChampionPickRound,
     getMemberName,
   } = useFanta();
+
+  // Pick/Ban ha senso solo per leghe lol SENZA circuito a eliminazione
+  // (serve il calendario a girone, che WORLDS/MSI non hanno): se si
+  // cambia "Lega Attiva" verso una lega dove non si applica mentre si è
+  // su questa pagina, rimanda alla dashboard (bug segnalato, 2/10).
+  const isValidForFanta =
+    !!currentFanta &&
+    currentFanta.sportType === "lol" &&
+    !PLAYOFF_CIRCUITS.includes(currentFanta.settings.circuitType || "");
+
+  useEffect(() => {
+    if (!fantaLoading && currentFanta && !isValidForFanta) {
+      router.push("/dashboard");
+    }
+  }, [fantaLoading, currentFanta, isValidForFanta, router]);
 
   const [draftChampion, setDraftChampion] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
@@ -78,6 +97,10 @@ export default function ChampionPickPage() {
       setIsClosing(null);
     }
   };
+
+  if (fantaLoading || !currentFanta || !isValidForFanta) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">

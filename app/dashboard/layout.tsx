@@ -35,6 +35,7 @@ import {
   Trophy,
   Menu,
   ListChecks,
+  HelpCircle,
 } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -104,6 +105,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       icon: Zap,
     },
     { name: "Team", href: "/dashboard/team", icon: Users },
+    { name: "Guida", href: "/dashboard/guide", icon: HelpCircle },
     { name: "Impostazioni", href: "/dashboard/settings", icon: Settings },
   ];
 

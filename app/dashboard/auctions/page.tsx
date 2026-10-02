@@ -73,6 +73,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Flame, Save, Ban, Lock } from "lucide-react";
+import { toast } from "sonner";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { DraftPanel } from "@/components/DraftPanel";
@@ -95,6 +96,8 @@ export default function AuctionsPage() {
     closeAuction: closeAuctionInFirestore,
     cancelAuction: cancelAuctionInFirestore,
     reopenAuction,
+    deleteAuction,
+    updatePendingAuction,
     assignAuctionManually,
     getPlayersByUser,
     getUserBudget,
@@ -107,6 +110,13 @@ export default function AuctionsPage() {
   const [detailAuction, setDetailAuction] = useState<Auction | null>(null);
   const [manualAssignTo, setManualAssignTo] = useState("");
   const [bidHistory, setBidHistory] = useState<Bid[]>([]);
+  const [editAuction, setEditAuction] = useState<Auction | null>(null);
+  const [editForm, setEditForm] = useState({
+    basePrice: 0,
+    countdownSeconds: 0,
+    description: "",
+  });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Aste condivise via Firestore (contexts/FantaContext.tsx): questa pagina
   // legge/scrive tramite le funzioni del context, non tiene più uno stato
@@ -398,6 +408,40 @@ export default function AuctionsPage() {
 
   const startAuction = (auction: Auction) => {
     startAuctionInFirestore(auction.id, auction.countdownSeconds);
+  };
+
+  const openEditAuction = (auction: Auction) => {
+    setEditAuction(auction);
+    setEditForm({
+      basePrice: auction.basePrice,
+      countdownSeconds: auction.countdownSeconds,
+      description: auction.description || "",
+    });
+  };
+
+  const saveEditAuction = async () => {
+    if (!editAuction) return;
+    setIsSavingEdit(true);
+    try {
+      await updatePendingAuction(editAuction.id, editForm);
+      toast.success("Asta modificata");
+      setEditAuction(null);
+    } catch (error) {
+      console.error("Errore nella modifica dell'asta:", error);
+      toast.error("Errore nella modifica, riprova");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDeleteAuction = async (auctionId: string) => {
+    try {
+      await deleteAuction(auctionId);
+      toast.success("Asta eliminata");
+    } catch (error) {
+      console.error("Errore nell'eliminazione dell'asta:", error);
+      toast.error("Errore nell'eliminazione, riprova");
+    }
   };
 
   const placeBid = (amount: number) => {
@@ -1397,6 +1441,13 @@ export default function AuctionsPage() {
                       {auction.highestBidderId &&
                         ` - ${getMemberName(auction.highestBidderId, auction.highestBidderName)}`}
                     </p>
+                    {auction.auctionFormat && (
+                      <p className="text-xs text-muted-foreground">
+                        Formato: {auction.auctionFormat}
+                        {auction.status === "pending" &&
+                          ` · Base ${auction.basePrice}€ · Countdown ${auction.countdownSeconds}s`}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge
@@ -1413,9 +1464,31 @@ export default function AuctionsPage() {
                       {auction.status === "closed" && "Chiusa"}
                     </Badge>
                     {auction.status === "pending" && isAdmin && (
-                      <Button onClick={() => startAuction(auction)} size="sm">
-                        Avvia
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditAuction(auction);
+                          }}
+                        >
+                          Modifica
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteAuction(auction.id);
+                          }}
+                        >
+                          Elimina
+                        </Button>
+                        <Button onClick={() => startAuction(auction)} size="sm">
+                          Avvia
+                        </Button>
+                      </>
                     )}
                     {auction.status === "closed" && isAdmin && (
                       <Button
@@ -1436,6 +1509,78 @@ export default function AuctionsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Modifica asta in attesa: solo prezzo base/countdown/descrizione —
+          pickType/player/formato restano fissi, cambiarli vorrebbe dire
+          un'asta diversa (segnalato, 2/10: prima non c'era alcun modo di
+          correggere un'asta pending creata con dati sbagliati). */}
+      <Dialog
+        open={Boolean(editAuction)}
+        onOpenChange={(open) => !open && setEditAuction(null)}
+      >
+        <DialogContent>
+          {editAuction && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Modifica Asta: {editAuction.playerName}</DialogTitle>
+                <DialogDescription>
+                  Formato: {editAuction.auctionFormat || "N/D"}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="editBasePrice">Prezzo Base (€)</Label>
+                  <Input
+                    id="editBasePrice"
+                    type="number"
+                    min={1}
+                    value={editForm.basePrice}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        basePrice: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="editCountdown">Countdown (secondi)</Label>
+                  <Input
+                    id="editCountdown"
+                    type="number"
+                    min={MIN_COUNTDOWN_SECONDS}
+                    max={MAX_COUNTDOWN_SECONDS}
+                    value={editForm.countdownSeconds}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        countdownSeconds: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="editDescription">Descrizione</Label>
+                  <Textarea
+                    id="editDescription"
+                    value={editForm.description}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, description: e.target.value })
+                    }
+                  />
+                </div>
+                <Button
+                  onClick={saveEditAuction}
+                  disabled={isSavingEdit}
+                  className="w-full"
+                >
+                  {isSavingEdit ? "Salvataggio..." : "Salva Modifiche"}
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Dettaglio asta chiusa */}
       <Dialog
