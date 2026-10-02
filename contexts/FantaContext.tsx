@@ -286,6 +286,11 @@ interface FantaContextType {
   closeAuction: (auctionId: string) => void;
   cancelAuction: (auctionId: string) => void;
   reopenAuction: (auctionId: string) => Promise<void>;
+  deleteAuction: (auctionId: string) => Promise<void>;
+  updatePendingAuction: (
+    auctionId: string,
+    patch: { basePrice?: number; countdownSeconds?: number; description?: string },
+  ) => Promise<void>;
   assignAuctionManually: (
     auctionId: string,
     userId: string,
@@ -296,7 +301,7 @@ interface FantaContextType {
   // reale come le aste: null finché non è mai stato avviato (non esiste
   // ancora il documento fantas/{id}/draft/state).
   draftState: DraftState | null;
-  startDraft: () => void;
+  startDraft: () => Promise<void>;
   makeDraftPick: (input: {
     playerName: string;
     playerRole?: string;
@@ -2264,6 +2269,34 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   const cancelAuction = (auctionId: string): void =>
     finalizeAuction(auctionId, { cancel: true });
 
+  // Rimuove un'asta ancora "pending" (mai avviata): prima non c'era modo
+  // di disfarsi di un'asta creata per errore prima di avviarla — esiste
+  // solo "Annulla" per quella già attiva (segnalato, 2/10).
+  const deleteAuction = async (auctionId: string): Promise<void> => {
+    if (!currentFanta) return;
+    await deleteDoc(doc(db, "fantas", currentFanta.id, "auctions", auctionId));
+  };
+
+  // Corregge prezzo base/countdown/descrizione di un'asta ancora
+  // "pending": pickType/player/formato restano fissi (sono il motivo per
+  // cui quell'asta esiste, cambiarli vorrebbe dire un'asta diversa) —
+  // prima questi campi erano scritti una volta alla creazione senza
+  // possibilità di correggerli dopo (segnalato, 2/10).
+  const updatePendingAuction = async (
+    auctionId: string,
+    patch: {
+      basePrice?: number;
+      countdownSeconds?: number;
+      description?: string;
+    },
+  ): Promise<void> => {
+    if (!currentFanta) return;
+    await updateDoc(
+      doc(db, "fantas", currentFanta.id, "auctions", auctionId),
+      patch,
+    );
+  };
+
   // Assegna manualmente l'asta a un membro scelto da admin/vice/dev, anche
   // se non è lui l'offerente più alto registrato (es. due utenti si sono
   // già accordati fuori dall'asta su chi se lo prende).
@@ -2308,7 +2341,12 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   // makeDraftPick). Da chiamare una sola volta; se lo stato esiste già
   // questa sovrascrive tutto da capo, quindi l'UI la mostra solo quando
   // draftState è null o status "not_started".
-  const startDraft = (): void => {
+  // Prima non aspettava la scrittura né aveva un catch: se falliva (regole,
+  // rete, ecc) il bottone "Genera ordine e avvia Draft" non faceva
+  // letteralmente nulla, zero feedback (bug segnalato, "il draft non
+  // parte", 2/10). Ora propaga l'errore al chiamante (DraftPanel), che
+  // mostra un toast invece di restare in silenzio.
+  const startDraft = async (): Promise<void> => {
     if (!currentFanta) return;
     if (currentFanta.settings.seasonStarted) return;
     const pickSeconds =
@@ -2319,7 +2357,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       [order[i], order[j]] = [order[j], order[i]];
     }
 
-    setDoc(doc(db, "fantas", currentFanta.id, "draft", "state"), {
+    await setDoc(doc(db, "fantas", currentFanta.id, "draft", "state"), {
       status: "active",
       order,
       currentSlotIndex: 0,
@@ -2646,6 +2684,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         closeAuction,
         cancelAuction,
         reopenAuction,
+        deleteAuction,
+        updatePendingAuction,
         assignAuctionManually,
         draftState,
         startDraft,
