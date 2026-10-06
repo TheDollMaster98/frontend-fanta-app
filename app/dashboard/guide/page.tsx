@@ -111,10 +111,17 @@ const SECTIONS: GuideSection[] = [
       <>
         <p>
           Ogni membro scommette UN campione per il turno calendario
-          corrente: 2 punti se quel campione viene pickato in almeno una
-          partita pro reale di quella settimana (anche se in un&apos;altra
-          partita della stessa settimana è stato bannato altrove), 0
-          punti se non viene mai scelto da nessuna squadra.
+          corrente che pensa verrà pickato in una partita pro reale di
+          quella settimana. Se succede, i punti dipendono da quanti membri
+          hanno scelto lo stesso campione: 4 se sei l&apos;unico, 2 se
+          siete in due, 1 se siete in tre o più; +1 se è stato giocato da
+          una squadra che ha vinto.
+        </p>
+        <p>
+          Facoltativo: un campione che pensi verrà bannato dalla squadra
+          pro che hai in rosa (+2 se indovini). Se non hai una squadra in
+          rosa, o se la tua non gioca quella settimana, vale il circuito
+          intero (+1).
         </p>
         <p>
           La scelta si blocca al salvataggio ed è nascosta agli altri

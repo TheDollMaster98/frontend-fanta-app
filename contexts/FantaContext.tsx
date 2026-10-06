@@ -52,7 +52,7 @@ import {
 import {
   getFantasyPlayerStats,
   getFantasyTeamStats,
-  getPickedChampionsInRange,
+  getChampionGamesInRange,
 } from "@/lib/leaguepediaApi";
 import {
   findLeagueId,
@@ -61,6 +61,7 @@ import {
   stripTeamTagFromSummonerName,
 } from "@/lib/lolesportsApi";
 import { totalPickPoints, computeAutoPoints, computeLolesportsBonusPoints } from "@/lib/scoring";
+import { computeChampionPickResults } from "@/lib/championPickScoring";
 import { buildDraftSlots, getDraftTurnUserId, advanceDraftTurn } from "@/lib/draft";
 import type {
   Fanta,
@@ -254,7 +255,11 @@ interface FantaContextType {
   // turno chiuso) — niente da filtrare ulteriormente lato client.
   championPickRounds: ChampionPickRoundState[];
   championPicks: ChampionPick[];
-  submitChampionPick: (roundId: string, championName: string) => Promise<void>;
+  submitChampionPick: (
+    roundId: string,
+    championName: string,
+    banChampionName?: string,
+  ) => Promise<void>;
   closeChampionPickRound: (roundId: string) => Promise<void>;
 
   // Scoperta leghe e richieste di ingresso
@@ -1550,10 +1555,12 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   const submitChampionPick = async (
     roundId: string,
     championName: string,
+    banChampionName?: string,
   ): Promise<void> => {
     if (!currentFanta || !currentMember) return;
     const round = championPickRounds.find((r) => r.roundId === roundId);
     if (round?.closed) return;
+    const ban = banChampionName?.trim();
     await setDoc(
       doc(
         db,
@@ -1562,7 +1569,14 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         "championPicks",
         `${roundId}_${currentMember.userId}`,
       ),
-      { userId: currentMember.userId, roundId, championName },
+      {
+        userId: currentMember.userId,
+        roundId,
+        championName,
+        // Campo omesso (non stringa vuota) se il membro non scommette un
+        // ban: Firestore non accetta undefined nei documenti.
+        ...(ban ? { banChampionName: ban } : {}),
+      },
     );
   };
 
@@ -1591,18 +1605,44 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     );
     if (picksSnap.empty) return;
 
-    const pickedChampions = await getPickedChampionsInRange(
+    const games = await getChampionGamesInRange(
       currentFanta.settings.circuitType || "",
       { start: round.startDate, end: round.endDate },
+    );
+    // cargoQuery restituisce [] anche quando Leaguepedia è in rate limit
+    // o non risponde: senza questo controllo il turno si chiuderebbe con
+    // 0 punti a tutti come se nessuna partita fosse stata giocata. Il
+    // turno resta chiuso (scelte rivelate), i punti si ricalcolano
+    // rilanciando la stessa azione ("Ricalcola Punti" in UI).
+    if (games.length === 0) {
+      throw new Error("NO_GAMES");
+    }
+
+    // Squadra pro in rosa di ogni membro, per valutare il ban sulla sua
+    // squadra (vedi lib/championPickScoring.ts per il ripiego sul
+    // circuito se non ce l'ha o se non ha giocato nel turno).
+    const memberTeams: Record<string, string | undefined> = {};
+    fantaMembers.forEach((m) => {
+      memberTeams[m.userId] = m.team?.find((t) => t.pickType === "team")?.playerName;
+    });
+
+    const results = computeChampionPickResults(
+      picksSnap.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          userId: (data.userId as string) || "",
+          championName: (data.championName as string) || "",
+          banChampionName: data.banChampionName as string | undefined,
+        };
+      }),
+      games,
+      memberTeams,
     );
 
     const batch = writeBatch(db);
     picksSnap.docs.forEach((docSnap) => {
-      const championName = (docSnap.data().championName as string) || "";
-      const points = pickedChampions.has(championName.trim().toLowerCase())
-        ? 2
-        : 0;
-      batch.update(docSnap.ref, { points });
+      batch.update(docSnap.ref, { ...results[docSnap.id] });
     });
     await batch.commit();
   };
