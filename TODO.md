@@ -4,6 +4,30 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
+## Pick/Ban Campione — punteggio rifatto (6/10)
+
+La regola vecchia (+2 se il campione è pickato almeno una volta nella
+settimana) non distingueva nessuno: un campione del meta è pickato quasi
+sempre, tutti sceglievano quello e prendevano +2. Ora (numeri in
+`lib/championPickScoring.ts`, funzione pura condivisa con la UI):
+- pick indovinato: 4 pt se l'hai scelto solo tu, 2 se siete in due, 1 se
+  in tre o più; +1 se giocato da una squadra che ha vinto la partita;
+- ban facoltativo: +2 se lo banna la squadra pro in rosa (pick "team"),
+  +1 col ripiego sul circuito intero se non hai una squadra in rosa o se
+  la tua non ha giocato nella finestra del turno.
+Dati: `getChampionGamesInRange` (Team1/Team2/Winner/Team1Picks/Team1Bans
+di `ScoreboardGames`, campi verificati con `action=cargofields`). Se
+Leaguepedia non restituisce partite (rate limit), il turno resta chiuso
+ma i punti non vengono scritti: admin/vice rilanciano con "Ricalcola
+Punti". I turni chiusi prima di questo cambio tengono i punti vecchi.
+
+**Scoperta collaterale, da usare**: lo stesso `action=cargofields` su
+`ScoreboardGames` conferma i campi obiettivo che Step 1/Step 6 davano per
+bloccati: `Team1Towers`, `Team1Dragons`, `Team1Barons`, `Team1VoidGrubs`,
+`Team1RiftHeralds`, `Team1Atakhans`, `Team1Inhibitors`, `Team1Gold`,
+`Team1Kills` (e gli equivalenti Team2). Il calcolo automatico dei pesi
+squadra (`TeamScoringWeights`) non è più bloccato dai nomi campo.
+
 ## Avvia Stagione (chiusura mercato + calendario in un'azione)
 
 Su richiesta: `settings.seasonStarted` (default false/assente = mercato

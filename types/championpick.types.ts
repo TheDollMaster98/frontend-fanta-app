@@ -1,10 +1,12 @@
-// Pick/ban campione settimanale (1/10): ogni membro sceglie UN campione
-// per il turno calendario corrente, scommettendo che verrà giocato in
-// game pro reali quella settimana. +2pt se il campione scelto risulta
-// pickato in almeno una partita della finestra del turno (anche se in
-// un'altra partita della stessa finestra è stato bannato altrove — il
-// ban non toglie i punti già guadagnati dal pick), 0pt se non risulta
-// mai pickato (ignorato o solo bannato, mai scelto da nessuna squadra).
+// Pick/ban campione settimanale (1/10, punteggio rifatto il 6/10): ogni
+// membro sceglie per il turno calendario corrente UN campione che pensa
+// verrà pickato in game pro reali quella settimana, più (facoltativo) UN
+// campione che pensa verrà bannato dalla sua squadra pro (il pick "team"
+// in rosa). Regole e numeri in lib/championPickScoring.ts: i punti del
+// pick scalano con quanti membri hanno scelto lo stesso campione (prima
+// era +2 fisso, e tutti sceglievano lo stesso campione del meta), +1 se
+// giocato da una squadra vincente, e il ban vale +2 sulla propria
+// squadra o +1 sull'intero circuito come ripiego.
 //
 // Solo leghe a campionato normale (round-robin, CalendarRound esiste
 // già): WORLDS/MSI (gironi+bracket, niente turni calendario) restano
@@ -31,10 +33,23 @@ export interface ChampionPickRoundState {
 // ricalcolato (closeChampionPickRound in FantaContext fa entrambe le
 // cose in sequenza, non in batch — vedi il commento sull'implementazione
 // per il motivo, stessa lezione già vista con addFanta/invite).
+// "team" = ban valutato sulla squadra pro del membro, "circuit" = ripiego
+// sull'intero circuito (nessuna squadra in rosa, o la squadra non ha
+// giocato nella finestra del turno), "none" = nessun ban scommesso.
+export type ChampionPickBanScope = "team" | "circuit" | "none";
+
 export interface ChampionPick {
   id: string;
   userId: string;
   roundId: string;
   championName: string;
+  banChampionName?: string; // assente nei pick salvati prima del 6/10
+  // Tutti assenti finché il turno non viene chiuso. points è il totale;
+  // il dettaglio sotto manca nei turni chiusi prima del 6/10 (vecchia
+  // regola, solo points).
   points?: number;
+  pickPoints?: number;
+  winBonus?: number;
+  banPoints?: number;
+  banScope?: ChampionPickBanScope;
 }
