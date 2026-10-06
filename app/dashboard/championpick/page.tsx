@@ -17,6 +17,24 @@ import { toast } from "sonner";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { PLAYOFF_CIRCUITS } from "@/lib/constants";
+import {
+  CHAMPION_BAN_CIRCUIT_POINTS,
+  CHAMPION_BAN_TEAM_POINTS,
+  CHAMPION_PICK_RARITY_POINTS,
+  CHAMPION_PICK_WIN_BONUS,
+} from "@/lib/championPickScoring";
+import type { ChampionPick } from "@/types";
+
+// Dettaglio punti di un pick chiuso; null per i turni chiusi prima del
+// 6/10 (vecchia regola, solo il totale) o non ancora calcolati.
+function pointsBreakdown(pick: ChampionPick): string | null {
+  if (pick.pickPoints === undefined) return null;
+  const parts = [`pick ${pick.pickPoints}`];
+  if (pick.winBonus) parts.push(`vittoria +${pick.winBonus}`);
+  if (pick.banScope === "team") parts.push(`ban squadra ${pick.banPoints ?? 0}`);
+  if (pick.banScope === "circuit") parts.push(`ban circuito ${pick.banPoints ?? 0}`);
+  return parts.join(" · ");
+}
 
 export default function ChampionPickPage() {
   const router = useRouter();
@@ -51,6 +69,7 @@ export default function ChampionPickPage() {
   }, [fantaLoading, currentFanta, isValidForFanta, router]);
 
   const [draftChampion, setDraftChampion] = useState<Record<string, string>>({});
+  const [draftBan, setDraftBan] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
   const [isClosing, setIsClosing] = useState<string | null>(null);
 
@@ -61,6 +80,9 @@ export default function ChampionPickPage() {
   const rounds = calendar
     .filter((r) => !r.groupId)
     .sort((a, b) => a.roundNumber - b.roundNumber);
+
+  // Squadra pro in rosa (pick "team"): il ban si scommette su di lei.
+  const myTeamName = currentMember?.team?.find((t) => t.pickType === "team")?.playerName;
 
   const isRoundClosed = (roundId: string) =>
     !!championPickRounds.find((r) => r.roundId === roundId)?.closed;
@@ -75,7 +97,7 @@ export default function ChampionPickPage() {
     if (!championName) return;
     setIsSubmitting(roundId);
     try {
-      await submitChampionPick(roundId, championName);
+      await submitChampionPick(roundId, championName, draftBan[roundId]);
       toast.success("Scelta inviata, nascosta agli altri finché il turno non chiude");
     } catch (error) {
       console.error("Errore nell'invio del pick campione:", error);
@@ -92,7 +114,13 @@ export default function ChampionPickPage() {
       toast.success("Turno chiuso: scelte rivelate e punti calcolati");
     } catch (error) {
       console.error("Errore nella chiusura del turno:", error);
-      toast.error("Errore nella chiusura, riprova");
+      if (error instanceof Error && error.message === "NO_GAMES") {
+        toast.error(
+          "Turno chiuso ma nessuna partita trovata su Leaguepedia (rate limit o settimana senza partite): punti non assegnati, riprova con Ricalcola Punti",
+        );
+      } else {
+        toast.error("Errore nella chiusura, riprova");
+      }
     } finally {
       setIsClosing(null);
     }
@@ -107,11 +135,28 @@ export default function ChampionPickPage() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Pick/Ban Campione</h1>
         <p className="text-muted-foreground mt-2">
-          {currentFanta?.name} — scegli un campione ogni turno: 2 punti se
-          viene pickato in almeno una partita pro reale di quella settimana
-          (anche se in un&apos;altra partita è stato bannato), 0 se non
-          viene mai scelto da nessuna squadra.
+          {currentFanta?.name} — ogni turno scegli un campione che verrà
+          pickato in almeno una partita pro reale della settimana, e
+          (facoltativo) uno che verrà bannato dalla tua squadra.
         </p>
+        <ul className="text-sm text-muted-foreground mt-2 list-disc pl-5 space-y-1">
+          <li>
+            Pick indovinato: {CHAMPION_PICK_RARITY_POINTS.solo} pt se sei
+            l&apos;unico ad averlo scelto, {CHAMPION_PICK_RARITY_POINTS.pair}{" "}
+            se siete in due, {CHAMPION_PICK_RARITY_POINTS.crowd} se siete in
+            tre o più. Rischiare fuori meta paga.
+          </li>
+          <li>
+            +{CHAMPION_PICK_WIN_BONUS} se è stato giocato da una squadra che
+            ha vinto la partita.
+          </li>
+          <li>
+            Ban indovinato: +{CHAMPION_BAN_TEAM_POINTS} se lo banna la
+            squadra pro che hai in rosa; +{CHAMPION_BAN_CIRCUIT_POINTS} se
+            basta che lo banni chiunque nel circuito (succede se non hai
+            una squadra in rosa o se la tua non gioca quella settimana).
+          </li>
+        </ul>
       </div>
 
       {rounds.length === 0 ? (
@@ -145,7 +190,7 @@ export default function ChampionPickPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {!closed && !myPick && (
-                  <div className="flex items-end gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                     <div className="flex-1 space-y-1">
                       <Label htmlFor={`champ-${round.id}`}>
                         Il tuo campione per questo turno
@@ -162,6 +207,24 @@ export default function ChampionPickPage() {
                         placeholder="Es: Ahri"
                       />
                     </div>
+                    <div className="flex-1 space-y-1">
+                      <Label htmlFor={`ban-${round.id}`}>
+                        {myTeamName
+                          ? `Ban di ${myTeamName} (facoltativo)`
+                          : "Ban nel circuito (facoltativo, non hai una squadra in rosa)"}
+                      </Label>
+                      <Input
+                        id={`ban-${round.id}`}
+                        value={draftBan[round.id] || ""}
+                        onChange={(e) =>
+                          setDraftBan((prev) => ({
+                            ...prev,
+                            [round.id]: e.target.value,
+                          }))
+                        }
+                        placeholder="Es: Rumble"
+                      />
+                    </div>
                     <Button
                       onClick={() => handleSubmit(round.id)}
                       disabled={
@@ -176,9 +239,14 @@ export default function ChampionPickPage() {
 
                 {!closed && myPick && (
                   <p className="text-sm text-muted-foreground">
-                    Hai scelto <strong>{myPick.championName}</strong> per
-                    questo turno — non modificabile, e nascosto agli altri
-                    finché il turno non chiude.
+                    Hai scelto <strong>{myPick.championName}</strong>
+                    {myPick.banChampionName && (
+                      <>
+                        {" "}con ban <strong>{myPick.banChampionName}</strong>
+                      </>
+                    )}{" "}
+                    per questo turno — non modificabile, e nascosto agli
+                    altri finché il turno non chiude.
                   </p>
                 )}
 
@@ -200,7 +268,14 @@ export default function ChampionPickPage() {
                             {getMemberName(pick.userId)} —{" "}
                             <span className="text-muted-foreground">
                               {pick.championName}
+                              {pick.banChampionName &&
+                                ` · ban ${pick.banChampionName}`}
                             </span>
+                            {pointsBreakdown(pick) && (
+                              <span className="block text-xs text-muted-foreground">
+                                {pointsBreakdown(pick)}
+                              </span>
+                            )}
                           </span>
                           <Badge
                             variant={pick.points ? "default" : "outline"}
@@ -213,15 +288,22 @@ export default function ChampionPickPage() {
                   </div>
                 )}
 
-                {isFantaViceOrAdmin && !closed && (
+                {/* Anche a turno chiuso: se Leaguepedia era in rate limit
+                    alla chiusura i punti non sono stati assegnati, e si
+                    rilancia lo stesso calcolo (le scelte restano quelle). */}
+                {isFantaViceOrAdmin && (
                   <Button
                     variant="outline"
                     onClick={() => handleClose(round.id)}
                     disabled={isClosing === round.id}
                   >
                     {isClosing === round.id
-                      ? "Chiusura..."
-                      : "Chiudi Turno e Calcola Punti"}
+                      ? closed
+                        ? "Ricalcolo..."
+                        : "Chiusura..."
+                      : closed
+                        ? "Ricalcola Punti"
+                        : "Chiudi Turno e Calcola Punti"}
                   </Button>
                 )}
               </CardContent>

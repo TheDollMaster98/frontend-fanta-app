@@ -773,20 +773,30 @@ export async function getFantasyTeamStats(
 }
 
 /**
- * Campioni pickati (giocati da una delle due squadre) in almeno una
- * partita del circuito in una finestra di date — usato dal pick/ban
- * settimanale (1/10): un campione scelto da un membro vale punti se
- * risulta qui, a prescindere dal fatto che in un'altra partita della
- * stessa finestra sia stato anche bannato (un ban non toglie i punti
- * già guadagnati da un pick altrove). Team1Picks/Team2Picks verificati
- * con una query reale contro l'endpoint di produzione (1/10): liste di
- * nomi campione separate da virgola, es. "Aatrox,Lee Sin,Ahri,...".
+ * Partite del circuito in una finestra di date, con pick, ban e vincitore
+ * di ciascuna squadra — usato dal pick/ban settimanale (6/10) per
+ * calcolare in un solo passaggio: campione pickato sì/no, pickato dalla
+ * squadra vincente sì/no, bannato dalla squadra pro del membro sì/no.
+ * Nomi campo verificati contro lo schema reale (action=cargofields su
+ * ScoreboardGames, 6/10): Team1/Team2 sono gli stessi nomi squadra della
+ * tabella Teams (quindi confrontabili con TeamPick.playerName di un pick
+ * "team"), Winner è 1 o 2, Team1Picks/Team1Bans sono liste separate da
+ * virgola, es. "Aatrox,Lee Sin,Ahri,...".
  */
-export async function getPickedChampionsInRange(
+export interface ChampionGame {
+  team1: string;
+  team2: string;
+  winner: 1 | 2 | null;
+  team1Picks: string[];
+  team2Picks: string[];
+  team1Bans: string[];
+  team2Bans: string[];
+}
+
+export async function getChampionGamesInRange(
   circuitType: string,
   dateRange: { start: Date; end: Date },
-): Promise<Set<string>> {
-  const champions = new Set<string>();
+): Promise<ChampionGame[]> {
   const dateClause = ` AND SG.DateTime_UTC >= "${toCargoDateTime(dateRange.start)}" AND SG.DateTime_UTC < "${toCargoDateTime(dateRange.end)}"`;
   const results: CargoRecord[] = [];
   const pageSize = 500;
@@ -795,7 +805,8 @@ export async function getPickedChampionsInRange(
   while (true) {
     const page = await cargoQuery({
       tables: "ScoreboardGames=SG, Tournaments=T",
-      fields: "SG.Team1Picks, SG.Team2Picks",
+      fields:
+        "SG.Team1, SG.Team2, SG.Winner, SG.Team1Picks, SG.Team2Picks, SG.Team1Bans, SG.Team2Bans",
       where: `(T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")${dateClause}`,
       join_on: "SG.OverviewPage=T.OverviewPage",
       limit: pageSize,
@@ -807,16 +818,24 @@ export async function getPickedChampionsInRange(
     offset += pageSize;
   }
 
-  results.forEach((r) => {
-    [...(r.Team1Picks || "").split(","), ...(r.Team2Picks || "").split(",")].forEach(
-      (name) => {
-        const trimmed = name.trim().toLowerCase();
-        if (trimmed) champions.add(trimmed);
-      },
-    );
-  });
+  const splitList = (value?: string) =>
+    (value || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
 
-  return champions;
+  return results.map((r) => {
+    const winner = Number(r.Winner);
+    return {
+      team1: (r.Team1 || "").trim(),
+      team2: (r.Team2 || "").trim(),
+      winner: winner === 1 || winner === 2 ? winner : null,
+      team1Picks: splitList(r.Team1Picks),
+      team2Picks: splitList(r.Team2Picks),
+      team1Bans: splitList(r.Team1Bans),
+      team2Bans: splitList(r.Team2Bans),
+    };
+  });
 }
 
 export interface PlayerGameLog {
