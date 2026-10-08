@@ -117,4 +117,64 @@ alto:
 
 ## Esiti
 
-_(da compilare durante la revisione)_
+### E1 — Animazioni (8/10)
+
+**Domanda: serve GSAP? No.** L'app è un gestionale usato decine di volte
+al giorno dagli stessi membri, non un sito marketing. Tutto il movimento
+che esiste è "di sistema": dialog e menu che si aprono, il menu mobile,
+le hover sui colori, uno spinner e i toast. Per questo bastano le
+transizioni CSS che ci sono già (`tw-animate-css`, Radix, Sonner).
+GSAP aggiungerebbe una libreria JS che anima dal main thread (sotto
+carico perde frame più del CSS), per effetti (timeline, scroll,
+pinning) che qui non hanno nessuno scopo. Se l'idea dietro GSAP è "far
+sembrare l'app più premium", è la leva sbagliata: il vuoto vero è
+l'identità (punto 2.1), non il movimento. GSAP diventa sensato solo se
+un giorno si fa una landing pubblica con racconto a scroll.
+
+Inventario completo del movimento (tutto il resto è statico):
+- entrata/uscita di dialog, alert dialog, dropdown, select, sheet via
+  `tw-animate-css` (keyframe, default 150 ms `ease`);
+- menu mobile = `Sheet` laterale (`app/dashboard/layout.tsx:288`);
+- `transition-colors` su card/righe cliccabili (dashboard, classifica,
+  aste, impostazioni, navigazione);
+- freccia della guida che ruota (`app/dashboard/guide/page.tsx:218`);
+- spinner di caricamento (`app/dashboard/layout.tsx:93`);
+- toast Sonner (gestisce da sé movimento e interruzioni).
+
+Verificato e già corretto, niente da fare:
+- dropdown e select scalano dal trigger
+  (`origin-(--radix-*-content-transform-origin)`), non dal centro;
+- dialog centrati con `zoom-in-95` + fade, 200 ms (corretto: i modali
+  restano centrati, e nessun `scale(0)` da nessuna parte);
+- hover: in Tailwind v4 `hover:` vale solo su dispositivi con hover
+  reale, quindi niente hover "appiccicate" su mobile;
+- nessuna proprietà di layout animata (`width`/`height`/`top`/...).
+
+#### Risultati
+
+| Prima | Dopo | Perché |
+| --- | --- | --- |
+| `components/ui/sheet.tsx:61` menu mobile: `ease-in-out`, apertura `duration-500`, chiusura `duration-300` | apertura 250 ms, chiusura 200 ms, `ease-[cubic-bezier(0.32,0.72,0,1)]` (curva drawer) | Il menu mobile si apre a ogni cambio pagina da telefono (decine di volte al giorno). 500 ms + `ease-in-out` partono lenti: è la sensazione di app impastata. Un drawer va sotto i 300 ms con una curva che parte veloce |
+| `components/ui/sheet.tsx:61` classe `transition` insieme a `animate-in/out` | togliere `transition` | L'animazione è già fatta dai keyframe; `transition` aggiunge una transizione su tutte le proprietà che non serve a niente |
+| `components/ui/button.tsx:8` `transition-all` | `transition-[color,background-color,border-color,box-shadow,transform]` | `all` anima qualunque proprietà cambi, comprese quelle che non dovrebbero (dimensioni, padding) e fuori GPU. Vanno elencate quelle volute |
+| nessuna gestione di `prefers-reduced-motion` in tutto il progetto (`tw-animate-css` non ne ha) | in `app/globals.css`, fuori da ogni layer: `@media (prefers-reduced-motion: reduce) { [data-state] { --tw-enter-scale: 1; --tw-exit-scale: 1; --tw-enter-translate-x: 0; --tw-enter-translate-y: 0; --tw-exit-translate-x: 0; --tw-exit-translate-y: 0; } }` | Chi ha chiesto meno movimento al sistema operativo deve vedere solo dissolvenze, non zoom e scivolamenti. Così resta l'opacità (che spiega il cambio di stato) e sparisce il movimento |
+| entrate di dialog/dropdown/select con l'`ease` di default | `--ease-out: cubic-bezier(0.23, 1, 0.32, 1)` come token in `@theme` e applicato a quelle entrate | L'`ease` di base è debole: a 150-200 ms quasi non si nota, ma una curva decisa fa sembrare l'apertura più pronta a parità di durata |
+| bottoni senza feedback alla pressione | `active:scale-[0.97]` con `transition: transform 160ms ease-out` | Conferma tattile del tocco, utile soprattutto su mobile dove non c'è hover. Rifinitura, non urgente |
+
+#### Verdetto
+
+1. **Rompe la sensazione d'uso**: il menu mobile a 500 ms con
+   `ease-in-out`. È l'unico problema che un utente percepisce davvero, e
+   lo percepisce ogni volta che naviga da telefono.
+2. **Prestazioni**: `transition-all` sui bottoni. Oggi non fa danni
+   visibili, ma è la classica trappola che salta fuori quando qualcuno
+   aggiunge un cambio di dimensione a un bottone.
+3. **Accessibilità**: nessun rispetto di `prefers-reduced-motion`. Fix
+   da 6 righe CSS, nessun motivo per non farlo.
+4. **Coerenza/rifinitura**: curva di easing di default troppo morbida,
+   nessun feedback alla pressione. Bassa priorità.
+
+**Decisione: Block** finché non si sistemano il menu mobile (punto 1) e
+`transition-all` (punto 2), che hanno entrambi una correzione banale.
+Reduced motion va nello stesso commit perché costa uguale. Il resto è
+rifinitura e può aspettare. GSAP: non serve, non va aggiunto.
