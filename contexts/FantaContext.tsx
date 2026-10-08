@@ -2357,16 +2357,16 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         // Le scritture sono indipendenti: se una fallisce, non deve
         // bloccare le altre in silenzio, con l'asta segnata "chiusa" ma
         // senza né giocatore né budget né storico aggiornati.
-        try {
-          updateDoc(doc(db, "fantas", fantaId, "members", userId), {
-            team: arrayUnion(pick),
-            budgetSpent: increment(pick.purchasePrice),
-            budgetLeft: increment(-pick.purchasePrice),
-          });
-        } catch (error) {
+        // .catch e non try/catch: updateDoc/addDoc falliscono in modo
+        // asincrono, un try/catch attorno alla chiamata non vede niente.
+        updateDoc(doc(db, "fantas", fantaId, "members", userId), {
+          team: arrayUnion(pick),
+          budgetSpent: increment(pick.purchasePrice),
+          budgetLeft: increment(-pick.purchasePrice),
+        }).catch((error) => {
           console.error("Errore nell'assegnazione del giocatore vinto:", error);
-        }
-        try {
+        });
+        {
           const entry: Omit<HistoryEntry, "id" | "purchasedAt"> = {
             playerName: pick.playerName,
             playerRole: pick.playerRole,
@@ -2379,9 +2379,9 @@ export function FantaProvider({ children }: { children: ReactNode }) {
           addDoc(collection(db, "fantas", fantaId, "history"), {
             ...entry,
             purchasedAt: serverTimestamp(),
+          }).catch((error) => {
+            console.error("Errore nella scrittura dello storico:", error);
           });
-        } catch (error) {
-          console.error("Errore nella scrittura dello storico:", error);
         }
       })
       .catch((error) => {

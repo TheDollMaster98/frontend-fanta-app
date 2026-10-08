@@ -250,14 +250,18 @@ Durante la verifica sono emersi altri 2 bug, aggiunti in fondo.
 | 9 | Offerta: riserva di budget sbagliata di uno (lo slot in asta veniva riservato due volte) | Sì, il commento stesso diceva "dopo questo" | Riserva = posti da riempire **dopo** quello in asta, in `placeBid` e nel tetto mostrato in UI | `contexts/FantaContext.tsx`, `app/dashboard/auctions/page.tsx` |
 | 10 | Chiunque loggato, anche di un'altra lega, poteva riscrivere budget e rose dei membri, e calendario/gironi/tabellone/storico/offerte | Sì, emulatore con regole di master: consentito | `members.update` richiede di essere membro; calendario, gironi e tabellone scrivibili solo da admin/vice/developer; storico e offerte solo dai membri | `firestore.rules` |
 | 11 | **Nuovo**: ruoli Leaguepedia ("Mid", "Bot", "Top", "Jungle") diversi da quelli di pesi e limiti ("Mid Laner", "ADC", ...). Un giocatore LoL preso all'asta prendeva punti solo se Support; limiti per ruolo mai applicati; nel draft liste per ruolo vuote tranne Support | Sì: `mapLeaguepediaRecord` copiava il ruolo grezzo, le chiavi dei pesi sono `LOL_ROLES` | `toLolRole()` in `lib/constants.ts`, applicata dove nascono i dati Leaguepedia e in ogni confronto o lookup per ruolo, così anche le pick già salvate col ruolo grezzo prendono i pesi giusti | `lib/constants.ts`, `lib/leaguepediaApi.ts`, `lib/scoring.ts`, `contexts/FantaContext.tsx`, `app/dashboard/{auctions,standings}/page.tsx` |
+| 13 | **Completamento del 10**: aste e draft modificabili da chiunque loggato; `proplayers` scrivibile da chiunque; pronostici Pick'em salvabili da non membri; un membro poteva alzarsi il budget o toccare nome e budget degli altri | Sì, leggendo le regole; ogni caso coperto da un test nell'emulatore | Aste, draft e pronostici richiedono di essere membri. `proplayers` scrivibile solo dai developer (nessuna pagina la scrive). Membri normali: budget coerente (`budgetTot` fisso, quanto scende `budgetLeft` tanto sale `budgetSpent`, mai oltre il totale); sul documento di un altro solo un'assegnazione (rosa che cresce, spesa che non scende, nient'altro). Admin/vice/developer restano liberi | `firestore.rules` |
+| 14 | `finalizeAuction`: `try/catch` attorno a `updateDoc`/`addDoc` non catturava niente (errori asincroni), un'assegnazione negata spariva senza log | Sì | `.catch()` sulle due scritture | `contexts/FantaContext.tsx` |
 | 12 | **Nuovo, mio, del 6/10**: il listener dei pick copiava solo nome e punti, quindi ban e dettaglio punti non arrivavano mai alla pagina | Sì | Il listener riscritto per il punto 6 copia tutti i campi | `contexts/FantaContext.tsx` |
 
 #### Verifiche fatte
 
-- Regole Firestore, emulatore: **43/43** casi passano (join valido e 6
+- Regole Firestore, emulatore: **64/64** casi passano (join valido e 6
   varianti invalide, estranei respinti su membri, calendario, gironi,
-  tabellone, storico e offerte, query consentite e vietate sui pick,
-  flusso di chiusura turno completo). Le stesse prove sulle regole di
+  tabellone, storico, offerte, aste, draft, cache giocatori e pronostici,
+  budget manomessi respinti, assegnazioni legittime di asta e draft dal
+  browser di un altro membro consentite, query consentite e vietate sui
+  pick, flusso di chiusura turno completo). Le stesse prove sulle regole di
   master confermano che i punti 2, 6 e 10 erano reali.
 - `ignoreUndefinedProperties`, emulatore: senza l'opzione `arrayUnion`,
   la fixture col bye e l'asta coach falliscono; con l'opzione passano.
@@ -275,10 +279,12 @@ Durante la verifica sono emersi altri 2 bug, aggiunti in fondo.
 - **Turni Pick/Ban già chiusi**: i pick lì non hanno `revealed`, quindi
   dopo il deploy ognuno vede solo i propri finché un admin non preme
   "Ricalcola Punti" su ciascun turno chiuso (rilegge, ricalcola e rivela).
-- **Limite che resta**: un membro può ancora scrivere sui documenti degli
-  altri membri della stessa lega, perché l'assegnazione di un'asta chiusa
-  parte dal browser di chiunque sia connesso. Si chiude solo spostando
-  l'assegnazione in una Cloud Function (già in TODO.md).
+- **Limite che resta, ridotto**: un membro non può più alzarsi il budget
+  né togliere o rinominare niente agli altri, ma può ancora "assegnare"
+  a un altro membro un giocatore inventato scalandogli il budget, perché
+  l'assegnazione legittima di un'asta parte dal browser di chiunque sia
+  connesso e le regole non possono verificare che l'asta esista davvero.
+  Si chiude solo con una Cloud Function (già in TODO.md).
 - **Non provato a schermo**: le pagine della dashboard richiedono login
   Firebase. Il primo test reale è dopo il deploy: join da link, un turno
   Pick/Ban chiuso, un ricalcolo.
