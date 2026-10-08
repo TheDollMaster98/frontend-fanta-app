@@ -22,7 +22,11 @@ export function rankGroupMembers(
       round.fixtures.forEach((f) => {
         if (f.homeUserId === userId) {
           pointsFor += f.homePoints ?? 0;
-          if ((f.homePoints ?? 0) > (f.awayPoints ?? 0)) wins += 1;
+          // Turno di riposo (bye, awayUserId null): i punti fatti contano
+          // (con un numero dispari di membri ognuno ha esattamente un bye,
+          // quindi è simmetrico), ma non è una vittoria — prima lo era
+          // appena si faceva più di 0 punti (code review, 8/10).
+          if (f.awayUserId && (f.homePoints ?? 0) > (f.awayPoints ?? 0)) wins += 1;
         } else if (f.awayUserId === userId) {
           pointsFor += f.awayPoints ?? 0;
           if ((f.awayPoints ?? 0) > (f.homePoints ?? 0)) wins += 1;

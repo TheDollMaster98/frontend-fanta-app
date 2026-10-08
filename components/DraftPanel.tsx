@@ -6,6 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -16,6 +23,7 @@ import { toast } from "sonner";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildDraftSlots, getDraftTurnUserId } from "@/lib/draft";
+import { LOL_ROLES } from "@/lib/constants";
 import {
   getPlayersByLeague,
   searchTeams,
@@ -52,12 +60,12 @@ function PendingAssignmentsList({
   getMemberName: (userId: string, fallback?: string) => string;
   onFill: (
     pending: PendingDraftAssignment,
-    input: { playerName: string; playerTeam?: string },
+    input: { playerName: string; playerRole?: string; playerTeam?: string },
   ) => void;
 }) {
-  const [drafts, setDrafts] = useState<Record<string, { name: string; team: string }>>(
-    {},
-  );
+  const [drafts, setDrafts] = useState<
+    Record<string, { name: string; team: string; role: string }>
+  >({});
   const key = (p: PendingDraftAssignment) => `${p.userId}-${p.slotIndex}`;
 
   return (
@@ -68,8 +76,11 @@ function PendingAssignmentsList({
       {pending.map((p) => {
         const slot = slots[p.slotIndex];
         const k = key(p);
-        const draft = drafts[k] || { name: "", team: "" };
+        const draft = drafts[k] || { name: "", team: "", role: "" };
         const needsTeamField = slot?.pickType === "team" || slot?.pickType === "coach";
+        // Il jolly non ha un ruolo fisso di slot: senza ruolo non prende
+        // punti (i pesi sono per ruolo), quindi va scelto qui.
+        const needsRoleField = slot?.pickType === "jolly";
         return (
           <div
             key={k}
@@ -86,6 +97,25 @@ function PendingAssignmentsList({
                 setDrafts({ ...drafts, [k]: { ...draft, name: e.target.value } })
               }
             />
+            {needsRoleField && (
+              <Select
+                value={draft.role}
+                onValueChange={(value) =>
+                  setDrafts({ ...drafts, [k]: { ...draft, role: value } })
+                }
+              >
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Ruolo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOL_ROLES.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {role}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {needsTeamField && (
               <Input
                 className="w-32"
@@ -98,10 +128,11 @@ function PendingAssignmentsList({
             )}
             <Button
               size="sm"
-              disabled={!draft.name.trim()}
+              disabled={!draft.name.trim() || (needsRoleField && !draft.role)}
               onClick={() => {
                 onFill(p, {
                   playerName: draft.name.trim(),
+                  playerRole: needsRoleField ? draft.role : undefined,
                   playerTeam: draft.team.trim() || undefined,
                 });
                 setDrafts((prev) => {
@@ -226,7 +257,11 @@ export function DraftPanel() {
   }, [players, playerSearch, currentSlot]);
 
   const submitPlayerPick = (player: LeaguepediaPlayer) => {
-    makeDraftPick({ playerName: player.player, playerTeam: player.team });
+    makeDraftPick({
+      playerName: player.player,
+      playerRole: player.role,
+      playerTeam: player.team,
+    });
     setPlayerSearch("");
   };
   const submitTeamPick = (team: LeaguepediaTeam) => {

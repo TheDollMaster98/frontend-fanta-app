@@ -53,6 +53,7 @@ import {
   MIN_COUNTDOWN_SECONDS,
   MAX_COUNTDOWN_SECONDS,
   PLAYOFF_CIRCUIT_TOURNAMENT_QUERY,
+  toLolRole,
 } from "@/lib/constants";
 import {
   getPlayersByLeague,
@@ -200,12 +201,14 @@ export default function AuctionsPage() {
   const activePickType: TeamPickType = activeAuction?.pickType || "player";
   const roleLimit =
     activePickType === "player" && activeAuction?.playerRole
-      ? currentFanta?.settings.maxPlayersPerRole?.[activeAuction.playerRole]
+      ? currentFanta?.settings.maxPlayersPerRole?.[toLolRole(activeAuction.playerRole) || ""]
       : undefined;
   const isRoleFull =
     !!roleLimit &&
     myRoster.filter(
-      (p) => p.pickType === "player" && p.playerRole === activeAuction?.playerRole,
+      (p) =>
+        p.pickType === "player" &&
+        toLolRole(p.playerRole) === toLolRole(activeAuction?.playerRole),
     ).length >= roleLimit;
   const maxJolly = currentFanta?.settings.maxJolly || 0;
   const isTeamPickTaken =
@@ -216,7 +219,12 @@ export default function AuctionsPage() {
     activePickType === "jolly" &&
     myRoster.filter((p) => p.pickType === "jolly").length >= maxJolly;
   const myBudget = user ? getUserBudget(user.id) : 0;
-  const openSlots = maxPlayersTotal > 0 ? maxPlayersTotal - myRoster.length : 0;
+  // Posti rosa da riempire DOPO quello in asta: serve 1 credito a testa
+  // per completare la squadra. Lo slot in asta non va riservato, lo si sta
+  // pagando adesso (prima veniva contato due volte: all'ultimo posto non si
+  // poteva spendere tutto il budget).
+  const openSlots =
+    maxPlayersTotal > 0 ? Math.max(maxPlayersTotal - myRoster.length - 1, 0) : 0;
   const maxAffordableBid =
     maxBid !== undefined
       ? Math.min(maxBid, myBudget - openSlots)
@@ -1260,7 +1268,7 @@ export default function AuctionsPage() {
               ) : maxAffordableBid <= activeAuction.currentPrice ? (
                 <p className="text-sm text-muted-foreground">
                   {openSlots > 0
-                    ? `Con ${openSlots} posti rosa ancora da riempire devi tenere almeno ${openSlots} crediti da parte: non puoi rilanciare oltre.`
+                    ? `Con ${openSlots} posti rosa da riempire dopo questo devi tenere almeno ${openSlots} crediti da parte: non puoi rilanciare oltre.`
                     : "Budget insufficiente per rilanciare."}
                 </p>
               ) : (

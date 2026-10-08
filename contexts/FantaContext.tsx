@@ -33,6 +33,7 @@ import {
   type FirestoreError,
   type Unsubscribe,
   type DocumentReference,
+  type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
@@ -41,6 +42,7 @@ import {
   MAX_COUNTDOWN_SECONDS,
   DEFAULT_TEAM_SCORING_WEIGHTS,
   PLAYOFF_CIRCUITS,
+  toLolRole,
 } from "@/lib/constants";
 import { generateRoundRobin } from "@/lib/roundRobin";
 import {
@@ -81,10 +83,12 @@ import type {
   ManualTeamStats,
   DraftState,
   PendingDraftAssignment,
+  DraftSlot,
   PickemBracket,
   PickemRound,
   PickemPrediction,
   ChampionPick,
+  ChampionPickBanScope,
   ChampionPickRoundState,
 } from "@/types";
 
@@ -315,7 +319,7 @@ interface FantaContextType {
   skipDraftTurn: (options?: { force?: boolean }) => void;
   fillPendingDraftAssignment: (
     pending: PendingDraftAssignment,
-    input: { playerName: string; playerTeam?: string },
+    input: { playerName: string; playerRole?: string; playerTeam?: string },
   ) => void;
 }
 
@@ -457,6 +461,33 @@ function mapBracketRoundDoc(
 // un costo che Leaguepedia non ha (query diretta via Cargo). leagueId
 // null (circuito senza corrispondente lolesports, es. "ALTRO") o nessun
 // pick con playerTeam -> mappa vuota, nessun errore.
+// Pick di draft (turno normale o assegnazione a mano di un turno saltato).
+// Ruolo: per uno slot "player" è quello fisso dello slot; per un jolly è
+// il ruolo reale del giocatore scelto, senza il quale computeAutoPoints
+// non trova i pesi e il jolly non prende mai punti (code review, 8/10).
+// Team/coach non hanno ruolo. Campi assenti omessi, non undefined.
+function buildDraftTeamPick(
+  id: string,
+  slot: DraftSlot,
+  input: { playerName: string; playerRole?: string; playerTeam?: string },
+): TeamPick {
+  const playerRole =
+    slot.pickType === "player"
+      ? slot.role
+      : slot.pickType === "jolly"
+        ? input.playerRole
+        : undefined;
+  return {
+    id,
+    pickType: slot.pickType,
+    playerName: input.playerName,
+    ...(playerRole ? { playerRole } : {}),
+    ...(input.playerTeam ? { playerTeam: input.playerTeam } : {}),
+    purchasePrice: 0,
+    acquiredAt: new Date(),
+  };
+}
+
 async function computeLolesportsRoundBonuses(
   involvedUserIds: string[],
   dateRange: { start: Date; end: Date },
@@ -510,7 +541,8 @@ async function computeLolesportsRoundBonuses(
 
   picksByTeam.forEach((picks) => {
     picks.forEach(({ userId, playerName, playerRole }) => {
-      const weights = playerRole ? roleWeights[playerRole] : undefined;
+      const role = toLolRole(playerRole);
+      const weights = role ? roleWeights[role] : undefined;
       const stats = statsByStrippedName.get(playerName.trim().toLowerCase());
       if (!weights || !stats) return;
       const points = computeLolesportsBonusPoints(stats, weights);
@@ -776,8 +808,39 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     "championPicks",
   ] as const;
 
+  // I pick/ban non si possono leggere con una query libera (le regole
+  // permettono solo query sui propri o su quelli rivelati, vedi
+  // firestore.rules): si cancellano quelli trovabili con quelle due query
+  // più, alla cieca, ogni id "{turno}_{membro}" possibile (cancellare un
+  // documento che non esiste non è un errore). Va fatto prima di
+  // cancellare calendario e membri, da cui si ricavano gli id.
+  const championPickRefsToDelete = async (
+    fantaId: string,
+  ): Promise<DocumentReference[]> => {
+    const picks = collection(db, "fantas", fantaId, "championPicks");
+    const [revealedSnap, mineSnap, calendarSnap, membersSnap] = await Promise.all([
+      getDocs(query(picks, where("revealed", "==", true))),
+      user ? getDocs(query(picks, where("userId", "==", user.id))) : null,
+      getDocs(collection(db, "fantas", fantaId, "calendar")),
+      getDocs(collection(db, "fantas", fantaId, "members")),
+    ]);
+    const byPath = new Map<string, DocumentReference>();
+    [...revealedSnap.docs, ...(mineSnap?.docs || [])].forEach((d) =>
+      byPath.set(d.ref.path, d.ref),
+    );
+    calendarSnap.docs.forEach((round) =>
+      membersSnap.docs.forEach((member) => {
+        const ref = doc(picks, `${round.id}_${member.id}`);
+        byPath.set(ref.path, ref);
+      }),
+    );
+    return Array.from(byPath.values());
+  };
+
   const deleteFanta = async (fantaId: string): Promise<void> => {
+    await deleteDocsInBatches(await championPickRefsToDelete(fantaId));
     for (const sub of SUBCOLLECTIONS_TO_DELETE) {
+      if (sub === "championPicks") continue;
       const snap = await getDocs(collection(db, "fantas", fantaId, sub));
       if (sub === "auctions") {
         // Le aste hanno a loro volta una sottocollezione "bids": va svuotata
@@ -1275,37 +1338,69 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     );
   }, [currentFanta]);
 
+  // Due query vincolate, non la collection intera: le regole non filtrano
+  // i risultati (vedi firestore.rules, championPicks). I propri pick
+  // (userId == me) e quelli già rivelati dalla chiusura turno
+  // (revealed == true), uniti per id.
   useEffect(() => {
-    if (!currentFanta) {
+    if (!currentFanta || !user) {
       setChampionPicks([]);
       return;
     }
-    const picksQuery = collection(db, "fantas", currentFanta.id, "championPicks");
-    return attachWithPermissionRetry(
+    const picksCollection = collection(db, "fantas", currentFanta.id, "championPicks");
+    const toPick = (docSnap: QueryDocumentSnapshot): ChampionPick => {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        userId: data.userId as string,
+        roundId: data.roundId as string,
+        championName: data.championName as string,
+        ...(typeof data.banChampionName === "string"
+          ? { banChampionName: data.banChampionName }
+          : {}),
+        ...(typeof data.points === "number" ? { points: data.points } : {}),
+        ...(typeof data.pickPoints === "number" ? { pickPoints: data.pickPoints } : {}),
+        ...(typeof data.winBonus === "number" ? { winBonus: data.winBonus } : {}),
+        ...(typeof data.banPoints === "number" ? { banPoints: data.banPoints } : {}),
+        ...(data.banScope ? { banScope: data.banScope as ChampionPickBanScope } : {}),
+      };
+    };
+    let mine: ChampionPick[] = [];
+    let revealed: ChampionPick[] = [];
+    const publish = () => {
+      const byId = new Map<string, ChampionPick>();
+      [...revealed, ...mine].forEach((p) => byId.set(p.id, p));
+      setChampionPicks(Array.from(byId.values()));
+    };
+    const detachMine = attachWithPermissionRetry(
       (onError) =>
         onSnapshot(
-          picksQuery,
+          query(picksCollection, where("userId", "==", user.id)),
           (snapshot) => {
-            setChampionPicks(
-              snapshot.docs.map((docSnap) => {
-                const data = docSnap.data();
-                return {
-                  id: docSnap.id,
-                  userId: data.userId as string,
-                  roundId: data.roundId as string,
-                  championName: data.championName as string,
-                  ...(typeof data.points === "number"
-                    ? { points: data.points as number }
-                    : {}),
-                };
-              }),
-            );
+            mine = snapshot.docs.map(toPick);
+            publish();
           },
           onError,
         ),
-      "championPicks",
+      "championPicks (propri)",
     );
-  }, [currentFanta]);
+    const detachRevealed = attachWithPermissionRetry(
+      (onError) =>
+        onSnapshot(
+          query(picksCollection, where("revealed", "==", true)),
+          (snapshot) => {
+            revealed = snapshot.docs.map(toPick);
+            publish();
+          },
+          onError,
+        ),
+      "championPicks (rivelati)",
+    );
+    return () => {
+      detachMine();
+      detachRevealed();
+    };
+  }, [currentFanta, user]);
 
   // Genera (o rigenera da capo) il calendario a girone all'italiana tra i
   // membri della lega corrente, col metodo del cerchio: cancella i turni
@@ -1597,13 +1692,18 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       { closed: true },
     );
 
-    const picksSnap = await getDocs(
-      query(
-        collection(db, "fantas", currentFanta.id, "championPicks"),
-        where("roundId", "==", roundId),
+    // Un getDoc per membro (id "{roundId}_{userId}"), non una query: le
+    // regole permettono di leggere un pick altrui per id solo a turno
+    // chiuso, e non permettono query sui pick non ancora rivelati
+    // (firestore.rules, championPicks). Chi non è più membro della lega
+    // non viene ricalcolato.
+    const fetched = await Promise.all(
+      fantaMembers.map((m) =>
+        getDoc(doc(db, "fantas", currentFanta.id, "championPicks", `${roundId}_${m.userId}`)),
       ),
     );
-    if (picksSnap.empty) return;
+    const pickDocs = fetched.filter((snap) => snap.exists());
+    if (pickDocs.length === 0) return;
 
     const games = await getChampionGamesInRange(
       currentFanta.settings.circuitType || "",
@@ -1627,8 +1727,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     });
 
     const results = computeChampionPickResults(
-      picksSnap.docs.map((docSnap) => {
-        const data = docSnap.data();
+      pickDocs.map((docSnap) => {
+        const data = docSnap.data() ?? {};
         return {
           id: docSnap.id,
           userId: (data.userId as string) || "",
@@ -1640,9 +1740,11 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       memberTeams,
     );
 
+    // revealed: rende il pick visibile agli altri via la query
+    // where("revealed", "==", true) del listener.
     const batch = writeBatch(db);
-    picksSnap.docs.forEach((docSnap) => {
-      batch.update(docSnap.ref, { ...results[docSnap.id] });
+    pickDocs.forEach((docSnap) => {
+      batch.update(docSnap.ref, { ...results[docSnap.id], revealed: true });
     });
     await batch.commit();
   };
@@ -1861,6 +1963,16 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     // lib/bracket.ts) — nessun cron: basta premere di nuovo "Ricalcola
     // Punteggi" per far avanzare il tabellone di un turno alla volta.
     if (bracketRounds.length > 0) {
+      // Spareggio dei pareggi: punti totali in stagione dalla rosa (stessa
+      // somma mostrata in Classifica, totalPickPoints).
+      const memberSeasonPoints = (userId: string): number => {
+        const member = fantaMembers.find((m) => m.userId === userId);
+        if (!member) return 0;
+        return member.team.reduce(
+          (sum, pick) => sum + totalPickPoints(pick, roleWeights, teamWeights),
+          0,
+        );
+      };
       const bracketBatch = writeBatch(db);
       let hasBracketWrites = false;
       const sortedRounds = [...bracketRounds].sort(
@@ -1929,10 +2041,17 @@ export function FantaProvider({ children }: { children: ReactNode }) {
           return autoPoints + (lolesportsBonuses.get(userId) || 0);
         };
 
+        // Il vincitore si decide solo a turno finito: prima un ricalcolo a
+        // metà turno fissava per sempre chi era avanti in quel momento (il
+        // match veniva poi saltato perché "già deciso") e il tabellone
+        // avanzava su risultati parziali (code review, 8/10). Fino alla
+        // fine del turno si aggiornano solo i punti.
+        const roundEnded = Date.now() >= round.endDate.getTime();
+
         let roundChanged = false;
         const updatedMatches: BracketMatch[] = round.matches.map((match) => {
-          // Già deciso (giocato o bye) oppure ancora TBD in attesa del
-          // turno precedente: niente da calcolare qui.
+          // Già deciso (bye, o turno finito e già calcolato) oppure ancora
+          // TBD in attesa del turno precedente: niente da calcolare qui.
           if (match.winnerUserId || !match.homeUserId || !match.awayUserId) {
             return match;
           }
@@ -1940,12 +2059,21 @@ export function FantaProvider({ children }: { children: ReactNode }) {
             Math.round(memberBracketPoints(match.homeUserId) * 100) / 100;
           const awayPoints =
             Math.round(memberBracketPoints(match.awayUserId) * 100) / 100;
-          const winnerUserId =
-            homePoints > awayPoints
+          // Pareggio a turno finito: passa chi ha più punti cumulativi in
+          // stagione, poi il seed migliore (home, vedi seedFirstRound/
+          // nextRoundFromWinners in lib/bracket.ts). Prima un pareggio
+          // (es. 0-0 senza partite giocate) lasciava il match senza
+          // vincitore per sempre e il tabellone si fermava.
+          const winnerUserId = !roundEnded
+            ? undefined
+            : homePoints > awayPoints
               ? match.homeUserId
               : awayPoints > homePoints
                 ? match.awayUserId
-                : undefined;
+                : memberSeasonPoints(match.awayUserId) >
+                    memberSeasonPoints(match.homeUserId)
+                  ? match.awayUserId
+                  : match.homeUserId;
           if (
             homePoints !== match.homePoints ||
             awayPoints !== match.awayPoints ||
@@ -2074,8 +2202,10 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     // finanziaria.
     const myRoster = currentMember.team;
     const myBudget = currentMember.budgetLeft;
+    // Posti da riempire DOPO quello in asta (vedi la stessa formula in
+    // auctions/page.tsx): lo slot corrente non va riservato.
     const openSlots =
-      maxPlayersTotal > 0 ? maxPlayersTotal - myRoster.length : 0;
+      maxPlayersTotal > 0 ? Math.max(maxPlayersTotal - myRoster.length - 1, 0) : 0;
 
     if (maxPlayersTotal > 0 && myRoster.length >= maxPlayersTotal) return;
 
@@ -2094,12 +2224,13 @@ export function FantaProvider({ children }: { children: ReactNode }) {
 
       const pickType = (data.pickType as TeamPickType) || "player";
       if (pickType === "player") {
-        const role = data.playerRole as string | undefined;
+        const role = toLolRole(data.playerRole as string | undefined);
         const roleLimit = role ? maxPlayersPerRole[role] : undefined;
         if (
           roleLimit &&
-          myRoster.filter((p) => p.pickType === "player" && p.playerRole === role)
-            .length >= roleLimit
+          myRoster.filter(
+            (p) => p.pickType === "player" && toLolRole(p.playerRole) === role,
+          ).length >= roleLimit
         ) {
           return;
         }
@@ -2462,15 +2593,11 @@ export function FantaProvider({ children }: { children: ReactNode }) {
 
       result = {
         targetUserId: expectedUserId,
-        pick: {
-          id: doc(collection(db, "fantas", fantaId, "history")).id,
-          pickType: slot.pickType,
-          playerName: input.playerName,
-          playerRole: slot.pickType === "player" ? slot.role : undefined,
-          playerTeam: input.playerTeam,
-          purchasePrice: 0,
-          acquiredAt: new Date(),
-        },
+        pick: buildDraftTeamPick(
+          doc(collection(db, "fantas", fantaId, "history")).id,
+          slot,
+          input,
+        ),
       };
     }).then(() => {
       if (!result) return;
@@ -2554,7 +2681,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   // toccare il turno corrente (che nel frattempo è già andato avanti da solo).
   const fillPendingDraftAssignment = (
     pending: PendingDraftAssignment,
-    input: { playerName: string; playerTeam?: string },
+    input: { playerName: string; playerRole?: string; playerTeam?: string },
   ): void => {
     if (!currentFanta) return;
     const fantaId = currentFanta.id;
@@ -2562,15 +2689,11 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     const slot = slots[pending.slotIndex];
     if (!slot) return;
 
-    const pick: TeamPick = {
-      id: doc(collection(db, "fantas", fantaId, "history")).id,
-      pickType: slot.pickType,
-      playerName: input.playerName,
-      playerRole: slot.pickType === "player" ? slot.role : undefined,
-      playerTeam: input.playerTeam,
-      purchasePrice: 0,
-      acquiredAt: new Date(),
-    };
+    const pick = buildDraftTeamPick(
+      doc(collection(db, "fantas", fantaId, "history")).id,
+      slot,
+      input,
+    );
 
     updateDoc(doc(db, "fantas", fantaId, "members", pending.userId), {
       team: arrayUnion(pick),

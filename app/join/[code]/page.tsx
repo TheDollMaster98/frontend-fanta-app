@@ -73,7 +73,9 @@ export default function JoinFantaPage() {
           budgetSpent: 0,
           budgetLeft: generalBudget,
         };
-        await setDoc(memberRef, newMember);
+        // joinCode: le regole Firestore permettono di auto-iscriversi solo
+        // col codice invito attuale della lega (vedi members.create).
+        await setDoc(memberRef, { ...newMember, joinCode: code });
         setStatus("success");
       } catch (error) {
         console.error("Errore durante l'ingresso nel fanta:", error);

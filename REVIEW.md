@@ -229,3 +229,56 @@ un gestionale peggiorerebbero esattamente i problemi trovati qui sopra
 (movimento lento su azioni frequenti). Usata solo per la parte "pulisci
 le animazioni". L'unico posto dove potrebbe avere senso è la landing
 `app/page.tsx`, se un giorno diventa una pagina pubblica vera.
+
+### E2 — Code review completa: logica e regole (8/10)
+
+Fonte: `/code-review` su tutta la codebase, 10 segnalazioni. Ognuna
+verificata sul codice prima di correggerla; quelle su Firestore anche
+nell'emulatore, contro le regole attualmente in produzione (master).
+Durante la verifica sono emersi altri 2 bug, aggiunti in fondo.
+
+| # | Problema | Verificato | Correzione | Dove |
+| --- | --- | --- | --- | --- |
+| 1 | "Ricalcola Punteggi" con Leaguepedia in rate limit scriveva 0 punti a tutte le pick e a tutti i turni | Sì: `cargoQuery` restituiva `[]` su ogni errore e le statistiche erano pre-riempite a 0 | `cargoQuery` ha una modalità strict che lancia `LEAGUEPEDIA_UNAVAILABLE`; la usano le 3 funzioni che producono punteggi. Il ricalcolo si ferma prima di scrivere e mostra un messaggio chiaro. Le ricerche giocatori mantengono il fallback | `lib/leaguepediaApi.ts`, `app/dashboard/standings/page.tsx`, `app/dashboard/championpick/page.tsx` |
+| 2 | Ingresso in lega da link `/join/{code}` sempre negato | Sì, emulatore con regole di master: `permission-denied` | Nuovo caso nella regola `members.create`: solo se stessi, solo "membro", con il codice invito attuale della lega (`joinCode`), rosa vuota e budget di partenza della lega | `firestore.rules`, `app/join/[code]/page.tsx` |
+| 3 | Pick di draft persa dopo che il turno era già avanzato (team/coach con `playerRole: undefined`); jolly senza ruolo, quindi mai punti | Sì: Firestore senza `ignoreUndefinedProperties`, `arrayUnion` falliva (riprodotto nell'emulatore) | `ignoreUndefinedProperties: true` in `lib/firebase.ts`; pick di draft costruita da una funzione unica che omette i campi vuoti e tiene il ruolo del jolly; il pannello passa il ruolo e il form dei turni saltati lo chiede per i jolly | `lib/firebase.ts`, `contexts/FantaContext.tsx`, `components/DraftPanel.tsx` |
+| 4 | Con un numero dispari di membri il ricalcolo dei turni falliva (`awayPoints: undefined` sul bye) | Sì (emulatore) | Coperto da `ignoreUndefinedProperties` | `lib/firebase.ts` |
+| 5 | Impossibile creare aste per il coach (`playerRole: undefined` in `addDoc`) | Sì (emulatore) | Coperto da `ignoreUndefinedProperties` | `lib/firebase.ts` |
+| 6 | Pick/Ban: listener e chiusura turno negati dalle regole (le regole non filtrano le query) | Sì, emulatore con regole di master: negato **per tutti, admin compreso**. La feature in produzione non ha mai funzionato | Regola divisa in `get` (per id, come prima) e `list` (solo `userId == me` o `revealed == true`). Listener = due query vincolate unite. La chiusura legge il pick di ogni membro per id e scrive `revealed: true`. Nessuno, admin compreso, può interrogare le scelte non ancora rivelate | `firestore.rules`, `contexts/FantaContext.tsx` |
+| 7 | Tabellone: vincitore fissato al primo ricalcolo anche a metà turno; un pareggio bloccava il tabellone per sempre | Sì | Vincitore deciso solo a turno finito (`endDate` passata); pareggio vinto da chi ha più punti in stagione, poi dal seed migliore (home) | `contexts/FantaContext.tsx` |
+| 8 | Gironi: il turno di riposo (bye) contava come vittoria | Sì | Il bye conta per i punti fatti (simmetrico: con un numero dispari di membri ognuno ne ha uno) ma non come vittoria | `lib/bracket.ts` |
+| 9 | Offerta: riserva di budget sbagliata di uno (lo slot in asta veniva riservato due volte) | Sì, il commento stesso diceva "dopo questo" | Riserva = posti da riempire **dopo** quello in asta, in `placeBid` e nel tetto mostrato in UI | `contexts/FantaContext.tsx`, `app/dashboard/auctions/page.tsx` |
+| 10 | Chiunque loggato, anche di un'altra lega, poteva riscrivere budget e rose dei membri, e calendario/gironi/tabellone/storico/offerte | Sì, emulatore con regole di master: consentito | `members.update` richiede di essere membro; calendario, gironi e tabellone scrivibili solo da admin/vice/developer; storico e offerte solo dai membri | `firestore.rules` |
+| 11 | **Nuovo**: ruoli Leaguepedia ("Mid", "Bot", "Top", "Jungle") diversi da quelli di pesi e limiti ("Mid Laner", "ADC", ...). Un giocatore LoL preso all'asta prendeva punti solo se Support; limiti per ruolo mai applicati; nel draft liste per ruolo vuote tranne Support | Sì: `mapLeaguepediaRecord` copiava il ruolo grezzo, le chiavi dei pesi sono `LOL_ROLES` | `toLolRole()` in `lib/constants.ts`, applicata dove nascono i dati Leaguepedia e in ogni confronto o lookup per ruolo, così anche le pick già salvate col ruolo grezzo prendono i pesi giusti | `lib/constants.ts`, `lib/leaguepediaApi.ts`, `lib/scoring.ts`, `contexts/FantaContext.tsx`, `app/dashboard/{auctions,standings}/page.tsx` |
+| 12 | **Nuovo, mio, del 6/10**: il listener dei pick copiava solo nome e punti, quindi ban e dettaglio punti non arrivavano mai alla pagina | Sì | Il listener riscritto per il punto 6 copia tutti i campi | `contexts/FantaContext.tsx` |
+
+#### Verifiche fatte
+
+- Regole Firestore, emulatore: **43/43** casi passano (join valido e 6
+  varianti invalide, estranei respinti su membri, calendario, gironi,
+  tabellone, storico e offerte, query consentite e vietate sui pick,
+  flusso di chiusura turno completo). Le stesse prove sulle regole di
+  master confermano che i punti 2, 6 e 10 erano reali.
+- `ignoreUndefinedProperties`, emulatore: senza l'opzione `arrayUnion`,
+  la fixture col bye e l'asta coach falliscono; con l'opzione passano.
+- Logica pura: classifica girone con bye (A, B, C come atteso), mappa dei
+  ruoli, punti di una pick vecchia con ruolo "Mid" (prima `undefined`,
+  ora calcolati).
+- `tsc`, `eslint` (solo 2 warning già esistenti), `next build` puliti.
+
+#### Da sapere prima del merge
+
+- **Le regole vanno in produzione da sole** col merge su master
+  (workflow `deploy-firestore.yml`). Vanno insieme al codice: le regole
+  nuove senza il client nuovo romperebbero listener e chiusura dei pick.
+  Stesso merge, nessun problema.
+- **Turni Pick/Ban già chiusi**: i pick lì non hanno `revealed`, quindi
+  dopo il deploy ognuno vede solo i propri finché un admin non preme
+  "Ricalcola Punti" su ciascun turno chiuso (rilegge, ricalcola e rivela).
+- **Limite che resta**: un membro può ancora scrivere sui documenti degli
+  altri membri della stessa lega, perché l'assegnazione di un'asta chiusa
+  parte dal browser di chiunque sia connesso. Si chiude solo spostando
+  l'assegnazione in una Cloud Function (già in TODO.md).
+- **Non provato a schermo**: le pagine della dashboard richiedono login
+  Firebase. Il primo test reale è dopo il deploy: join da link, un turno
+  Pick/Ban chiuso, un ricalcolo.

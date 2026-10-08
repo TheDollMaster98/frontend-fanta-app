@@ -1,5 +1,6 @@
 import type { RoleScoringWeights, ScoringWeights, TeamPick, TeamScoringWeights } from "@/types";
 import type { FantasyPlayerStats } from "@/lib/leaguepediaApi";
+import { toLolRole } from "@/lib/constants";
 import type { LolesportsParticipantStats } from "@/lib/lolesportsApi";
 
 /**
@@ -19,7 +20,10 @@ export function computeAutoPoints(
 ): number | undefined {
   if (pick.pickType === "player" || pick.pickType === "jolly") {
     const s = playerStats[pick.playerName];
-    const weights = pick.playerRole ? roleWeights[pick.playerRole] : undefined;
+    // toLolRole: anche le pick salvate prima della conversione dei ruoli
+    // Leaguepedia ("Mid", "Bot"...) trovano i pesi giusti.
+    const role = toLolRole(pick.playerRole);
+    const weights = role ? roleWeights[role] : undefined;
     if (!s || !weights) return undefined;
     return (
       s.kills * weights.kills +
@@ -79,7 +83,10 @@ export function computeManualBonus(
   teamWeights: TeamScoringWeights,
 ): number {
   if (pick.pickType === "player" || pick.pickType === "jolly") {
-    const weights = pick.playerRole ? roleWeights[pick.playerRole] : undefined;
+    // toLolRole: anche le pick salvate prima della conversione dei ruoli
+    // Leaguepedia ("Mid", "Bot"...) trovano i pesi giusti.
+    const role = toLolRole(pick.playerRole);
+    const weights = role ? roleWeights[role] : undefined;
     const stats = pick.manualPlayerStats;
     if (!weights || !stats) return 0;
     return (

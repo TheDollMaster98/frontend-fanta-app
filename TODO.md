@@ -4,6 +4,15 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
+## Code review completa (8/10, branch chore/design-review)
+
+12 bug di logica e regole corretti, dettaglio in `REVIEW.md` (E2). I più
+gravi: Pick/Ban mai funzionante in produzione (regole usate come filtro
+delle query), join da link sempre negato, ricalcolo che azzerava i punti
+in rate limit, ruoli Leaguepedia ("Mid", "Bot") mai convertiti, quindi
+punti assegnati solo ai Support. Dopo il deploy: un admin deve premere
+"Ricalcola Punti" sui turni Pick/Ban già chiusi per rivelarli di nuovo.
+
 ## Pick/Ban Campione — punteggio rifatto (6/10)
 
 La regola vecchia (+2 se il campione è pickato almeno una volta nella

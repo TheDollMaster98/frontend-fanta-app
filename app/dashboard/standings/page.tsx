@@ -33,13 +33,14 @@ import { useFanta, type FantaMemberProfile } from "@/contexts/FantaContext";
 import {
   getPlayerGameLog,
   getTeamGameLog,
+  LEAGUEPEDIA_UNAVAILABLE,
   type PlayerGameLog,
   type TeamGameLog,
 } from "@/lib/leaguepediaApi";
 import { computeManualBonus, totalPickPoints } from "@/lib/scoring";
 import { rankGroupMembers } from "@/lib/bracket";
 import type { TeamPick, TeamPickType, CalendarRound } from "@/types";
-import { DEFAULT_TEAM_SCORING_WEIGHTS, PLAYOFF_CIRCUITS } from "@/lib/constants";
+import { DEFAULT_TEAM_SCORING_WEIGHTS, PLAYOFF_CIRCUITS, toLolRole } from "@/lib/constants";
 import { toast } from "sonner";
 
 // Campi delle statistiche manuali per pickType: chiave del form -> etichetta.
@@ -262,7 +263,13 @@ export default function StandingsPage() {
       toast.success("Punteggi ricalcolati");
     } catch (error) {
       console.error("Errore nel ricalcolo dei punteggi:", error);
-      toast.error("Errore nel ricalcolo dei punteggi");
+      if (error instanceof Error && error.message === LEAGUEPEDIA_UNAVAILABLE) {
+        toast.error(
+          "Leaguepedia non risponde (rate limit o errore): punteggi lasciati com'erano, riprova tra qualche minuto",
+        );
+      } else {
+        toast.error("Errore nel ricalcolo dei punteggi");
+      }
     } finally {
       setIsRecalculating(false);
     }
@@ -348,7 +355,7 @@ export default function StandingsPage() {
   );
   const roleWeights = currentFanta.settings.scoringWeights || {};
   const drillWeights =
-    drillPick?.playerRole ? roleWeights[drillPick.playerRole] : undefined;
+    drillPick?.playerRole ? roleWeights[toLolRole(drillPick.playerRole) || ""] : undefined;
   const teamWeights =
     currentFanta.settings.teamScoringWeights || DEFAULT_TEAM_SCORING_WEIGHTS;
 

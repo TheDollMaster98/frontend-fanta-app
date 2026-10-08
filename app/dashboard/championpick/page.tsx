@@ -24,6 +24,7 @@ import {
   CHAMPION_PICK_WIN_BONUS,
 } from "@/lib/championPickScoring";
 import type { ChampionPick } from "@/types";
+import { LEAGUEPEDIA_UNAVAILABLE } from "@/lib/leaguepediaApi";
 
 // Dettaglio punti di un pick chiuso; null per i turni chiusi prima del
 // 6/10 (vecchia regola, solo il totale) o non ancora calcolati.
@@ -117,6 +118,10 @@ export default function ChampionPickPage() {
       if (error instanceof Error && error.message === "NO_GAMES") {
         toast.error(
           "Turno chiuso ma nessuna partita trovata su Leaguepedia (rate limit o settimana senza partite): punti non assegnati, riprova con Ricalcola Punti",
+        );
+      } else if (error instanceof Error && error.message === LEAGUEPEDIA_UNAVAILABLE) {
+        toast.error(
+          "Turno chiuso ma Leaguepedia non risponde (rate limit o errore): punti non assegnati, riprova con Ricalcola Punti",
         );
       } else {
         toast.error("Errore nella chiusura, riprova");

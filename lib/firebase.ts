@@ -1,7 +1,7 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { type Analytics, isSupported, getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { type Firestore, getFirestore, initializeFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -18,7 +18,23 @@ const firebaseConfig = {
 // re-inizializzare l'app ad ogni hot-reload/render lato server.
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// ignoreUndefinedProperties: senza, qualunque campo opzionale lasciato a
+// undefined (playerRole di team/coach, awayPoints di un bye, playerTeam
+// assente...) fa fallire l'intera scrittura con "Unsupported field value:
+// undefined" — aste coach impossibili da creare, pick di draft perse dopo
+// che il turno era già avanzato, ricalcolo bloccato con un numero dispari
+// di membri (code review, 8/10). Con questa opzione il campo viene
+// semplicemente omesso, che è ciò che ogni chiamante si aspettava.
+// initializeFirestore va chiamato una volta sola per app: in hot-reload o
+// in SSR il modulo può essere rivalutato, e lì si riusa l'istanza esistente.
+function createDb(): Firestore {
+  try {
+    return initializeFirestore(app, { ignoreUndefinedProperties: true });
+  } catch {
+    return getFirestore(app);
+  }
+}
+export const db = createDb();
 export const storage = getStorage(app);
 
 // getAnalytics richiede `window` e IndexedDB, quindi va inizializzato
