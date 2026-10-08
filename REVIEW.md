@@ -61,6 +61,27 @@ che la revisione deve confermare a schermo e prioritizzare.
    palette tradotta a mano. Se cambia un token, l'anteprima condivisa non
    segue.
 
+### Stato dei punti sopra (8/10)
+
+1. **Parziale.** Rimossi i 5 SVG del template da `public/` (verificato
+   prima che nessun file li usasse). Favicon e logo restano aperti: serve
+   un marchio deciso da te, non si inventa in un commit.
+2. **Fatto, ed era peggio del previsto.** `font-mono` è usato davvero
+   (codici invito in `settings/page.tsx` e `admin/page.tsx`, posizioni
+   in `standings/page.tsx`) e con la variabile Geist inesistente quei
+   testi uscivano in Inter, non monospaziati. Ora `--font-sans` usa la
+   variabile `--font-inter` di `next/font` (`app/layout.tsx`) e
+   `--font-mono` lo stack monospaziato di sistema.
+3. **Aperto, decisione tua**: tema chiaro con selettore oppure togliere
+   la palette chiara e dichiarare l'app solo scura.
+4. **Aperto, fuori scope del branch**: spezzare aste/classifica è un
+   refactor di codice, non una correzione di design. Va fatto pagina per
+   pagina durante la revisione delle schermate, non alla cieca.
+5. **Aperto, basso valore**: `opengraph-image.tsx` gira come
+   ImageResponse e non legge le variabili CSS; l'unica alternativa sono
+   costanti condivise che però non seguirebbero comunque i token oklch.
+   Lasciato com'è, da riallineare a mano se cambia la palette.
+
 ## 3. Criteri di revisione
 
 Ogni schermata viene giudicata su questi punti, in quest'ordine di peso:
@@ -187,7 +208,12 @@ rifinitura e può aspettare. GSAP: non serve, non va aggiunto.
 | `transition-all` sui bottoni | **Fatto**: `transition-[color,background-color,border-color,box-shadow,opacity]` | `components/ui/button.tsx:8` |
 | `prefers-reduced-motion` assente | **Fatto**: regola fuori da ogni layer che azzera zoom e scivolamenti di `tw-animate-css`, restano le dissolvenze | `app/globals.css` (in fondo) |
 | Curva di default debole | **Fatto**: token `--ease-out-strong` (`cubic-bezier(0.23, 1, 0.32, 1)`) applicato a dialog, alert dialog, dropdown (menu e sottomenu), select | `app/globals.css` `@theme`, `components/ui/{dialog,alert-dialog,dropdown-menu,select}.tsx` |
-| Feedback alla pressione sui bottoni | **Non fatto**, di proposito: è un'aggiunta, non una pulizia. Resta proposta | — |
+| Feedback alla pressione sui bottoni | **Fatto (8/10, su richiesta)**: `active:scale-[0.97]`, transizione 150 ms `ease-out` sulla proprietà `scale` (in Tailwind v4 `scale-*` usa la proprietà CSS `scale`, non `transform`: con `transform` nella lista la pressione scattava senza transizione), annullato con `motion-reduce` | `components/ui/button.tsx:8` |
+
+Verifica a schermo del feedback alla pressione (Chromium headless sulla
+landing, che non richiede login): a riposo `scale: none`, premuto
+`0.97`, transizione `scale` 150 ms `cubic-bezier(0, 0, 0.2, 1)`; con
+`prefers-reduced-motion: reduce` premuto resta `1`.
 
 Verifiche: `next build` passa; nel CSS compilato ci sono le utility
 `ease-drawer`/`ease-out-strong` (impostano `--tw-ease`, che è la

@@ -5,7 +5,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { FantaProvider } from "@/contexts/FantaContext";
 import { Toaster } from "@/components/ui/sonner";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   // Senza, Next risolve l'URL dell'immagine Open Graph su "localhost" in
@@ -29,7 +29,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="it" className="dark" suppressHydrationWarning>
+    <html lang="it" className={`dark ${inter.variable}`} suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
         <AuthProvider>
           <FantaProvider>{children}</FantaProvider>
