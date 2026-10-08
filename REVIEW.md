@@ -178,3 +178,28 @@ Verificato e già corretto, niente da fare:
 `transition-all` (punto 2), che hanno entrambi una correzione banale.
 Reduced motion va nello stesso commit perché costa uguale. Il resto è
 rifinitura e può aspettare. GSAP: non serve, non va aggiunto.
+
+#### Pulizia applicata (8/10)
+
+| Punto | Stato | Dove |
+| --- | --- | --- |
+| Menu mobile 500/300 ms `ease-in-out` | **Fatto**: 250 ms apertura, 200 ms chiusura, curva `ease-drawer` (`cubic-bezier(0.32, 0.72, 0, 1)`); tolta la classe `transition` ridondante | `components/ui/sheet.tsx:61` |
+| `transition-all` sui bottoni | **Fatto**: `transition-[color,background-color,border-color,box-shadow,opacity]` | `components/ui/button.tsx:8` |
+| `prefers-reduced-motion` assente | **Fatto**: regola fuori da ogni layer che azzera zoom e scivolamenti di `tw-animate-css`, restano le dissolvenze | `app/globals.css` (in fondo) |
+| Curva di default debole | **Fatto**: token `--ease-out-strong` (`cubic-bezier(0.23, 1, 0.32, 1)`) applicato a dialog, alert dialog, dropdown (menu e sottomenu), select | `app/globals.css` `@theme`, `components/ui/{dialog,alert-dialog,dropdown-menu,select}.tsx` |
+| Feedback alla pressione sui bottoni | **Non fatto**, di proposito: è un'aggiunta, non una pulizia. Resta proposta | — |
+
+Verifiche: `next build` passa; nel CSS compilato ci sono le utility
+`ease-drawer`/`ease-out-strong` (impostano `--tw-ease`, che è la
+variabile letta da `tw-animate-css`), `duration-250` sullo stato aperto
+e la regola `prefers-reduced-motion`. **Non verificato a schermo**: le
+pagine della dashboard richiedono login Firebase, quindi la resa del menu
+mobile va controllata da telefono dopo il deploy di prova.
+
+Nota sulla skill `gpt-taste` usata per questo passaggio: impone GSAP con
+pinning/scroll, hover `scale-105` a 700 ms, struttura da landing (hero,
+bento, CTA) e vieta Inter. Sono regole per pagine marketing; applicate a
+un gestionale peggiorerebbero esattamente i problemi trovati qui sopra
+(movimento lento su azioni frequenti). Usata solo per la parte "pulisci
+le animazioni". L'unico posto dove potrebbe avere senso è la landing
+`app/page.tsx`, se un giorno diventa una pagina pubblica vera.
