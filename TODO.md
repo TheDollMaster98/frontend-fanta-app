@@ -28,9 +28,18 @@ Dettaglio in `REVIEW.md` (E4).
       Manager Admin**, **Artifact Registry Administrator**. Senza, il
       workflow "Deploy Cloud Functions" fallisce con un errore di permessi
       (il resto dell'app si aggiorna comunque).
-- [ ] Dopo il primo deploy, in Firebase Console → Functions devono
-      comparire `scheduledRecalculation` e `closeExpiredAuctionsJob`. I
-      log di ogni giro sono in Functions → Log.
+- [x] Primo deploy fatto a mano dal PC (9/10): `scheduledRecalculation`
+      e `closeExpiredAuctionsJob` creati in us-central1, indice delle aste
+      pubblicato, API attivate. I log di ogni giro sono in Firebase
+      Console → Functions → Log.
+- [ ] Aggiornare `firebase-functions` all'ultima major (avviso al deploy:
+      ha modifiche incompatibili, va fatto in un branch a parte).
+## Inviti: chi li ha usati (9/10, branch fix/invite-used-by)
+
+- [x] In Impostazioni → Inviti, un invito usato mostra nome ed email di
+      chi l'ha usato e la data d'uso (dal profilo `users/{usedBy}`).
+- [x] Prima accanto a "Usato" c'era la data di **creazione**, che
+      sembrava la data d'uso. Ora: usato = data d'uso, libero = "creato il".
 
 ## Giro design-review (8-9/10, branch chore/design-review, mergiato)
 

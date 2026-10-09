@@ -394,3 +394,11 @@ prima o poi divergono, quindi:
   stesso della route che già funziona in produzione.
 - Il percorso del bottone "Ricalcola" nel browser usa lo stesso motore, ma
   non l'ho cliccato a schermo dopo il refactor.
+### E5 — Inviti: chi li ha usati (9/10, `fix/invite-used-by`)
+
+| Problema | Correzione | Dove |
+| --- | --- | --- |
+| Nella lista inviti non si vedeva chi aveva usato un invito, pur essendo salvato (`usedBy`) | Nome ed email dal profilo `users/{uid}` (leggibile da chi è loggato), caricati una volta per utente | `app/dashboard/settings/page.tsx` |
+| Accanto a "Usato" c'era la data di creazione dell'invito, che sembrava la data d'uso | Usato: "Usato da Nome (email) il gg/mm/aaaa" con la data d'uso; libero: "Libero · creato il gg/mm/aaaa" | idem |
+
+Verificato a schermo sugli emulatori con un invito usato e uno libero.
