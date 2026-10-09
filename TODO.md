@@ -4,6 +4,13 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
+## Inviti: chi li ha usati (9/10, branch fix/invite-used-by)
+
+- [x] In Impostazioni → Inviti, un invito usato mostra nome ed email di
+      chi l'ha usato e la data d'uso (dal profilo `users/{usedBy}`).
+- [x] Prima accanto a "Usato" c'era la data di **creazione**, che
+      sembrava la data d'uso. Ora: usato = data d'uso, libero = "creato il".
+
 ## Giro design-review (8-9/10, branch chore/design-review, mergiato)
 
 Dettaglio completo in `REVIEW.md` (E1 animazioni, E2 code review, E3
