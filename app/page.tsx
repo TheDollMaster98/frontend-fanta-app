@@ -1,77 +1,43 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { LogoMark } from "@/components/Logo";
 import { Users, Zap, Trophy } from "lucide-react";
+
+// Landing (9/10): marchio, una frase su cosa fa l'app, le due azioni, tre
+// punti. Prima c'erano anche un'etichetta "Fantasy management" e un
+// elenco puntato che ripeteva le card, più testi in bianco fisso invece
+// dei token del tema.
+const FEATURES = [
+  {
+    icon: Zap,
+    title: "Aste live",
+    text: "Countdown condiviso, rilanci in tempo reale, chiusura automatica.",
+  },
+  {
+    icon: Trophy,
+    title: "Classifiche vere",
+    text: "Punti calcolati dalle statistiche reali delle partite, turno per turno.",
+  },
+  {
+    icon: Users,
+    title: "Tra amici",
+    text: "Più leghe, ruoli chiari tra creatore, vice e giocatori.",
+  },
+];
 
 export default function Home() {
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <div className="container mx-auto px-4 py-16">
-        <div className="mx-auto max-w-5xl space-y-10">
-          <div className="space-y-4 text-center">
-            <p className="text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">
-              Fantasy management
-            </p>
-            <h1 className="text-4xl font-semibold tracking-tight text-white md:text-5xl">
-              Fanta Points App
-            </h1>
-            <p className="mx-auto max-w-2xl text-base text-foreground md:text-lg">
-              Gestisci leghe, aste e budget in un unico sistema pensato per
-              sport e giochi fantasy.
-            </p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card className="border-border bg-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base text-white">
-                  <Users className="h-4 w-4 text-foreground" />
-                  Gestione utenti
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CardDescription className="text-muted-foreground">
-                  Ruoli chiari per creatori, vice-admin e giocatori.
-                </CardDescription>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border bg-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base text-white">
-                  <Zap className="h-4 w-4 text-foreground" />
-                  Aste live
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CardDescription className="text-muted-foreground">
-                  Countdown, puntate e chiusura automatica del bando.
-                </CardDescription>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border bg-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base text-white">
-                  <Trophy className="h-4 w-4 text-foreground" />
-                  Multi lega
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CardDescription className="text-muted-foreground">
-                  Crea più leghe e gestisci anche sport diversi.
-                </CardDescription>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="flex flex-col justify-center gap-3 sm:flex-row">
+      <div className="container mx-auto flex min-h-screen max-w-4xl flex-col justify-center px-4 py-16">
+        <div className="space-y-6 text-center">
+          <LogoMark className="mx-auto size-16" />
+          <h1 className="text-4xl font-semibold text-foreground md:text-6xl">
+            Fanta Points
+          </h1>
+          <p className="mx-auto max-w-xl text-lg text-muted-foreground">
+            Leghe, aste live e classifiche per il tuo fantasy tra amici.
+          </p>
+          <div className="flex flex-col justify-center gap-3 pt-2 sm:flex-row">
             <Button size="lg" asChild>
               <Link href="/auth/login">Accedi</Link>
             </Button>
@@ -79,24 +45,17 @@ export default function Home() {
               <Link href="/auth/register">Registrati</Link>
             </Button>
           </div>
-
-          <div className="mx-auto max-w-3xl rounded-lg border border-border bg-card p-6">
-            <h2 className="mb-4 text-xl font-semibold text-white">
-              Funzionalità principali
-            </h2>
-            <ul className="space-y-3 text-sm text-foreground">
-              <li>
-                • Sistema universale per calcio, LoL, basket e sport custom.
-              </li>
-              <li>
-                • Campi personalizzabili con nome, ruolo e dettagli extra.
-              </li>
-              <li>• Budget e offerte gestiti in modo centralizzato.</li>
-              <li>• Countdown e chiusura dell’asta in tempo reale.</li>
-              <li>• Gestione dei vice-admin e dei membri della lega.</li>
-            </ul>
-          </div>
         </div>
+
+        <ul className="mt-16 grid gap-6 border-t border-border pt-10 md:grid-cols-3">
+          {FEATURES.map(({ icon: Icon, title, text }) => (
+            <li key={title} className="space-y-2">
+              <Icon className="size-5 text-primary" aria-hidden="true" />
+              <p className="font-medium text-foreground">{title}</p>
+              <p className="text-sm leading-relaxed text-muted-foreground">{text}</p>
+            </li>
+          ))}
+        </ul>
       </div>
     </main>
   );

@@ -63,9 +63,8 @@ che la revisione deve confermare a schermo e prioritizzare.
 
 ### Stato dei punti sopra (8/10)
 
-1. **Parziale.** Rimossi i 5 SVG del template da `public/` (verificato
-   prima che nessun file li usasse). Favicon e logo restano aperti: serve
-   un marchio deciso da te, non si inventa in un commit.
+1. **Fatto (9/10).** Rimossi i 5 SVG del template da `public/`; marchio,
+   favicon, icona iPhone e anteprima social nuovi (vedi E3).
 2. **Fatto, ed era peggio del previsto.** `font-mono` è usato davvero
    (codici invito in `settings/page.tsx` e `admin/page.tsx`, posizioni
    in `standings/page.tsx`) e con la variabile Geist inesistente quei
@@ -288,3 +287,63 @@ Durante la verifica sono emersi altri 2 bug, aggiunti in fondo.
 - **Non provato a schermo**: le pagine della dashboard richiedono login
   Firebase. Il primo test reale è dopo il deploy: join da link, un turno
   Pick/Ban chiuso, un ricalcolo.
+
+### E3 — Revisione dell'intera app, a schermo (9/10)
+
+Metodo: app avviata in locale contro gli emulatori Firebase (Auth +
+Firestore, regole vere del progetto) con una lega LoL finta di 6 membri,
+rose, aste, calendario e Pick/Ban. Screenshot di tutte le pagine a 1440px
+e 390px prima e dopo, più misura automatica dello sforamento orizzontale
+su ogni pagina mobile. Per rifarlo: `NEXT_PUBLIC_FIREBASE_EMULATORS=true`
+(nuovo, in `lib/firebase.ts`, nessun effetto in produzione).
+
+**Verdetto sul design generale**: la base regge (palette scura con un solo
+accento, componenti coerenti, spaziature ordinate). I problemi veri erano
+di rigore, non di stile: oro usato ovunque, colori con un significato
+sbagliato, azioni duplicate, mobile che sbordava, e nessuna identità.
+
+| # | Priorità | Problema (visto a schermo) | Correzione | Dove |
+| --- | --- | --- | --- | --- |
+| 1 | P1 | **Login che rimandava al login**: `login()` va subito a `/dashboard` mentre il profilo si carica in modo asincrono, `isLoading` era già `false` e il layout vedeva `user=null` | `isLoading` torna `true` finché il profilo non è caricato; se il caricamento fallisce si torna non autenticati invece di uno spinner infinito | `contexts/AuthContext.tsx` |
+| 2 | P1 | Mobile: Aste (445px) e Gestione (480px) sbordavano su schermi da 390px | Righe delle aste che vanno a capo sotto `sm`; tab di Gestione scorrevoli. Misurato dopo: 12 pagine su 12 a 390px | `auctions/page.tsx`, `admin/page.tsx` |
+| 3 | P1 | Toast in alto a destra sopra selettore lega, notifiche e avatar, anche quello persistente "Asta partita" | Toast in basso a destra (centrati in basso su mobile) | `app/layout.tsx` |
+| 4 | P1 | Pick/Ban: chi non aveva scelto poteva farlo a turno finito, cioè a risultati noti; "Chiudi Turno" disponibile su turni non ancora giocati; 5 form aperti insieme | Si sceglie solo nel turno in corso o nel prossimo; turni lontani in una riga compatta; stato "Da chiudere" e chiusura solo a turno finito. **Solo interfaccia**: le regole Firestore non conoscono le date dei turni | `championpick/page.tsx` |
+| 5 | P2 | "Blocca Asta" (oro) e "Chiudi Asta" (rosso) chiamavano la stessa funzione; il rosso suggeriva un'azione distruttiva che non lo era | Un solo "Chiudi e assegna"; "Metti in pausa" al posto di "Salva Asta"; "Annulla asta" come unica azione rossa, con conferma | `auctions/page.tsx` |
+| 6 | P2 | Countdown "3033s" | Formato `mm:ss` con cifre tabellari, rosso solo negli ultimi 10 secondi | `auctions/page.tsx` |
+| 7 | P2 | Oro ovunque: badge di ruoli, stati, "Creatore", "Mercato chiuso" e punti tutti in oro pieno, in competizione col bottone principale | Badge di default in tinta oro tenue; nuova variante `success` per gli stati attivi; ruoli in contorno. Oro pieno solo sull'azione principale | `components/ui/badge.tsx` e pagine |
+| 8 | P2 | Team: "Speso" in rosso come un errore, "Rimanente" in verde | Numeri neutri, rimanente in evidenza perché è quello che serve per decidere un'offerta | `team/page.tsx` |
+| 9 | P3 | Testi: "4 giocatorei acquisiti", "Hai già 1 giocatori nel ruolo" | Plurali corretti, messaggio riscritto | `team/page.tsx`, `auctions/page.tsx` |
+| 10 | P3 | Stesso posto con due nomi: "Le Mie Leghe" nel menu, "Tutte le Leghe" nella pagina | "Leghe" in entrambi | `dashboard/layout.tsx`, `dashboard/page.tsx` |
+| 11 | P3 | "Crediti di tutti" tagliava una riga a metà | Altezza che mostra una lega intera (6-10 membri) | `auctions/page.tsx` |
+| 12 | P3 | Titoli grandi in Inter con spaziatura piena sembrano larghi | Tracking -0.02em su `h1`/`h2` | `app/globals.css` |
+
+#### Logo
+
+Prima non c'era un logo: solo la scritta "Fanta Points App" e la favicon
+di default di Next.js. Il nuovo marchio è una **F fatta di barre di
+classifica** che si accorciano (1° posto la più lunga) **più un punto**:
+si legge F· (Fanta Points) ed è una classifica stilizzata, cioè il cuore
+dell'app. Tessera arrotondata oro, segni scuri, gli stessi due colori dei
+token. Il nome diventa "Fanta Points" senza "App".
+
+- `components/Logo.tsx`: marchio + nome, colori dai token CSS.
+- Usato in header, menu mobile, landing, login, registrazione e join.
+- `app/icon.svg` (favicon), `app/apple-icon.tsx` (icona iPhone),
+  `app/opengraph-image.tsx` (anteprima nei link condivisi, prima con
+  colori copiati a mano che non coincidevano con i token: ora convertiti
+  dai valori oklch reali).
+- Landing riscritta: marchio, una frase, due azioni, tre punti. Tolti
+  l'etichetta "Fantasy management", l'elenco che ripeteva le card e i
+  bianchi fissi.
+
+#### Cosa non ho toccato, e perché
+
+- **Tema chiaro**: resta la tua decisione (selettore o solo scuro).
+- **Pagine Aste (1678 righe) e Classifica (1167)**: spezzarle è un
+  refactor di codice; oggi a schermo sono coerenti.
+- **Toast persistente "Asta partita"**: ora non copre più l'header, ma
+  in basso può coprire un bottone finché non lo chiudi. È una scelta di
+  NotificationCenter (avviso che deve restare), non un difetto di stile.
+- **Il marchio è una proposta**: se non ti convince la direzione (barre di
+  classifica + punto), la geometria sta in un solo posto
+  (`LOGO_GEOMETRY`) più le tre versioni statiche.

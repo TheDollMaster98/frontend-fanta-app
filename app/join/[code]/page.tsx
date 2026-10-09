@@ -1,5 +1,6 @@
 "use client";
 
+import { Logo } from "@/components/Logo";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -95,6 +96,9 @@ export default function JoinFantaPage() {
   if (!user) {
     return (
       <div className="auth-shell">
+        <Link href="/" aria-label="Fanta Points, home">
+          <Logo markClassName="size-9" textClassName="text-xl" />
+        </Link>
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-foreground">Accedi per continuare</CardTitle>
@@ -118,6 +122,9 @@ export default function JoinFantaPage() {
 
   return (
     <div className="auth-shell">
+      <Link href="/" aria-label="Fanta Points, home">
+        <Logo markClassName="size-9" textClassName="text-xl" />
+      </Link>
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-foreground">

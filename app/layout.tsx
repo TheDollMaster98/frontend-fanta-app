@@ -14,11 +14,11 @@ export const metadata: Metadata = {
   // apphosting:backends:list), non indovinato.
   metadataBase: new URL("https://fam-fanta-app-be--fam-fanta-app.europe-west4.hosted.app"),
   title: {
-    default: "Fanta Points App",
+    default: "Fanta Points",
     // Le pagine con un proprio layout.tsx (vedi app/auth/login/layout.tsx
     // e simili) impostano solo la parte specifica, questo template ci
-    // aggiunge sempre "| Fanta Points App" — niente tab tutte uguali.
-    template: "%s | Fanta Points App",
+    // aggiunge sempre "| Fanta Points" — niente tab tutte uguali.
+    template: "%s | Fanta Points",
   },
   description: "Gestione leghe, aste e punteggi per fantasy sportivi",
 };
@@ -34,7 +34,10 @@ export default function RootLayout({
         <AuthProvider>
           <FantaProvider>{children}</FantaProvider>
         </AuthProvider>
-        <Toaster position="top-right" />
+        {/* In basso (9/10): in alto a destra copriva selettore lega,
+            notifiche e avatar dell'header, anche per i toast persistenti
+            come "Asta partita". Su mobile sonner li centra in basso. */}
+        <Toaster position="bottom-right" />
       </body>
     </html>
   );

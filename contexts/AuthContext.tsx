@@ -226,8 +226,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const profile = await loadOrCreateUserProfile(firebaseUser);
-        setUser(profile);
+        // Di nuovo "in caricamento" finché il profilo Firestore non arriva:
+        // login() porta subito a /dashboard, e senza questo il layout
+        // vedeva per un istante user=null con isLoading=false e rimandava
+        // al login (trovato provando l'app sugli emulatori, 8/10).
+        setIsLoading(true);
+        try {
+          setUser(await loadOrCreateUserProfile(firebaseUser));
+        } catch (error) {
+          // Profilo non leggibile/creabile (es. registrazione senza invito
+          // valido): niente spinner infinito, si torna non autenticati.
+          console.error("Errore nel caricamento del profilo utente:", error);
+          setUser(null);
+        }
       } else {
         setUser(null);
       }

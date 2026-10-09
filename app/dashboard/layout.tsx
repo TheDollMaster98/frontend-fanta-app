@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Logo } from "@/components/Logo";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFanta } from "@/contexts/FantaContext";
@@ -98,7 +99,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   const navigation = [
-    { name: "Le Mie Leghe", href: "/dashboard", icon: Home },
+    // Stesso nome del titolo della pagina (prima "Le Mie Leghe" in menu e
+    // "Tutte le Leghe" nella pagina, che mostra anche quelle in cui
+    // entrare): una cosa, un nome.
+    { name: "Leghe", href: "/dashboard", icon: Home },
     {
       name: currentFanta?.settings.draftMode === "snake" ? "Draft" : "Aste Live",
       href: "/dashboard/auctions",
@@ -237,9 +241,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               </Button>
               <Link
                 href="/dashboard"
-                className="text-lg sm:text-xl font-bold text-foreground truncate"
+                className="min-w-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Fanta Points, vai alle leghe"
               >
-                Fanta Points App
+                <Logo textClassName="truncate" />
               </Link>
             </div>
 
@@ -288,7 +293,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-72 max-w-[85vw] p-0">
           <SheetHeader className="border-b border-border">
-            <SheetTitle>Fanta Points App</SheetTitle>
+            <SheetTitle>
+              <Logo markClassName="size-7" textClassName="text-base" />
+            </SheetTitle>
           </SheetHeader>
           <div className="flex flex-col gap-4 p-4 overflow-y-auto">
             {fantas.length > 0 && leagueSelect}

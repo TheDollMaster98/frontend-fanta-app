@@ -159,6 +159,12 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Tracking negativo sui titoli grandi (9/10): a 30px+ Inter con
+     spaziatura 0 sembra larga. Il corpo testo resta a 0. */
+  h1,
+  h2 {
+    letter-spacing: -0.02em;
+  }
 }
 
 /* Scrollbar coerente col tema (token --card/--border), al posto di quella
@@ -196,7 +202,7 @@
    con @utility, non @layer components: quest'ultimo non veniva proprio
    generato nell'output CSS (verificato nel browser, non a occhio). */
 @utility auth-shell {
-  @apply flex min-h-screen items-center justify-center bg-background p-4;
+  @apply flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-4;
 }
 
 @utility stat-tile {

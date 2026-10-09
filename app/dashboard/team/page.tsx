@@ -129,17 +129,20 @@ export default function TeamPage() {
         {!isSnakeDraft && (
           <CardContent>
             <div className="grid md:grid-cols-3 gap-4">
-              <div className="stat-tile border-success/30">
+              {/* Colori neutri (9/10): "Speso" in rosso sembrava un errore,
+                  ma spendere è il senso dell'asta. Il dato che conta per
+                  decidere un'offerta è il rimanente, in evidenza. */}
+              <div className="stat-tile">
                 <p className="text-sm text-muted-foreground">Rimanente</p>
-                <p className="text-2xl font-bold text-success">{remaining}€</p>
+                <p className="text-2xl font-bold text-foreground tabular-nums">{remaining}€</p>
               </div>
-              <div className="stat-tile border-destructive/30">
+              <div className="stat-tile">
                 <p className="text-sm text-muted-foreground">Speso</p>
-                <p className="text-2xl font-bold text-destructive">{spent}€</p>
+                <p className="text-2xl font-semibold text-muted-foreground tabular-nums">{spent}€</p>
               </div>
               <div className="stat-tile">
                 <p className="text-sm text-muted-foreground">Budget Totale</p>
-                <p className="text-2xl font-bold text-foreground">{budget}€</p>
+                <p className="text-2xl font-semibold text-muted-foreground tabular-nums">{budget}€</p>
               </div>
             </div>
           </CardContent>
@@ -151,8 +154,8 @@ export default function TeamPage() {
         <CardHeader>
           <CardTitle className="text-foreground">Rosa Giocatori</CardTitle>
           <CardDescription className="text-muted-foreground">
-            {players.length} giocatore{players.length !== 1 ? "i" : ""} acquisit
-            {players.length !== 1 ? "i" : "o"}
+            {players.length}{" "}
+            {players.length === 1 ? "giocatore acquisito" : "giocatori acquisiti"}
           </CardDescription>
         </CardHeader>
         <CardContent>

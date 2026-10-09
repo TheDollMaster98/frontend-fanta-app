@@ -410,7 +410,7 @@ export default function SettingsPage() {
                           </div>
                           <div className="flex items-center gap-2">
                             {currentFanta?.id === fanta.id && (
-                              <Badge>Attiva</Badge>
+                              <Badge variant="success">Attiva</Badge>
                             )}
                             {canManage && (
                               <>
