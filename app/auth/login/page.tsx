@@ -1,5 +1,6 @@
 "use client";
 
+import { Logo } from "@/components/Logo";
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -52,9 +53,12 @@ export default function LoginPage() {
 
   return (
     <div className="auth-shell">
+      <Link href="/" aria-label="Fanta Points, home">
+        <Logo markClassName="size-9" textClassName="text-xl" />
+      </Link>
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-semibold text-white">
+          <CardTitle className="text-2xl font-semibold tracking-tight text-foreground">
             Accedi
           </CardTitle>
           <CardDescription className="text-muted-foreground">

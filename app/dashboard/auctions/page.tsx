@@ -53,6 +53,7 @@ import {
   MIN_COUNTDOWN_SECONDS,
   MAX_COUNTDOWN_SECONDS,
   PLAYOFF_CIRCUIT_TOURNAMENT_QUERY,
+  toLolRole,
 } from "@/lib/constants";
 import {
   getPlayersByLeague,
@@ -72,7 +73,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Flame, Save, Ban, Lock } from "lucide-react";
+import { Flame, Ban, Lock, Pause } from "lucide-react";
 import { toast } from "sonner";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -84,6 +85,13 @@ const PICK_TYPE_LABELS: Record<TeamPickType, string> = {
   team: "Squadra",
   coach: "Coach",
 };
+
+// 3033 -> "50:33", 45 -> "0:45": i secondi nudi oltre il minuto non si
+// leggono a colpo d'occhio.
+function formatCountdown(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
 
 export default function AuctionsPage() {
   const {
@@ -200,12 +208,14 @@ export default function AuctionsPage() {
   const activePickType: TeamPickType = activeAuction?.pickType || "player";
   const roleLimit =
     activePickType === "player" && activeAuction?.playerRole
-      ? currentFanta?.settings.maxPlayersPerRole?.[activeAuction.playerRole]
+      ? currentFanta?.settings.maxPlayersPerRole?.[toLolRole(activeAuction.playerRole) || ""]
       : undefined;
   const isRoleFull =
     !!roleLimit &&
     myRoster.filter(
-      (p) => p.pickType === "player" && p.playerRole === activeAuction?.playerRole,
+      (p) =>
+        p.pickType === "player" &&
+        toLolRole(p.playerRole) === toLolRole(activeAuction?.playerRole),
     ).length >= roleLimit;
   const maxJolly = currentFanta?.settings.maxJolly || 0;
   const isTeamPickTaken =
@@ -216,7 +226,12 @@ export default function AuctionsPage() {
     activePickType === "jolly" &&
     myRoster.filter((p) => p.pickType === "jolly").length >= maxJolly;
   const myBudget = user ? getUserBudget(user.id) : 0;
-  const openSlots = maxPlayersTotal > 0 ? maxPlayersTotal - myRoster.length : 0;
+  // Posti rosa da riempire DOPO quello in asta: serve 1 credito a testa
+  // per completare la squadra. Lo slot in asta non va riservato, lo si sta
+  // pagando adesso (prima veniva contato due volte: all'ultimo posto non si
+  // poteva spendere tutto il budget).
+  const openSlots =
+    maxPlayersTotal > 0 ? Math.max(maxPlayersTotal - myRoster.length - 1, 0) : 0;
   const maxAffordableBid =
     maxBid !== undefined
       ? Math.min(maxBid, myBudget - openSlots)
@@ -453,10 +468,6 @@ export default function AuctionsPage() {
     if (!customBid) return;
     placeBid(Number(customBid));
     setCustomBid("");
-  };
-
-  const closeAuction = () => {
-    if (activeAuction) closeAuctionInFirestore(activeAuction.id);
   };
 
   const cancelAuction = () => {
@@ -1108,15 +1119,22 @@ export default function AuctionsPage() {
 
       {/* Asta Attiva */}
       {activeAuction && activeAuction.status === "active" && (
-        <Card className="border-2 border-info">
+        <Card className="border-2 border-primary/40">
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-2xl flex items-center gap-2">
                 <Flame className="w-6 h-6 text-warning" />
                 Asta in Corso
               </CardTitle>
-              <div className="text-4xl font-bold text-info">
-                {countdown}s
+              {/* mm:ss invece di "3033s" (illeggibile oltre il minuto);
+                  rosso solo negli ultimi 10 secondi, quando conta davvero. */}
+              <div
+                className={`text-4xl font-bold tabular-nums tracking-tight ${
+                  countdown <= 10 ? "text-destructive" : "text-foreground"
+                }`}
+                aria-label={`Tempo rimanente: ${countdown} secondi`}
+              >
+                {formatCountdown(countdown)}
               </div>
             </div>
           </CardHeader>
@@ -1130,7 +1148,9 @@ export default function AuctionsPage() {
                   {PICK_TYPE_LABELS[activeAuction.pickType || "player"]}
                 </Badge>
                 {activeAuction.playerRole && (
-                  <Badge className="mt-2">{activeAuction.playerRole}</Badge>
+                  <Badge variant="outline" className="mt-2">
+                    {activeAuction.playerRole}
+                  </Badge>
                 )}
                 {activeAuction.playerTeam && (
                   <p className="text-muted-foreground mt-1">
@@ -1168,7 +1188,9 @@ export default function AuctionsPage() {
                     <p className="text-sm text-muted-foreground mb-2">
                       Crediti di tutti
                     </p>
-                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {/* max-h-60: una lega tra amici (6-10 membri) si vede
+                        tutta; prima max-h-32 tagliava una riga a metà. */}
+                    <div className="space-y-1 max-h-60 overflow-y-auto">
                       {[...fantaMembers]
                         .sort(
                           (a, b) =>
@@ -1232,9 +1254,9 @@ export default function AuctionsPage() {
                 </p>
               ) : isRoleFull ? (
                 <p className="text-sm text-muted-foreground">
-                  Hai già {roleLimit} giocatori nel ruolo &quot;
-                  {activeAuction.playerRole}&quot;: limite raggiunto per
-                  questo ruolo.
+                  Limite raggiunto per il ruolo &quot;
+                  {activeAuction.playerRole}&quot; ({roleLimit} in rosa): non
+                  puoi fare offerte.
                 </p>
               ) : isTeamPickTaken ? (
                 <p className="text-sm text-muted-foreground">
@@ -1260,7 +1282,7 @@ export default function AuctionsPage() {
               ) : maxAffordableBid <= activeAuction.currentPrice ? (
                 <p className="text-sm text-muted-foreground">
                   {openSlots > 0
-                    ? `Con ${openSlots} posti rosa ancora da riempire devi tenere almeno ${openSlots} crediti da parte: non puoi rilanciare oltre.`
+                    ? `Con ${openSlots} posti rosa da riempire dopo questo devi tenere almeno ${openSlots} crediti da parte: non puoi rilanciare oltre.`
                     : "Budget insufficiente per rilanciare."}
                 </p>
               ) : (
@@ -1308,6 +1330,10 @@ export default function AuctionsPage() {
 
             {isAdmin && (
               <div className="space-y-2">
+                {/* "Blocca Asta" e "Chiudi Asta" facevano la stessa cosa
+                    (closeAuctionInFirestore), uno in oro e uno in rosso come
+                    se fosse distruttivo: ora un solo bottone che dice cosa
+                    fa. Annulla è l'unica azione distruttiva, con conferma. */}
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     variant="default"
@@ -1315,14 +1341,27 @@ export default function AuctionsPage() {
                     className="w-full"
                   >
                     <Lock className="mr-2 h-4 w-4" />
-                    Blocca Asta
+                    Chiudi e assegna
                   </Button>
+
+                  <Button
+                    variant="outline"
+                    onClick={saveCurrentAuction}
+                    className="w-full"
+                  >
+                    <Pause className="mr-2 h-4 w-4" />
+                    Metti in pausa
+                  </Button>
+                </div>
 
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="outline" className="w-full">
+                      <Button
+                        variant="ghost"
+                        className="w-full text-destructive hover:text-destructive"
+                      >
                         <Ban className="mr-2 h-4 w-4" />
-                        Annulla
+                        Annulla asta
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -1341,26 +1380,6 @@ export default function AuctionsPage() {
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={saveCurrentAuction}
-                    className="w-full"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    Salva Asta
-                  </Button>
-
-                  <Button
-                    variant="destructive"
-                    onClick={closeAuction}
-                    className="w-full"
-                  >
-                    Chiudi Asta
-                  </Button>
-                </div>
 
                 {/* Assegnazione manuale: utile quando due persone si sono
                     già accordate fuori dall'asta su chi se lo prende, a
@@ -1424,7 +1443,7 @@ export default function AuctionsPage() {
               auctions.map((auction) => (
                 <div
                   key={auction.id}
-                  className={`flex items-center justify-between p-4 border border-border rounded-lg hover:bg-raised transition-colors ${
+                  className={`flex flex-col gap-3 p-4 border border-border rounded-lg hover:bg-raised transition-colors sm:flex-row sm:items-center sm:justify-between ${
                     auction.status === "closed" ? "cursor-pointer" : ""
                   }`}
                   onClick={() => {
@@ -1449,11 +1468,11 @@ export default function AuctionsPage() {
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                     <Badge
                       variant={
                         auction.status === "active"
-                          ? "default"
+                          ? "success"
                           : auction.status === "pending"
                             ? "secondary"
                             : "outline"
@@ -1599,7 +1618,7 @@ export default function AuctionsPage() {
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   {detailAuction.playerRole && (
-                    <Badge>{detailAuction.playerRole}</Badge>
+                    <Badge variant="outline">{detailAuction.playerRole}</Badge>
                   )}
                   {detailAuction.playerTeam && (
                     <span className="text-sm text-muted-foreground">

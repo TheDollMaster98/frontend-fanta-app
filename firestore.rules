@@ -89,8 +89,11 @@ service cloud.firestore {
         && request.resource.data.get('isDeveloper', false) == resource.data.get('isDeveloper', false);
     }
 
+    // Cache dei giocatori pro: nessuna pagina dell'app la scrive oggi
+    // (8/10). Scrittura solo developer, invece di chiunque loggato.
     match /proplayers/{playerId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isDeveloper();
     }
 
     // Link invito per la registrazione (30/9): vedi il commento su
@@ -212,6 +215,22 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/fantas/$(fantaId)).data.get('createdBy', '') == request.auth.uid
           )
           || (isAdminOrVice() && request.resource.data.role == 'membro')
+          // 3) ingresso da link invito della lega (/join/{code}, 8/10):
+          //    prima mancava e chiunque aprisse il link riceveva
+          //    permission-denied. Solo se stessi, solo "membro", con il
+          //    codice invito attuale della lega (joinCode sul documento) e
+          //    una rosa vuota col budget di partenza della lega — niente
+          //    budget gonfiati o giocatori già in rosa all'ingresso.
+          || (
+            request.auth.uid == memberId
+            && request.resource.data.role == 'membro'
+            && request.resource.data.get('joinCode', '') != ''
+            && request.resource.data.get('joinCode', '') == get(/databases/$(database)/documents/fantas/$(fantaId)).data.get('inviteCode', '')
+            && request.resource.data.team.size() == 0
+            && request.resource.data.budgetSpent == 0
+            && request.resource.data.budgetTot == get(/databases/$(database)/documents/fantas/$(fantaId)).data.get('settings', {}).get('generalBudget', 0)
+            && request.resource.data.budgetLeft == request.resource.data.budgetTot
+          )
         );
 
         // Rimuovere un membro è un'azione da admin (non vice, vedi isAdmin
@@ -241,13 +260,61 @@ service cloud.firestore {
         // prima chiunque poteva riscrivere il proprio (o altrui) role a
         // "admin" via un update qualsiasi. Ogni altro campo (team, budget,
         // teamName) segue la stessa logica di sempre, invariata.
-        allow update: if request.auth != null && (
+        // isMember() (8/10, code review): prima qualunque utente loggato,
+        // anche di un'altra lega, poteva riscrivere budget e rosa di
+        // chiunque. Resta il limite noto: un membro può ancora scrivere sui
+        // documenti degli altri membri, perché l'assegnazione di un'asta
+        // chiusa parte dal browser di chiunque sia connesso (nessuna Cloud
+        // Function, vedi TODO.md).
+        // Budget coerente (8/10): budgetTot fisso, quanto scende budgetLeft
+        // tanto sale budgetSpent (e viceversa), mai spesa negativa, e
+        // budgetLeft mai oltre il budget totale (o oltre il valore che
+        // aveva già, se un admin l'aveva alzato). Le scritture legittime
+        // usano increment() con lo stesso importo sui due campi, quindi lo
+        // rispettano sempre. Prima un membro poteva scriversi
+        // budgetLeft: 99999 dalla console.
+        function budgetConsistent() {
+          let before = resource.data;
+          let after = request.resource.data;
+          return after.get('budgetTot', 0) == before.get('budgetTot', 0)
+            && after.get('budgetLeft', 0) - before.get('budgetLeft', 0)
+              == before.get('budgetSpent', 0) - after.get('budgetSpent', 0)
+            && after.get('budgetSpent', 0) >= 0
+            && (
+              after.get('budgetLeft', 0) <= after.get('budgetTot', 0)
+              || after.get('budgetLeft', 0) <= before.get('budgetLeft', 0)
+            );
+        }
+
+        // Scrittura sul documento di UN ALTRO membro da parte di un membro
+        // normale: l'unico caso legittimo è l'assegnazione di un'asta
+        // chiusa o di una pick di draft, partita dal browser di chi era
+        // connesso (nessuna Cloud Function). Quindi solo rosa e budget,
+        // rosa che cresce, spesa che non scende. Niente nome squadra,
+        // niente rimborsi, niente giocatori tolti.
+        function isAssignmentToOther() {
+          return request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['team', 'budgetSpent', 'budgetLeft'])
+            && request.resource.data.team.size() > resource.data.team.size()
+            && request.resource.data.get('budgetSpent', 0) >= resource.data.get('budgetSpent', 0);
+        }
+
+        // Admin/vice/developer: liberi (ricalcolo punti, statistiche
+        // manuali, assegnazioni a mano, correzioni di rosa). Membro
+        // normale: sul proprio documento come prima (rosa che si accorcia
+        // solo a mercato aperto) più budget coerente; su quello degli
+        // altri solo un'assegnazione.
+        allow update: if request.auth != null && isMember() && (
           (isRoleChange() && isAdmin())
-          || (!isRoleChange() && (
-            !seasonStarted()
-            || isAdminOrVice()
-            || !isTeamShrinking()
-          ))
+          || (!isRoleChange() && isAdminOrVice())
+          || (
+            !isRoleChange()
+            && budgetConsistent()
+            && (
+              (request.auth.uid == memberId && (!seasonStarted() || !isTeamShrinking()))
+              || (request.auth.uid != memberId && isAssignmentToOther())
+            )
+          )
         );
       }
 
@@ -276,14 +343,17 @@ service cloud.firestore {
           return request.resource.data.currentPrice != resource.data.currentPrice;
         }
 
-        allow update: if request.auth != null && (
+        // isMember() (8/10): prima chiunque loggato, anche di un'altra
+        // lega, poteva cambiare offerente, stato o countdown di un'asta.
+        allow update: if request.auth != null && isMember() && (
           !seasonStarted()
           || isAdminOrVice()
           || !isPriceChange()
         );
 
         match /bids/{bidId} {
-          allow read, write: if request.auth != null;
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && isMember();
         }
       }
 
@@ -336,29 +406,42 @@ service cloud.firestore {
           return request.resource.data.order != resource.data.order;
         }
 
+        // isMember() (8/10): prima chiunque loggato poteva far avanzare o
+        // saltare i turni del draft di qualunque lega.
         allow update: if request.auth != null && (
           isAdminOrVice()
           || (
-            !isOrderChange()
+            isMember()
+            && !isOrderChange()
             && (!seasonStarted() || !isSelfPickAttempt())
           )
         );
       }
 
+      // Storico acquisti: scritto alla chiusura di un'asta o a una pick di
+      // draft, dal browser di un membro qualsiasi. Prima: chiunque loggato.
       match /history/{entryId} {
-        allow read, write: if request.auth != null;
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && isMember();
       }
 
+      // Calendario, gironi e tabellone: generati e ricalcolati solo da
+      // admin/vice/developer (Classifica, Gestione Lega → Avvia
+      // Stagione). Prima chiunque loggato, anche non membro, poteva
+      // riscrivere punteggi o vincitori di qualunque lega (8/10).
       match /calendar/{roundId} {
-        allow read, write: if request.auth != null;
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && isAdminOrVice();
       }
 
       match /groups/{groupId} {
-        allow read, write: if request.auth != null;
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && isAdminOrVice();
       }
 
       match /bracket/{roundId} {
-        allow read, write: if request.auth != null;
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && isAdminOrVice();
       }
 
       // Pick'em (1/10): un solo documento "bracket" (scritto solo da
@@ -375,6 +458,7 @@ service cloud.firestore {
           (docId == "bracket" && isAdminOrVice())
           || (
             docId == "prediction_" + request.auth.uid
+            && isMember()
             && (
               !exists(/databases/$(database)/documents/fantas/$(fantaId)/pickem/bracket)
               || get(/databases/$(database)/documents/fantas/$(fantaId)/pickem/bracket).data.locked != true
@@ -402,19 +486,39 @@ service cloud.firestore {
       // ancora chiuso (dopo, il pick resta fissato per calcolare punti
       // su un valore stabile); admin/vice può sempre scrivere, serve per
       // assegnare "points" in chiusura di turno.
+      //
+      // get e list separati (8/10, code review): le regole NON filtrano i
+      // risultati di una query. Una query (collection intera, o where
+      // roundId) contro la vecchia regola basata sull'id del documento
+      // veniva negata per intero, per tutti — il listener dei pick e la
+      // chiusura turno non funzionavano. Ora:
+      // - get (un documento per id): regola originale per id, usata dalla
+      //   chiusura turno per leggere il pick di ogni membro;
+      // - list (query): solo i propri (where userId == me) o quelli già
+      //   rivelati (where revealed == true, scritto dalla chiusura turno).
+      //   Condizioni sui campi che la query stessa vincola, quindi
+      //   verificabili da Firestore. Nessuna eccezione admin sulle query:
+      //   resta impossibile sbirciare le scelte altrui prima della
+      //   chiusura, anche per chi chiude il turno.
       match /championPicks/{pickDocId} {
-        allow read: if request.auth != null && (
+        allow get: if request.auth != null && (
           pickDocId.split('_')[1] == request.auth.uid
           || (
             exists(/databases/$(database)/documents/fantas/$(fantaId)/championPickRounds/$(pickDocId.split('_')[0]))
             && get(/databases/$(database)/documents/fantas/$(fantaId)/championPickRounds/$(pickDocId.split('_')[0])).data.closed == true
           )
         );
+        allow list: if request.auth != null && (
+          resource.data.userId == request.auth.uid
+          || resource.data.revealed == true
+        );
         allow create, update: if request.auth != null && (
           isAdminOrVice()
           || (
             pickDocId.split('_')[1] == request.auth.uid
             && request.resource.data.userId == request.auth.uid
+            // "revealed" lo scrive solo la chiusura turno.
+            && request.resource.data.get('revealed', false) == false
             && (
               !exists(/databases/$(database)/documents/fantas/$(fantaId)/championPickRounds/$(pickDocId.split('_')[0]))
               || get(/databases/$(database)/documents/fantas/$(fantaId)/championPickRounds/$(pickDocId.split('_')[0])).data.closed != true

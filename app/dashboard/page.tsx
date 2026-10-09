@@ -94,7 +94,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Tutte le Leghe</h1>
+          <h1 className="text-3xl font-bold text-foreground">Leghe</h1>
           <p className="text-muted-foreground mt-2">
             Le tue leghe e quelle a cui puoi richiedere di entrare
           </p>
@@ -155,7 +155,7 @@ export default function DashboardPage() {
                     </Badge>
                   </div>
                   <Badge
-                    variant={fanta.settings.seasonStarted ? "default" : "secondary"}
+                    variant={fanta.settings.seasonStarted ? "secondary" : "success"}
                     className="w-fit mb-2"
                   >
                     {fanta.settings.seasonStarted

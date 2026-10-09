@@ -5,7 +5,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { FantaProvider } from "@/contexts/FantaContext";
 import { Toaster } from "@/components/ui/sonner";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   // Senza, Next risolve l'URL dell'immagine Open Graph su "localhost" in
@@ -14,11 +14,11 @@ export const metadata: Metadata = {
   // apphosting:backends:list), non indovinato.
   metadataBase: new URL("https://fam-fanta-app-be--fam-fanta-app.europe-west4.hosted.app"),
   title: {
-    default: "Fanta Points App",
+    default: "Fanta Points",
     // Le pagine con un proprio layout.tsx (vedi app/auth/login/layout.tsx
     // e simili) impostano solo la parte specifica, questo template ci
-    // aggiunge sempre "| Fanta Points App" — niente tab tutte uguali.
-    template: "%s | Fanta Points App",
+    // aggiunge sempre "| Fanta Points" — niente tab tutte uguali.
+    template: "%s | Fanta Points",
   },
   description: "Gestione leghe, aste e punteggi per fantasy sportivi",
 };
@@ -29,12 +29,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="it" className="dark" suppressHydrationWarning>
+    <html lang="it" className={`dark ${inter.variable}`} suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
         <AuthProvider>
           <FantaProvider>{children}</FantaProvider>
         </AuthProvider>
-        <Toaster position="top-right" />
+        {/* In basso (9/10): in alto a destra copriva selettore lega,
+            notifiche e avatar dell'header, anche per i toast persistenti
+            come "Asta partita". Su mobile sonner li centra in basso. */}
+        <Toaster position="bottom-right" />
       </body>
     </html>
   );

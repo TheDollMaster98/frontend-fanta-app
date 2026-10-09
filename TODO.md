@@ -4,6 +4,31 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
+## Giro design-review (8-9/10, branch chore/design-review, mergiato)
+
+Dettaglio completo in `REVIEW.md` (E1 animazioni, E2 code review, E3
+revisione a schermo). In sintesi:
+- [x] Animazioni ripulite (menu mobile, transition-all, reduced motion,
+      feedback alla pressione). GSAP valutato e scartato.
+- [x] 14 bug di logica e regole Firestore: Pick/Ban mai funzionante in
+      produzione, join da link sempre negato, ricalcolo che azzerava i
+      punti in rate limit, ruoli Leaguepedia mai convertiti (punti solo ai
+      Support), estranei che potevano scrivere su membri, aste, draft,
+      calendario. Regole provate nell'emulatore (64/64).
+- [x] Revisione a schermo: login che rimandava al login, mobile che
+      sbordava, toast sopra l'header, Pick/Ban a risultati noti, azioni
+      d'asta duplicate, oro ovunque, colori con significato sbagliato.
+- [x] Logo e identità: marchio (F di barre di classifica + punto),
+      favicon, icona iPhone, anteprima social, landing riscritta.
+- [x] `NEXT_PUBLIC_FIREBASE_EMULATORS=true` per provare l'app in locale
+      contro gli emulatori Firebase, senza toccare la produzione.
+
+### Da fare subito dopo il deploy
+- [ ] Un admin preme "Ricalcola Punti" su ogni turno Pick/Ban già chiuso:
+      senza il nuovo campo `revealed` ognuno vede solo i propri pick.
+- [ ] Prova sul telefono vero: entrare in una lega da link, chiudere un
+      turno Pick/Ban, un ricalcolo, un'asta per il coach, il menu mobile.
+
 ## Pick/Ban Campione — punteggio rifatto (6/10)
 
 La regola vecchia (+2 se il campione è pickato almeno una volta nella
@@ -495,6 +520,11 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
 ## Ancora aperto
 
 ### Da decidere/fare tu
+- [ ] **Logo**: è una proposta (REVIEW.md E3). Se la direzione non
+      convince, la geometria sta in `components/Logo.tsx` più
+      `app/icon.svg`, `app/apple-icon.tsx`, `app/opengraph-image.tsx`.
+- [ ] **Tema chiaro**: o un selettore, o si toglie la palette chiara
+      (oggi in `app/globals.css` ma irraggiungibile).
 - [ ] **Secret GitHub `FIREBASE_SERVICE_ACCOUNT`**: serve perché i workflow
       di deploy funzionino (JSON di una service account, ruolo "Firebase
       Admin" sul progetto `fam-fanta-app`). Se ne hai già uno con un altro
@@ -512,11 +542,17 @@ Firestore — quindi non toccati su richiesta esplicita.)
       Cloud Functions/cron). Se nessuno ce l'ha aperta, si chiude al
       successivo accesso. Accettabile per un gruppo di amici, ma è un
       limite architetturale, non un bug che si sistema in un file.
-- [ ] Le regole Firestore ora richiedono solo "utente loggato", non
-      verificano che sia davvero membro della lega che sta leggendo/
-      scrivendo (fidelizzato al gruppo di amici). Se in futuro l'app
-      cresce o diventa pubblica, va rifatto seriamente con controlli di
-      membership nelle regole.
+- [x] ~~Regole che richiedono solo "utente loggato"~~: dal 8/10 ogni
+      scrittura di lega richiede di esserne membro (o admin/vice per
+      calendario, gironi, tabellone). Le letture restano aperte a chi è
+      loggato.
+- [ ] Resta: un membro può "assegnare" a un altro membro un giocatore
+      inventato scalandogli il budget, perché l'assegnazione di un'asta
+      parte dal browser di chi è connesso. Si chiude solo spostando la
+      chiusura asta in una Cloud Function.
+- [ ] Pick/Ban: il blocco delle scelte a turno finito è solo
+      nell'interfaccia. Le regole non conoscono le date dei turni;
+      servirebbe copiarle su `championPickRounds`.
 
 ### Feature ancora finte/incomplete (basso impatto)
 - [ ] Non esiste nessun invio reale di notifiche (push/email/in-app): il
@@ -524,11 +560,12 @@ Firestore — quindi non toccati su richiesta esplicita.)
       Serve un canale di invio vero prima che questi checkbox contino
       qualcosa — è una feature nuova, non un bug, quindi non l'ho aggiunta
       di mia iniziativa.
-- [ ] Nessuna validazione server-side seria su budget/puntate oltre ai
-      limiti min/max: un utente "furbo" con accesso alla console Firebase
-      potrebbe scrivere direttamente su Firestore bypassando i controlli
-      client. Per soli amici è un rischio bassissimo. (Roba Firebase/regole
-      Firestore, non toccata su richiesta esplicita.)
+- [ ] Validazione server-side di budget/puntate: parziale dal 8/10 (le
+      regole impongono un budget coerente, niente budget gonfiati), ma il
+      prezzo di un'offerta non è verificato contro maxBid/budget lato
+      server.
+- [ ] Pagine Aste (~1680 righe) e Classifica (~1170) da spezzare in
+      componenti: refactor, non urgente.
 
 ## Non toccare senza un motivo preciso
 - `types/index.ts`: `AppState` è un tipo definito ma mai usato nel codice

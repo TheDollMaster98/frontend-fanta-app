@@ -6,6 +6,8 @@
  * per ottenere dati reali su giocatori professionistici di League of Legends.
  */
 
+import { toLolRole } from "@/lib/constants";
+
 const ALLOWED_PRO_ROLES = [
   "top",
   "top laner",
@@ -197,7 +199,7 @@ function mapLeaguepediaRecord(record: CargoRecord): LeaguepediaPlayer | null {
     country: record.Country || record.country || "",
     birthdate: record.Birthdate || record.birthdate || "",
     residency: record.Residency || record.residency || "",
-    role: record.Role || record.role || "",
+    role: toLolRole(record.Role || record.role || "") || "",
     team: record.Team || record.team || "",
     league: record.League || record.league || "",
   };
@@ -229,7 +231,17 @@ export interface LeaguepediaPlayerStats {
 }
 
 /**
- * Esegue una query Cargo all'API di Leaguepedia
+ * Errore lanciato da cargoQuery in modalità strict quando Leaguepedia non
+ * risponde, è in rate limit o restituisce un errore: chi calcola punteggi
+ * deve distinguere "nessuna partita" da "dati non disponibili", altrimenti
+ * scriverebbe 0 punti a tutti (bug trovato in code review, 8/10).
+ */
+export const LEAGUEPEDIA_UNAVAILABLE = "LEAGUEPEDIA_UNAVAILABLE";
+
+/**
+ * Esegue una query Cargo all'API di Leaguepedia. Di default un errore
+ * restituisce [] (le ricerche hanno un fallback locale); con strict lancia
+ * LEAGUEPEDIA_UNAVAILABLE, da usare per tutto ciò che scrive punteggi.
  */
 async function cargoQuery(params: {
   tables: string;
@@ -240,7 +252,12 @@ async function cargoQuery(params: {
   limit?: number | "max";
   offset?: number;
   group_by?: string;
-}): Promise<CargoRecord[]> {
+}, options: { strict?: boolean } = {}): Promise<CargoRecord[]> {
+  const fail = (): CargoRecord[] => {
+    if (options.strict) throw new Error(LEAGUEPEDIA_UNAVAILABLE);
+    return [];
+  };
+
   const queryParams = new URLSearchParams({
     action: "cargoquery",
     format: "json",
@@ -262,14 +279,14 @@ async function cargoQuery(params: {
       console.warn(
         "Leaguepedia request failed from server route; falling back to local pro players.",
       );
-      return [];
+      return fail();
     }
 
     const data = await response.json();
 
     if (data?.error?.code === "ratelimited") {
       console.warn("Leaguepedia rate limited; using fallback pro-player data.");
-      return [];
+      return fail();
     }
 
     if (data?.cargoquery && Array.isArray(data.cargoquery)) {
@@ -282,13 +299,14 @@ async function cargoQuery(params: {
       console.warn(
         "Leaguepedia returned an error payload; using fallback pro-player data.",
       );
-      return [];
+      return fail();
     }
 
-    return [];
+    return fail();
   } catch (error) {
+    if (error instanceof Error && error.message === LEAGUEPEDIA_UNAVAILABLE) throw error;
     console.warn("Errore nella query Leaguepedia, uso fallback locale:", error);
-    return [];
+    return fail();
   }
 }
 
@@ -323,7 +341,7 @@ export async function searchPlayers(
   // Leaguepedia irraggiungibile o rate-limited: meglio mostrare qualche
   // pro player noto che una lista vuota che sembra un errore.
   const query = normalizedSearch.toLowerCase();
-  return FALLBACK_PRO_PLAYERS.filter(
+  return FALLBACK_PRO_PLAYERS.map((p) => ({ ...p, role: toLolRole(p.role) || "" })).filter(
     (player) =>
       !query ||
       player.player.toLowerCase().includes(query) ||
@@ -384,7 +402,9 @@ export async function getPlayersByLeague(
 
   // Leaguepedia irraggiungibile o rate-limited: il fallback locale non ha un
   // campo lega affidabile, quindi lo usiamo solo per "tutti i pro player".
-  return isAllPlayers ? FALLBACK_PRO_PLAYERS : [];
+  return isAllPlayers
+    ? FALLBACK_PRO_PLAYERS.map((p) => ({ ...p, role: toLolRole(p.role) || "" }))
+    : [];
 }
 
 /**
@@ -693,7 +713,7 @@ export async function getFantasyPlayerStats(
           "SP.GameId=SG.GameId, SG.OverviewPage=T.OverviewPage, SP.Link=PR.AllName",
         limit: pageSize,
         offset,
-      });
+      }, { strict: true });
 
       results.push(...page);
       if (page.length < pageSize) break;
@@ -751,7 +771,7 @@ export async function getFantasyTeamStats(
         join_on: "SG.OverviewPage=T.OverviewPage",
         limit: pageSize,
         offset,
-      });
+      }, { strict: true });
 
       results.push(...page);
       if (page.length < pageSize) break;
@@ -811,7 +831,7 @@ export async function getChampionGamesInRange(
       join_on: "SG.OverviewPage=T.OverviewPage",
       limit: pageSize,
       offset,
-    });
+    }, { strict: true });
 
     results.push(...page);
     if (page.length < pageSize) break;
