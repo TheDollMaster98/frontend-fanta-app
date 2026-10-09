@@ -347,3 +347,12 @@ token. Il nome diventa "Fanta Points" senza "App".
 - **Il marchio è una proposta**: se non ti convince la direzione (barre di
   classifica + punto), la geometria sta in un solo posto
   (`LOGO_GEOMETRY`) più le tre versioni statiche.
+
+### E5 — Inviti: chi li ha usati (9/10, `fix/invite-used-by`)
+
+| Problema | Correzione | Dove |
+| --- | --- | --- |
+| Nella lista inviti non si vedeva chi aveva usato un invito, pur essendo salvato (`usedBy`) | Nome ed email dal profilo `users/{uid}` (leggibile da chi è loggato), caricati una volta per utente | `app/dashboard/settings/page.tsx` |
+| Accanto a "Usato" c'era la data di creazione dell'invito, che sembrava la data d'uso | Usato: "Usato da Nome (email) il gg/mm/aaaa" con la data d'uso; libero: "Libero · creato il gg/mm/aaaa" | idem |
+
+Verificato a schermo sugli emulatori con un invito usato e uno libero.
