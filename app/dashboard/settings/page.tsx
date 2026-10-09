@@ -30,7 +30,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
 import { DeleteFantaDialog } from "@/components/DeleteFantaDialog";
 import { toast } from "sonner";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { Invite } from "@/types";
 import { Copy } from "lucide-react";
@@ -449,6 +449,36 @@ function InviteManager() {
   const { generateInvite } = useAuth();
   const [invites, setInvites] = useState<Invite[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  // Chi ha usato ogni invito (9/10): l'invito salva solo l'uid (usedBy),
+  // nome ed email vengono dal suo profilo users/{uid}, leggibile da
+  // chiunque sia loggato (firestore.rules). Caricati una volta per uid.
+  const [usedByProfiles, setUsedByProfiles] = useState<
+    Record<string, { name: string; email: string } | null>
+  >({});
+
+  useEffect(() => {
+    const missing = Array.from(
+      new Set(invites.map((i) => i.usedBy).filter((uid): uid is string => !!uid)),
+    ).filter((uid) => !(uid in usedByProfiles));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      missing.map(async (uid) => {
+        try {
+          const snap = await getDoc(doc(db, "users", uid));
+          const data = snap.data();
+          return [uid, data ? { name: data.name || "", email: data.email || "" } : null] as const;
+        } catch {
+          return [uid, null] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (!cancelled) setUsedByProfiles((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [invites, usedByProfiles]);
 
   useEffect(() => {
     const invitesQuery = query(
@@ -507,10 +537,24 @@ function InviteManager() {
             >
               <div className="min-w-0">
                 <p className="truncate font-mono">{invite.code}</p>
-                <p className="text-xs text-muted-foreground">
-                  {invite.usedBy ? `Usato` : "Libero"} ·{" "}
-                  {invite.createdAt.toLocaleDateString("it-IT")}
-                </p>
+                {invite.usedBy ? (
+                  // Prima qui c'era la data di CREAZIONE accanto a "Usato":
+                  // sembrava la data d'uso. Ora chi e quando l'ha usato.
+                  <p className="truncate text-xs text-muted-foreground">
+                    Usato da{" "}
+                    <span className="text-foreground">
+                      {usedByProfiles[invite.usedBy]?.name ||
+                        (invite.usedBy in usedByProfiles ? "utente sconosciuto" : "…")}
+                    </span>
+                    {usedByProfiles[invite.usedBy]?.email &&
+                      ` (${usedByProfiles[invite.usedBy]?.email})`}
+                    {invite.usedAt && ` il ${invite.usedAt.toLocaleDateString("it-IT")}`}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Libero · creato il {invite.createdAt.toLocaleDateString("it-IT")}
+                  </p>
+                )}
               </div>
               {!invite.usedBy && (
                 <Button
