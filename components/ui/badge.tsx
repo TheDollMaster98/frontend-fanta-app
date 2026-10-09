@@ -9,8 +9,13 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
+        // Tinta tenue invece dell'oro pieno (9/10): i badge (ruoli, stati,
+        // punti) erano tutti oro pieno e competevano con il bottone
+        // principale, l'unico elemento che deve usare l'oro pieno.
         default:
-          "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
+          "border-primary/25 bg-primary/15 text-primary [a&]:hover:bg-primary/25",
+        success:
+          "border-success/25 bg-success/15 text-success [a&]:hover:bg-success/25",
         secondary:
           "border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
         destructive:

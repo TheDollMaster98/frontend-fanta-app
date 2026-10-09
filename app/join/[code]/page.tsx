@@ -1,5 +1,6 @@
 "use client";
 
+import { Logo } from "@/components/Logo";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -73,7 +74,9 @@ export default function JoinFantaPage() {
           budgetSpent: 0,
           budgetLeft: generalBudget,
         };
-        await setDoc(memberRef, newMember);
+        // joinCode: le regole Firestore permettono di auto-iscriversi solo
+        // col codice invito attuale della lega (vedi members.create).
+        await setDoc(memberRef, { ...newMember, joinCode: code });
         setStatus("success");
       } catch (error) {
         console.error("Errore durante l'ingresso nel fanta:", error);
@@ -93,6 +96,9 @@ export default function JoinFantaPage() {
   if (!user) {
     return (
       <div className="auth-shell">
+        <Link href="/" aria-label="Fanta Points, home">
+          <Logo markClassName="size-9" textClassName="text-xl" />
+        </Link>
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-foreground">Accedi per continuare</CardTitle>
@@ -116,6 +122,9 @@ export default function JoinFantaPage() {
 
   return (
     <div className="auth-shell">
+      <Link href="/" aria-label="Fanta Points, home">
+        <Logo markClassName="size-9" textClassName="text-xl" />
+      </Link>
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-foreground">

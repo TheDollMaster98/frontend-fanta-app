@@ -24,6 +24,7 @@ import {
   CHAMPION_PICK_WIN_BONUS,
 } from "@/lib/championPickScoring";
 import type { ChampionPick } from "@/types";
+import { LEAGUEPEDIA_UNAVAILABLE } from "@/lib/leaguepediaApi";
 
 // Dettaglio punti di un pick chiuso; null per i turni chiusi prima del
 // 6/10 (vecchia regola, solo il totale) o non ancora calcolati.
@@ -84,6 +85,25 @@ export default function ChampionPickPage() {
   // Squadra pro in rosa (pick "team"): il ban si scommette su di lei.
   const myTeamName = currentMember?.team?.find((t) => t.pickType === "team")?.playerName;
 
+  // Stato temporale dei turni (9/10). Si sceglie solo nel turno in corso
+  // o nel prossimo: prima tutti i turni futuri mostravano il form (5 form
+  // aperti insieme) e, soprattutto, un turno già finito ma non ancora
+  // chiuso accettava ancora scelte, cioè a risultati noti. "Chiudi Turno"
+  // compare solo a turno finito: chiuderlo prima calcolava punti su
+  // partite non ancora giocate. Solo UI: le regole Firestore non
+  // conoscono le date dei turni (vedi REVIEW.md).
+  const now = Date.now();
+  const nextUpcomingId = rounds.find((r) => r.startDate.getTime() > now)?.id;
+  const roundTiming = (round: (typeof rounds)[number]) => {
+    const ended = now >= round.endDate.getTime();
+    const started = now >= round.startDate.getTime();
+    return {
+      ended,
+      canPick: !ended && (started || round.id === nextUpcomingId),
+      farFuture: !started && round.id !== nextUpcomingId,
+    };
+  };
+
   const isRoundClosed = (roundId: string) =>
     !!championPickRounds.find((r) => r.roundId === roundId)?.closed;
 
@@ -117,6 +137,10 @@ export default function ChampionPickPage() {
       if (error instanceof Error && error.message === "NO_GAMES") {
         toast.error(
           "Turno chiuso ma nessuna partita trovata su Leaguepedia (rate limit o settimana senza partite): punti non assegnati, riprova con Ricalcola Punti",
+        );
+      } else if (error instanceof Error && error.message === LEAGUEPEDIA_UNAVAILABLE) {
+        toast.error(
+          "Turno chiuso ma Leaguepedia non risponde (rate limit o errore): punti non assegnati, riprova con Ricalcola Punti",
         );
       } else {
         toast.error("Errore nella chiusura, riprova");
@@ -171,6 +195,23 @@ export default function ChampionPickPage() {
           const closed = isRoundClosed(round.id);
           const myPick = myPickFor(round.id);
           const roundPicks = championPicks.filter((p) => p.roundId === round.id);
+          const { ended, canPick, farFuture } = roundTiming(round);
+
+          if (farFuture && !closed) {
+            return (
+              <div
+                key={round.id}
+                className="flex items-center justify-between rounded-lg border border-border px-4 py-3 text-sm"
+              >
+                <span className="font-medium text-foreground">
+                  Turno {round.roundNumber}
+                </span>
+                <span className="text-muted-foreground">
+                  dal {round.startDate.toLocaleDateString("it-IT")}
+                </span>
+              </div>
+            );
+          }
 
           return (
             <Card key={round.id}>
@@ -179,8 +220,10 @@ export default function ChampionPickPage() {
                   <CardTitle className="text-foreground">
                     Turno {round.roundNumber}
                   </CardTitle>
-                  <Badge variant={closed ? "outline" : "default"}>
-                    {closed ? "Chiuso" : "Aperto"}
+                  <Badge
+                    variant={closed ? "outline" : ended ? "secondary" : "success"}
+                  >
+                    {closed ? "Chiuso" : ended ? "Da chiudere" : "Aperto"}
                   </Badge>
                 </div>
                 <CardDescription>
@@ -189,7 +232,7 @@ export default function ChampionPickPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {!closed && !myPick && (
+                {!closed && !myPick && canPick && (
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                     <div className="flex-1 space-y-1">
                       <Label htmlFor={`champ-${round.id}`}>
@@ -291,7 +334,13 @@ export default function ChampionPickPage() {
                 {/* Anche a turno chiuso: se Leaguepedia era in rate limit
                     alla chiusura i punti non sono stati assegnati, e si
                     rilancia lo stesso calcolo (le scelte restano quelle). */}
-                {isFantaViceOrAdmin && (
+                {!closed && !myPick && ended && (
+                  <p className="text-sm text-muted-foreground">
+                    Turno finito: non si possono più fare scelte.
+                  </p>
+                )}
+
+                {isFantaViceOrAdmin && (closed || ended) && (
                   <Button
                     variant="outline"
                     onClick={() => handleClose(round.id)}

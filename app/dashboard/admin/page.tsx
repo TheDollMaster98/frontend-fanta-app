@@ -280,7 +280,10 @@ function AdminPageContent({
       </div>
 
       <Tabs defaultValue="settings" className="space-y-4">
-        <TabsList>
+        {/* Scorrimento orizzontale su mobile: 5 tab non stanno in 390px e
+            prima facevano sbordare l'intera pagina (9/10). */}
+        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <TabsList className="w-max">
           <TabsTrigger value="settings">Impostazioni</TabsTrigger>
           <TabsTrigger value="invite">Invita Membri</TabsTrigger>
           <TabsTrigger value="requests" className="gap-1.5">
@@ -292,6 +295,7 @@ function AdminPageContent({
           <TabsTrigger value="vice-admins">Vice-Admin</TabsTrigger>
           <TabsTrigger value="users">Membri</TabsTrigger>
         </TabsList>
+        </div>
 
         <TabsContent value="settings" className="space-y-4">
           <Card>

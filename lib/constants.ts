@@ -50,6 +50,31 @@ export const PLAYOFF_CIRCUIT_TOURNAMENT_QUERY: Record<string, string> = {
 // a costruire i pesi punteggio di default, uno per ruolo.
 export const LOL_ROLES = ["Top Laner", "Jungler", "Mid Laner", "ADC", "Support"];
 
+// Leaguepedia (tabella Players) usa "Top"/"Jungle"/"Mid"/"Bot"/"Support",
+// mentre pesi punteggio (scoringWeights) e limiti per ruolo
+// (maxPlayersPerRole) sono indicizzati con LOL_ROLES. Senza questa
+// conversione un giocatore LoL preso all'asta prendeva punti solo se
+// Support, e nel draft le liste per ruolo erano vuote tranne Support
+// (trovato durante la code review, 8/10). Ruoli non riconosciuti (sport
+// custom, testo libero) passano invariati.
+const LOL_ROLE_ALIASES: Record<string, string> = {
+  top: "Top Laner",
+  "top laner": "Top Laner",
+  jungle: "Jungler",
+  jungler: "Jungler",
+  mid: "Mid Laner",
+  "mid laner": "Mid Laner",
+  bot: "ADC",
+  "bot laner": "ADC",
+  adc: "ADC",
+  support: "Support",
+};
+
+export function toLolRole(role?: string): string | undefined {
+  if (!role) return role;
+  return LOL_ROLE_ALIASES[role.trim().toLowerCase()] ?? role;
+}
+
 // Template usato per popolare ogni ruolo la prima volta: stessi numeri di
 // prima quando i pesi erano un unico set globale, più csPer50/visionPer10/
 // pentakill a 0 (nessun valore di default sensato finché non sono attivi —

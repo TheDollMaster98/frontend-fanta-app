@@ -1,7 +1,12 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { type Analytics, isSupported, getAnalytics } from "firebase/analytics";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { connectAuthEmulator, getAuth } from "firebase/auth";
+import {
+  type Firestore,
+  connectFirestoreEmulator,
+  getFirestore,
+  initializeFirestore,
+} from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -18,7 +23,45 @@ const firebaseConfig = {
 // re-inizializzare l'app ad ogni hot-reload/render lato server.
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// ignoreUndefinedProperties: senza, qualunque campo opzionale lasciato a
+// undefined (playerRole di team/coach, awayPoints di un bye, playerTeam
+// assente...) fa fallire l'intera scrittura con "Unsupported field value:
+// undefined" — aste coach impossibili da creare, pick di draft perse dopo
+// che il turno era già avanzato, ricalcolo bloccato con un numero dispari
+// di membri (code review, 8/10). Con questa opzione il campo viene
+// semplicemente omesso, che è ciò che ogni chiamante si aspettava.
+// initializeFirestore va chiamato una volta sola per app: in hot-reload o
+// in SSR il modulo può essere rivalutato, e lì si riusa l'istanza esistente.
+function createDb(): Firestore {
+  try {
+    return initializeFirestore(app, { ignoreUndefinedProperties: true });
+  } catch {
+    return getFirestore(app);
+  }
+}
+export const db = createDb();
+
+// Solo sviluppo locale (8/10): NEXT_PUBLIC_FIREBASE_EMULATORS=true collega
+// Auth e Firestore agli emulatori di firebase-tools (porte di default 9099
+// e 8080, o quelle indicate), per provare l'app con dati finti e login
+// senza toccare la produzione. Assente in produzione: nessun effetto. Il
+// flag globale evita la doppia connessione, che lancia, in hot-reload.
+if (
+  process.env.NEXT_PUBLIC_FIREBASE_EMULATORS === "true" &&
+  !(globalThis as { __fantaEmulators?: boolean }).__fantaEmulators
+) {
+  (globalThis as { __fantaEmulators?: boolean }).__fantaEmulators = true;
+  connectAuthEmulator(
+    auth,
+    `http://127.0.0.1:${process.env.NEXT_PUBLIC_AUTH_EMULATOR_PORT || "9099"}`,
+    { disableWarnings: true },
+  );
+  connectFirestoreEmulator(
+    db,
+    "127.0.0.1",
+    Number(process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_PORT || "8080"),
+  );
+}
 export const storage = getStorage(app);
 
 // getAnalytics richiede `window` e IndexedDB, quindi va inizializzato
