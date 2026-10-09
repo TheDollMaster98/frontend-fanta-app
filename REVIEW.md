@@ -347,3 +347,50 @@ token. Il nome diventa "Fanta Points" senza "App".
 - **Il marchio è una proposta**: se non ti convince la direzione (barre di
   classifica + punto), la geometria sta in un solo posto
   (`LOGO_GEOMETRY`) più le tre versioni statiche.
+
+### E4 — Ricalcolo automatico e bug aperti (9/10, `fix/auto-recalc-open-bugs`)
+
+Richiesta: ricalcolo automatico "lato Firebase", più chiudere i bug
+tracciati ancora aperti.
+
+**Architettura scelta: Cloud Functions pianificate.** La logica dei punti
+viveva tutta nel browser (`FantaContext`) e chiamava Leaguepedia passando
+dalla route Next. Copiarla in una funzione avrebbe creato due calcoli che
+prima o poi divergono, quindi:
+
+| Pezzo | Cosa fa | Dove |
+| --- | --- | --- |
+| Trasporto API | Le librerie chiamano sempre `/api/leaguepedia` e `/api/lolesports`; nel browser è un fetch, nelle funzioni va diretto agli stessi proxy | `lib/apiTransport.ts`, `lib/server/*Proxy.ts` (usati anche dalle route) |
+| Motore | Calcola punteggi (rose, calendario, tabellone) e Pick/Ban e restituisce le scritture da fare, senza toccare Firestore | `lib/recalc.ts` |
+| Client | Il bottone "Ricalcola" e la chiusura turno applicano le stesse scritture con l'SDK web | `contexts/FantaContext.tsx` |
+| `scheduledRecalculation` | 06:10 e 18:10 (Europe/Rome): punteggi di ogni lega LoL; chiude i turni Pick/Ban finiti da almeno 6 ore; ricalcola e rivela quelli chiusi con pick non rivelati; se Leaguepedia non risponde rimanda, se un turno è finito da 3 giorni senza partite lo chiude a 0 | `functions/src/jobs.ts` |
+| `closeExpiredAuctionsJob` | Ogni minuto: chiude e assegna le aste col countdown scaduto in un'unica transazione (asta, rosa, budget, storico) | `functions/src/jobs.ts` |
+| Deploy | Workflow dedicato, più un job in CI che controlla tipi e bundle delle funzioni | `.github/workflows/deploy-functions.yml`, `ci.yml` |
+
+**Regole (stato dei bug tracciati):**
+- Pick/Ban a risultati noti: ora negato anche dalle regole (data di fine
+  del turno di calendario), non solo dall'interfaccia.
+- Offerte: validate lato server (a proprio nome, al rialzo, su asta
+  attiva, entro puntata massima e budget). Prima dalla console si poteva
+  scrivere qualunque prezzo o mettere un altro come offerente.
+- Asta che si chiudeva solo con la pagina aperta: risolto dalla funzione.
+
+**Verifiche:**
+- Funzioni eseguite contro l'emulatore Firestore con risposte finte di
+  Leaguepedia: 20/20 (Leaguepedia giù = niente scritto; ruolo grezzo
+  "Mid" con i pesi giusti; turno col bye; turno vecchio senza `revealed`
+  ricalcolato; turno finito chiuso da solo con i punti attesi; turno in
+  corso non toccato; secondo giro che non riscrive; aste scadute chiuse
+  una volta sola, quella ancora in corso lasciata stare).
+- Regole: 74/74 nell'emulatore.
+- App: typecheck, lint, build. Funzioni: typecheck e bundle.
+
+**Non verificato e da sapere:**
+- Il deploy delle funzioni richiede ruoli in più sulla service account
+  (vedi TODO.md). Non posso controllarli da qui: il primo deploy dirà se
+  mancano.
+- Le chiamate reali a Leaguepedia dal server Google non le ho potute
+  provare (da qui Leaguepedia risponde con rate limit): il codice è lo
+  stesso della route che già funziona in produzione.
+- Il percorso del bottone "Ricalcola" nel browser usa lo stesso motore, ma
+  non l'ho cliccato a schermo dopo il refactor.

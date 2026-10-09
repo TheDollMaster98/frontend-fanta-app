@@ -38,3 +38,22 @@ jobs:
           NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ci-placeholder
           NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ci-placeholder
           NEXT_PUBLIC_FIREBASE_APP_ID: ci-placeholder
+
+  # Cloud Functions (functions/): tipi e bundle, così un errore nel codice
+  # condiviso (lib/) che rompe le funzioni si vede qui e non al deploy.
+  functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci --prefix functions
+
+      - name: Typecheck
+        run: npm --prefix functions run typecheck
+
+      - name: Bundle
+        run: npm --prefix functions run build

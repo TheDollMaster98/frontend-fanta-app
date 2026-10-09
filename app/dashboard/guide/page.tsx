@@ -35,7 +35,9 @@ const SECTIONS: GuideSection[] = [
           solo admin/vice) mette all&apos;asta un giocatore/squadra/coach,
           tutti rilanciano in tempo reale con un budget condiviso (il
           &quot;Budget Generale&quot; scelto in creazione lega), vince chi
-          offre di più entro il countdown.
+          offre di più entro il countdown. Allo scadere l&apos;asta si
+          chiude e si assegna da sola, entro un minuto, anche se nessuno
+          ha la pagina aperta.
         </p>
         <p>
           <strong>Draft a turni (snake)</strong>: niente asta né budget.
@@ -68,8 +70,9 @@ const SECTIONS: GuideSection[] = [
           una fase a gironi (Classifica → Genera Gironi, dopo aver
           Avviato la Stagione), poi un tabellone a eliminazione diretta
           generato dai qualificati di ogni girone (Genera Bracket).
-          &quot;Ricalcola Punteggi&quot; fa avanzare il tabellone di un
-          turno alla volta quando tutti i match di un turno sono decisi.
+          Il tabellone avanza di un turno alla volta, a turno finito,
+          col ricalcolo automatico (o premendo &quot;Ricalcola
+          Punteggi&quot;).
         </p>
       </>
     ),
@@ -78,12 +81,11 @@ const SECTIONS: GuideSection[] = [
     title: "Calendario, Classifica e Ricalcola Punteggi",
     body: (
       <p>
-        &quot;Ricalcola Punteggi&quot; (in Classifica, admin/vice) non
-        girA da solo: va premuto a mano quando si vogliono punti
-        aggiornati — non c&apos;è un cron/automazione in quest&apos;app.
-        Calcola sia il totale cumulativo di ogni pick sia, se esiste un
-        calendario, il punteggio di ogni singolo turno (il confronto
-        diretto tra i due membri di una fixture).
+        I punteggi si ricalcolano da soli due volte al giorno (alle 6 e
+        alle 18): il totale di ogni pick e, se esiste un calendario, il
+        punteggio di ogni turno (il confronto diretto tra i due membri di
+        una fixture). &quot;Ricalcola Punteggi&quot; (in Classifica,
+        admin/vice) serve solo se si vogliono i punti aggiornati subito.
       </p>
     ),
   },
@@ -124,10 +126,11 @@ const SECTIONS: GuideSection[] = [
           intero (+1).
         </p>
         <p>
-          La scelta si blocca al salvataggio ed è nascosta agli altri
-          membri finché admin/vice non preme &quot;Chiudi Turno e Calcola
-          Punti&quot; — scommessa alla cieca vera, non solo un filtro
-          visivo.
+          La scelta si blocca al salvataggio, si può fare solo prima della
+          fine del turno ed è nascosta agli altri membri finché il turno
+          non viene chiuso — scommessa alla cieca vera, non solo un filtro
+          visivo. Il turno si chiude da solo qualche ora dopo la fine, coi
+          punti calcolati; admin/vice possono anche chiuderlo a mano.
         </p>
       </>
     ),

@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/apiTransport";
 /**
  * Client per l'API (non ufficiale ma pubblica) che alimenta lolesports.com
  * — fonte diversa da Leaguepedia (lib/leaguepediaApi.ts), usata SOLO per
@@ -61,7 +62,7 @@ async function gwRequest<T>(
   params: Record<string, string> = {},
 ): Promise<T> {
   const query = new URLSearchParams({ source: "gw", path, hl: "en-US", ...params });
-  const response = await fetch(`/api/lolesports?${query.toString()}`);
+  const response = await apiFetch(`/api/lolesports?${query.toString()}`);
   if (!response.ok) {
     throw new Error(`lolesports ${path} ha risposto ${response.status}`);
   }
@@ -74,7 +75,7 @@ async function feedRequest<T>(
   params: Record<string, string> = {},
 ): Promise<T> {
   const query = new URLSearchParams({ source: "feed", path, ...params });
-  const response = await fetch(`/api/lolesports?${query.toString()}`);
+  const response = await apiFetch(`/api/lolesports?${query.toString()}`);
   if (!response.ok) {
     throw new Error(`lolesports ${path} ha risposto ${response.status}`);
   }
