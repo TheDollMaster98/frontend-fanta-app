@@ -1,6 +1,6 @@
 # REVIEW — Revisione design Fanta Points App
 
-Branch: `chore/design-review` (da `master` @ `c932ef0`).
+Branch: `chore/design-review` (da `master` @ `c932ef0`). **Stato (9/10): mergiato in develop e master, deployato.** Le cose ancora aperte sono in `TODO.md`.
 Scopo: revisionare il design dell'app esistente (UI, sistema visivo,
 identità) prima di toccare codice. Questo file viene scritto PRIMA della
 revisione: fissa cosa si guarda, con quali criteri e cosa è già emerso da
