@@ -43,3 +43,7 @@ firebase-debug.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Cloud Functions: dipendenze e bundle generato da "npm run build"
+/functions/node_modules
+/functions/lib
