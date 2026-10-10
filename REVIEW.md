@@ -432,3 +432,50 @@ Verificato a schermo sugli emulatori con un invito usato e uno libero.
   registrato: nei circuiti minori può mancare e valere 0.
 - Le funzioni lolesports per CS/wards per game (`getTeamGameIdsInRange`,
   `getGamePlayerStats`) restano nel file ma non sono più usate.
+
+### E7 — Rose scrivibili solo dal server (10/10, `feat/team-objectives-scoring`)
+
+| Problema | Correzione | Dove |
+| --- | --- | --- |
+| Asta chiusa e pick di draft venivano assegnate dal browser di chiunque fosse connesso, quindi le regole lasciavano a ogni membro far crescere qualunque rosa: dalla console ci si aggiungeva giocatori finti, o li si dava ad altri | Funzioni chiamabili `closeAuction` e `makeDraftPick`: controllano chi chiama (membro, turno giusto, mercato aperto) e scrivono asta/turno, rosa, budget e storico in un'unica transazione | `functions/src/roster.ts`, `functions/src/index.ts`, `contexts/FantaContext.tsx` |
+| Regole membri: un membro poteva scrivere sui documenti degli altri ("assegnazione") e sul proprio far crescere la rosa | Solo il proprio documento: nome squadra, o svincolo di un giocatore a mercato aperto (rosa = vecchia meno un pick, rimborso = il suo prezzo). Prima bastava "rosa più corta": si poteva rimborsarsi più del prezzo o sostituire pick | `firestore.rules` (`isSingleRelease`) |
+| Regole aste: ogni modifica senza cambio di prezzo era permessa a tutti (mettersi miglior offerente senza rilanciare, chiudere prima della fine) | Membro normale: solo offerta valida, che tocca solo i campi di un'offerta | `firestore.rules` (`isValidBid`) |
+| Regole draft: un membro poteva far avanzare i turni a piacere | Membro normale: solo saltare un turno già scaduto, di un passo, registrandolo tra quelli in sospeso | `firestore.rules` (`isExpiredSkip`) |
+| Chiusura a mano dell'admin: asta chiusa nella transazione, rosa e storico dopo e separati (asta "chiusa" senza giocatore se la seconda scrittura falliva) | Tutto nella stessa transazione | `contexts/FantaContext.tsx` (`finalizeAuction`) |
+| Svincolo: la rosa scritta era quella mappata in stato | Letta grezza dal documento in transazione, così combacia con quello che le regole confrontano | `contexts/FantaContext.tsx` (`removePlayerFromTeam`) |
+
+**Verifiche:**
+- Regole nell'emulatore: 85/85 (aggiunti: aggiungersi un giocatore,
+  assegnarlo ad altri, rimborso gonfiato, svincolo con sostituzione,
+  due svincoli insieme, svincolo senza rimborso, chiudere un'asta,
+  mettersi offerente senza rilanciare, offrire e chiudere insieme,
+  avanzare il draft senza registrare lo skip, saltare un turno non
+  scaduto o due turni, scrivere lo storico).
+- Funzioni contro l'emulatore: 19/19 (estraneo respinto; asta non scaduta
+  lasciata stare; asta scaduta assegnata una volta sola anche con due
+  chiamate e poi il job; draft: turno sbagliato, estraneo, nome vuoto,
+  pick al proprio turno con avanzamento e scadenza, admin per conto di
+  un altro, serpentina, mercato chiuso, draft finito).
+- App: typecheck, lint, build. Funzioni: typecheck e bundle.
+
+**Non verificato e da sapere:**
+- Il giro completo browser → funzione pubblicata non l'ho provato: il
+  codice nel browser è una chiamata `httpsCallable` con gestione errori.
+- Le funzioni chiamabili devono essere invocabili da chiunque (l'accesso
+  lo controlla il codice). Il deploy lo imposta da solo, ma serve il
+  permesso di cambiare le IAM di Cloud Run. Se il workflow fallisce con
+  `run.services.setIamPolicy`:
+  `gcloud projects add-iam-policy-binding fam-fanta-app --member="serviceAccount:firebase-adminsdk-fbsvc@fam-fanta-app.iam.gserviceaccount.com" --role="roles/run.admin"`
+- Draft: lo stesso giocatore può finire in due rose. Non c'era controllo
+  neanche prima; è una regola di gioco, la decidi tu.
+
+### E8 — Tema (10/10, `feat/team-objectives-scoring`)
+
+| Problema | Correzione | Dove |
+| --- | --- | --- |
+| Palette chiara completa in `:root` ma mai attivabile (`html` sempre `dark`): codice morto che faceva sembrare il tema chiaro supportato | Tolta; i valori scuri stanno in `:root`. Scelta: solo scuro. Un selettore avrebbe voluto dire rivedere ogni schermata anche in chiaro | `app/globals.css` |
+| Scrollbar, date picker e campi nativi seguivano il tema del sistema operativo | `color-scheme: dark` | idem, `app/layout.tsx` (`viewport`) |
+| Su mobile la barra del browser restava chiara sopra un'app scura | `themeColor` = colore dello sfondo (`#080b10`) | `app/layout.tsx` |
+
+Il logo non l'ho toccato: è la proposta della design review e manca un
+tuo parere su cosa non va. Cambiarlo senza saperlo è tirare a indovinare.

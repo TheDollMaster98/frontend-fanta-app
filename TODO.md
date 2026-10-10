@@ -27,10 +27,39 @@ Dettaglio in `REVIEW.md` (E6).
       una lega ha già turni giocati, i punti dei turni passati cambiano
       anche loro: il ricalcolo li riscrive tutti.
 
-## Rose scrivibili solo dal server (prossimo branch)
-- [ ] Togliere al client la chiusura asta/assegnazione verso altri membri
-      e stringere `members.update`: oggi un membro può aggiungersi pick
-      finti dalla console.
+## Rose scrivibili solo dal server (10/10, stesso branch)
+
+Dettaglio in `REVIEW.md` (E7).
+- [x] Due Cloud Functions chiamabili dal browser: `closeAuction`
+      (chiusura allo scadere del countdown) e `makeDraftPick` (pick del
+      proprio turno). Asta/turno, rosa, budget e storico in un'unica
+      transazione.
+- [x] Regole: un membro normale non scrive più sulla rosa di nessuno,
+      nemmeno la propria, salvo nome squadra e svincolo di un giocatore
+      a mercato aperto con rimborso esatto. Aste: solo offerte valide.
+      Draft: solo saltare un turno già scaduto. Storico: solo admin/vice.
+      Emulatore: 85/85.
+- [x] Chiusura a mano dell'admin resa atomica (prima asta chiusa e rosa
+      aggiornata erano scritture separate).
+
+### Da sapere prima del merge
+- [ ] Il deploy crea due funzioni nuove raggiungibili dal browser. Se il
+      workflow "Deploy Cloud Functions" fallisce con un errore su
+      `run.services.setIamPolicy`, alla service account manca il ruolo
+      Cloud Run Admin (comando in REVIEW.md, E7).
+- [ ] Finché le funzioni nuove non sono pubblicate, le pick del draft
+      falliscono (con messaggio) e le aste si chiudono solo col job ogni
+      minuto. Il deploy delle funzioni parte insieme agli altri.
+- [ ] Aperto, decisione tua: nel draft lo stesso giocatore può finire in
+      due rose (non c'era controllo neanche prima). Se non deve, si
+      aggiunge in `makeDraftPick`.
+
+## Tema (10/10, stesso branch)
+- [x] Solo scuro: tolta la palette chiara mai attivabile, `color-scheme:
+      dark` (scrollbar e campi nativi scuri) e barra del browser mobile
+      del colore dello sfondo.
+- [ ] **Logo**: non toccato. È la proposta del 9/10 e non mi hai detto
+      cosa non va: rifarlo alla cieca sarebbe tirare a indovinare.
 
 ## Ricalcolo automatico e bug aperti (9/10, branch fix/auto-recalc-open-bugs)
 
@@ -591,7 +620,7 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
 - [ ] **Logo**: è una proposta (REVIEW.md E3). Se la direzione non
       convince, la geometria sta in `components/Logo.tsx` più
       `app/icon.svg`, `app/apple-icon.tsx`, `app/opengraph-image.tsx`.
-- [ ] **Tema chiaro**: o un selettore, o si toglie la palette chiara
+- [x] **Tema chiaro**: tolta la palette chiara, app solo scura (10/10). Era: o un selettore, o si toglie la palette chiara
       (oggi in `app/globals.css` ma irraggiungibile).
 - [ ] **Secret GitHub `FIREBASE_SERVICE_ACCOUNT`**: serve perché i workflow
       di deploy funzionino (JSON di una service account, ruolo "Firebase

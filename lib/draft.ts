@@ -1,5 +1,5 @@
 import { getFantaRoles } from "@/lib/constants";
-import type { DraftSlot, Fanta } from "@/types";
+import type { DraftSlot, Fanta, TeamPick } from "@/types";
 
 // Sequenza degli "slot" del draft a turni, nell'ordine in cui si giocano i
 // giri: squadra, coach, poi un giro per ruolo (nell'ordine dei ruoli dello
@@ -59,4 +59,31 @@ export function advanceDraftTurn(
     slotIndex += 1;
   }
   return { slotIndex, turnIndex, completed: slotIndex >= totalSlots };
+}
+
+// Pick di draft (turno normale o assegnazione a mano di un turno saltato).
+// Ruolo: per uno slot "player" è quello fisso dello slot; per un jolly è
+// il ruolo reale del giocatore scelto, senza il quale computeAutoPoints
+// non trova i pesi e il jolly non prende mai punti (code review, 8/10).
+// Team/coach non hanno ruolo. Campi assenti omessi, non undefined.
+export function buildDraftTeamPick(
+  id: string,
+  slot: DraftSlot,
+  input: { playerName: string; playerRole?: string; playerTeam?: string },
+): TeamPick {
+  const playerRole =
+    slot.pickType === "player"
+      ? slot.role
+      : slot.pickType === "jolly"
+        ? input.playerRole
+        : undefined;
+  return {
+    id,
+    pickType: slot.pickType,
+    playerName: input.playerName,
+    ...(playerRole ? { playerRole } : {}),
+    ...(input.playerTeam ? { playerTeam: input.playerTeam } : {}),
+    purchasePrice: 0,
+    acquiredAt: new Date(),
+  };
 }

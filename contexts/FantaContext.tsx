@@ -6,6 +6,7 @@ import {
   useState,
   useEffect,
   useMemo,
+  useRef,
   ReactNode,
 } from "react";
 import {
@@ -35,7 +36,9 @@ import {
   type DocumentReference,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { auth, db, functions } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
+import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   MIN_COUNTDOWN_SECONDS,
@@ -51,7 +54,7 @@ import {
 } from "@/lib/bracket";
 import { totalPickPoints } from "@/lib/scoring";
 import { computeChampionPickWrites, computeScoreWrites, type WriteOp } from "@/lib/recalc";
-import { buildDraftSlots, getDraftTurnUserId, advanceDraftTurn } from "@/lib/draft";
+import { buildDraftSlots, buildDraftTeamPick, advanceDraftTurn, getDraftTurnUserId } from "@/lib/draft";
 import type {
   Fanta,
   FantaMember,
@@ -68,7 +71,6 @@ import type {
   ManualTeamStats,
   DraftState,
   PendingDraftAssignment,
-  DraftSlot,
   PickemBracket,
   PickemRound,
   PickemPrediction,
@@ -300,7 +302,7 @@ interface FantaContextType {
     playerName: string;
     playerRole?: string;
     playerTeam?: string;
-  }) => void;
+  }) => Promise<void>;
   skipDraftTurn: (options?: { force?: boolean }) => void;
   fillPendingDraftAssignment: (
     pending: PendingDraftAssignment,
@@ -454,33 +456,6 @@ async function applyWrites(writes: WriteOp[]): Promise<void> {
     });
     await batch.commit();
   }
-}
-
-// Pick di draft (turno normale o assegnazione a mano di un turno saltato).
-// Ruolo: per uno slot "player" è quello fisso dello slot; per un jolly è
-// il ruolo reale del giocatore scelto, senza il quale computeAutoPoints
-// non trova i pesi e il jolly non prende mai punti (code review, 8/10).
-// Team/coach non hanno ruolo. Campi assenti omessi, non undefined.
-function buildDraftTeamPick(
-  id: string,
-  slot: DraftSlot,
-  input: { playerName: string; playerRole?: string; playerTeam?: string },
-): TeamPick {
-  const playerRole =
-    slot.pickType === "player"
-      ? slot.role
-      : slot.pickType === "jolly"
-        ? input.playerRole
-        : undefined;
-  return {
-    id,
-    pickType: slot.pickType,
-    playerName: input.playerName,
-    ...(playerRole ? { playerRole } : {}),
-    ...(input.playerTeam ? { playerTeam: input.playerTeam } : {}),
-    purchasePrice: 0,
-    acquiredAt: new Date(),
-  };
 }
 
 function mapDraftStateDoc(data: Record<string, unknown>): DraftState {
@@ -885,15 +860,24 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   const removePlayerFromTeam = (userId: string, pickId: string): void => {
     if (!currentFanta) return;
     if (currentFanta.settings.seasonStarted && !isFantaViceOrAdmin) return;
-    const member = fantaMembers.find((m) => m.userId === userId);
-    if (!member) return;
-    const pick = member.team.find((p) => p.id === pickId);
-    if (!pick) return;
-
-    updateDoc(doc(db, "fantas", currentFanta.id, "members", userId), {
-      team: member.team.filter((p) => p.id !== pickId),
-      budgetSpent: increment(-pick.purchasePrice),
-      budgetLeft: increment(pick.purchasePrice),
+    const ref = doc(db, "fantas", currentFanta.id, "members", userId);
+    // Rosa letta grezza dal documento, non quella mappata in stato: le
+    // regole (isSingleRelease) vogliono la stessa lista meno un pick, e
+    // il rimborso uguale al suo prezzo.
+    runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      const team = (snap.data()?.team as Record<string, unknown>[]) || [];
+      const pick = team.find((p) => p.id === pickId);
+      if (!pick) return;
+      const price = (pick.purchasePrice as number) || 0;
+      tx.update(ref, {
+        team: team.filter((p) => p.id !== pickId),
+        budgetSpent: increment(-price),
+        budgetLeft: increment(price),
+      });
+    }).catch((error) => {
+      console.error("Errore nello svincolo del giocatore:", error);
+      toast.error("Svincolo non riuscito, riprova");
     });
   };
 
@@ -1862,12 +1846,13 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  // Chiude un'asta (manualmente o perché il countdown è arrivato a zero) e,
-  // se non annullata, assegna il giocatore al miglior offerente: aggiunge il
-  // pick alla rosa del vincitore, scala il budget e registra una voce nello
-  // storico immutabile. La transazione sull'asta garantisce che, se più
-  // client provano a chiuderla nello stesso momento, solo il primo esegua
-  // davvero l'assegnazione.
+  // Chiusura a mano di un'asta (admin/vice: "Chiudi e assegna", annulla,
+  // assegnazione manuale). Se non annullata assegna il giocatore: asta
+  // chiusa, pick in rosa, budget e storico nella stessa transazione, così
+  // non può più restare un'asta "chiusa" senza giocatore assegnato. La
+  // chiusura allo scadere del countdown invece passa dal server
+  // (closeAuction, functions/src/roster.ts): un membro normale non può più
+  // scrivere sulla rosa di nessuno (10/10).
   const finalizeAuction = (
     auctionId: string,
     options: {
@@ -1879,14 +1864,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     if (!currentFanta) return;
     const fantaId = currentFanta.id;
     const ref = doc(db, "fantas", fantaId, "auctions", auctionId);
-    let winner: {
-      userId: string;
-      userName: string;
-      pick: TeamPick;
-    } | null = null;
 
     runTransaction(db, async (tx) => {
-      winner = null;
       const snap = await tx.get(ref);
       if (!snap.exists()) return;
       const data = snap.data();
@@ -1912,59 +1891,39 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       }
       tx.update(ref, update);
 
-      if (!options.cancel && winnerId) {
-        winner = {
-          userId: winnerId as string,
-          userName: (winnerName as string) || "Utente",
-          pick: {
-            id: auctionId,
-            pickType: (data.pickType as TeamPickType) || "player",
-            playerName: data.playerName,
-            playerRole: data.playerRole,
-            playerTeam: data.playerTeam,
-            purchasePrice: data.currentPrice,
-            auctionId,
-            acquiredAt: new Date(),
-          },
-        };
-      }
-    })
-      .then(() => {
-        if (!winner) return;
-        const { userId, userName, pick } = winner;
-        // Le scritture sono indipendenti: se una fallisce, non deve
-        // bloccare le altre in silenzio, con l'asta segnata "chiusa" ma
-        // senza né giocatore né budget né storico aggiornati.
-        // .catch e non try/catch: updateDoc/addDoc falliscono in modo
-        // asincrono, un try/catch attorno alla chiamata non vede niente.
-        updateDoc(doc(db, "fantas", fantaId, "members", userId), {
-          team: arrayUnion(pick),
-          budgetSpent: increment(pick.purchasePrice),
-          budgetLeft: increment(-pick.purchasePrice),
-        }).catch((error) => {
-          console.error("Errore nell'assegnazione del giocatore vinto:", error);
-        });
-        {
-          const entry: Omit<HistoryEntry, "id" | "purchasedAt"> = {
-            playerName: pick.playerName,
-            playerRole: pick.playerRole,
-            playerTeam: pick.playerTeam,
-            buyerUserId: userId,
-            buyerName: userName,
-            price: pick.purchasePrice,
-            auctionId,
-          };
-          addDoc(collection(db, "fantas", fantaId, "history"), {
-            ...entry,
-            purchasedAt: serverTimestamp(),
-          }).catch((error) => {
-            console.error("Errore nella scrittura dello storico:", error);
-          });
-        }
-      })
-      .catch((error) => {
-        console.error("Errore nella chiusura dell'asta:", error);
+      if (options.cancel || !winnerId) return;
+      const pick: TeamPick = {
+        id: auctionId,
+        pickType: (data.pickType as TeamPickType) || "player",
+        playerName: data.playerName,
+        playerRole: data.playerRole,
+        playerTeam: data.playerTeam,
+        purchasePrice: data.currentPrice,
+        auctionId,
+        acquiredAt: new Date(),
+      };
+      tx.update(doc(db, "fantas", fantaId, "members", winnerId as string), {
+        team: arrayUnion(pick),
+        budgetSpent: increment(pick.purchasePrice),
+        budgetLeft: increment(-pick.purchasePrice),
       });
+      const entry: Omit<HistoryEntry, "id" | "purchasedAt"> = {
+        playerName: pick.playerName,
+        playerRole: pick.playerRole,
+        playerTeam: pick.playerTeam,
+        buyerUserId: winnerId as string,
+        buyerName: (winnerName as string) || "Utente",
+        price: pick.purchasePrice,
+        auctionId,
+      };
+      tx.set(doc(collection(db, "fantas", fantaId, "history")), {
+        ...entry,
+        purchasedAt: serverTimestamp(),
+      });
+    }).catch((error) => {
+      console.error("Errore nella chiusura dell'asta:", error);
+      toast.error("Chiusura dell'asta non riuscita, riprova");
+    });
   };
 
   // Annulla l'assegnazione di un'asta chiusa: toglie il giocatore a chi
@@ -2060,12 +2019,15 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  // Nessun backend/cron: quando il countdown di un'asta attiva scade, deve
-  // essere un client con la pagina aperta a chiuderla. Se nessuno ha la
-  // pagina aperta esattamente allo scadere, si chiude al successivo giro di
-  // questo effetto sul primo client che la apre: accettabile per un'app tra
-  // amici senza Cloud Functions.
+  // Allo scadere del countdown il browser chiede al server di chiudere e
+  // assegnare l'asta (closeAuction), per non aspettare il job che gira
+  // ogni minuto. Più client possono chiederlo insieme: la transazione sul
+  // server assegna una volta sola. requestedClose evita di richiamarla a
+  // ogni tick mentre la prima chiamata è in volo.
+  const requestedClose = useRef(new Set<string>());
   useEffect(() => {
+    if (!currentFanta) return;
+    const fantaId = currentFanta.id;
     const activeAuctions = auctions.filter(
       (a) => a.status === "active" && a.countdownEndsAt,
     );
@@ -2074,15 +2036,21 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     const interval = setInterval(() => {
       const now = Date.now();
       activeAuctions.forEach((a) => {
-        if (a.countdownEndsAt && a.countdownEndsAt.getTime() <= now) {
-          finalizeAuction(a.id);
-        }
+        if (!a.countdownEndsAt || a.countdownEndsAt.getTime() > now) return;
+        const key = `${a.id}:${a.countdownEndsAt.getTime()}`;
+        if (requestedClose.current.has(key)) return;
+        requestedClose.current.add(key);
+        httpsCallable(functions, "closeAuction")({ fantaId, auctionId: a.id }).catch(
+          (error) => {
+            // Il job sul server la chiude comunque entro un minuto.
+            console.error("Chiusura asta dal server non riuscita:", error);
+          },
+        );
       });
     }, 1000);
 
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auctions]);
+  }, [auctions, currentFanta]);
 
   // Avvia il draft a turni: genera un ordine casuale (Fisher-Yates) tra i
   // membri attuali della lega e crea lo stato iniziale. Non tocca budget:
@@ -2118,84 +2086,20 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  // Registra la scelta del turno corrente (fatta dall'utente di turno, o da
-  // admin/vice/dev per suo conto, stesso privilegio dell'assegnazione
-  // manuale delle aste) e avanza al turno successivo. La transazione sullo
-  // stato garantisce che due client non possano avanzare lo stesso turno
-  // due volte; la scrittura sulla rosa del membro è separata (stesso
-  // compromesso non-atomico di finalizeAuction, accettabile qui).
-  const makeDraftPick = (input: {
+  // Registra la scelta del turno corrente (dell'utente di turno, o di
+  // admin/vice per suo conto). La fa il server (makeDraftPick,
+  // functions/src/roster.ts): controlla il turno, avanza lo stato e scrive
+  // rosa e storico in un'unica transazione. Prima erano tre scritture dal
+  // browser, e le regole dovevano lasciare a ogni membro la rosa aperta.
+  const makeDraftPick = async (input: {
     playerName: string;
     playerRole?: string;
     playerTeam?: string;
-  }): void => {
+  }): Promise<void> => {
     if (!currentFanta || !user) return;
-    const fantaId = currentFanta.id;
-    const slots = buildDraftSlots(currentFanta);
-    const pickSeconds =
-      currentFanta.settings.draftPickSeconds || MIN_COUNTDOWN_SECONDS;
-    const stateRef = doc(db, "fantas", fantaId, "draft", "state");
-
-    let result: { targetUserId: string; pick: TeamPick } | null = null;
-
-    runTransaction(db, async (tx) => {
-      result = null;
-      const snap = await tx.get(stateRef);
-      if (!snap.exists()) return;
-      const data = snap.data();
-      if (data.status !== "active") return;
-
-      const order = (data.order as string[]) || [];
-      const slotIndex = data.currentSlotIndex as number;
-      const turnIndex = data.currentTurnIndex as number;
-      const slot = slots[slotIndex];
-      if (!slot) return;
-
-      const expectedUserId = getDraftTurnUserId(order, slotIndex, turnIndex);
-      if (!expectedUserId) return;
-      if (!isFantaViceOrAdmin) {
-        if (expectedUserId !== user.id) return;
-        if (currentFanta.settings.seasonStarted) return;
-      }
-
-      const next = advanceDraftTurn(order, slots.length, slotIndex, turnIndex);
-      tx.update(stateRef, {
-        status: next.completed ? "completed" : "active",
-        currentSlotIndex: next.slotIndex,
-        currentTurnIndex: next.turnIndex,
-        pickDeadline: next.completed
-          ? deleteField()
-          : Timestamp.fromMillis(Date.now() + pickSeconds * 1000),
-        updatedAt: serverTimestamp(),
-      });
-
-      result = {
-        targetUserId: expectedUserId,
-        pick: buildDraftTeamPick(
-          doc(collection(db, "fantas", fantaId, "history")).id,
-          slot,
-          input,
-        ),
-      };
-    }).then(() => {
-      if (!result) return;
-      const { targetUserId, pick } = result;
-      updateDoc(doc(db, "fantas", fantaId, "members", targetUserId), {
-        team: arrayUnion(pick),
-      }).catch((error) => {
-        console.error("Errore nell'assegnazione della pick di draft:", error);
-      });
-      addDoc(collection(db, "fantas", fantaId, "history"), {
-        playerName: pick.playerName,
-        playerRole: pick.playerRole,
-        playerTeam: pick.playerTeam,
-        buyerUserId: targetUserId,
-        buyerName: getMemberName(targetUserId),
-        price: 0,
-        purchasedAt: serverTimestamp(),
-      }).catch((error) => {
-        console.error("Errore nella scrittura dello storico draft:", error);
-      });
+    await httpsCallable(functions, "makeDraftPick")({
+      fantaId: currentFanta.id,
+      ...input,
     });
   };
 

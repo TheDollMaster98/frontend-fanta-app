@@ -256,26 +256,42 @@ export function DraftPanel() {
     return base.filter((p) => `${p.player} ${p.team || ""}`.toLowerCase().includes(q));
   }, [players, playerSearch, currentSlot]);
 
-  const submitPlayerPick = (player: LeaguepediaPlayer) => {
-    makeDraftPick({
-      playerName: player.player,
-      playerRole: player.role,
-      playerTeam: player.team,
-    });
-    setPlayerSearch("");
+  // La pick la registra il server (makeDraftPick): se rifiuta (turno
+  // scaduto, non è il tuo turno, mercato chiuso) lo dice il messaggio.
+  const [isPicking, setIsPicking] = useState(false);
+  const submitPick = async (
+    input: Parameters<typeof makeDraftPick>[0],
+    reset: () => void,
+  ) => {
+    if (isPicking) return;
+    setIsPicking(true);
+    try {
+      await makeDraftPick(input);
+      reset();
+    } catch (error) {
+      console.error("Errore nella pick di draft:", error);
+      const message = (error as { message?: string })?.message;
+      toast.error(message ? `Pick non registrata: ${message}` : "Pick non registrata, riprova");
+    } finally {
+      setIsPicking(false);
+    }
   };
-  const submitTeamPick = (team: LeaguepediaTeam) => {
-    makeDraftPick({ playerName: team.name, playerTeam: team.region });
-    setTeamSearch("");
-  };
+  const submitPlayerPick = (player: LeaguepediaPlayer) =>
+    submitPick(
+      { playerName: player.player, playerRole: player.role, playerTeam: player.team },
+      () => setPlayerSearch(""),
+    );
+  const submitTeamPick = (team: LeaguepediaTeam) =>
+    submitPick({ playerName: team.name, playerTeam: team.region }, () => setTeamSearch(""));
   const submitCoachPick = () => {
     if (!coachName.trim()) return;
-    makeDraftPick({
-      playerName: coachName.trim(),
-      playerTeam: coachTeam.trim() || undefined,
-    });
-    setCoachName("");
-    setCoachTeam("");
+    submitPick(
+      { playerName: coachName.trim(), playerTeam: coachTeam.trim() || undefined },
+      () => {
+        setCoachName("");
+        setCoachTeam("");
+      },
+    );
   };
 
   if (!currentFanta) return null;
