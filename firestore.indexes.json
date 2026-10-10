@@ -55,7 +55,19 @@
   // come "single field index control" (fieldOverrides), non come indice composto in "indexes":
   // Firestore rifiuta un indice composto con un solo campo ("this index is not necessary,
   // configure using single field index controls").
-  "indexes": [],
+  // Unico indice composto (9/10): la Cloud Function closeExpiredAuctionsJob
+  // cerca su tutte le leghe le aste attive col countdown scaduto
+  // (collectionGroup auctions, status == active, countdownEndsAt <= ora).
+  "indexes": [
+    {
+      "collectionGroup": "auctions",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "countdownEndsAt", "order": "ASCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": [
     {
       "collectionGroup": "joinRequests",

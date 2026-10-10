@@ -343,12 +343,34 @@ service cloud.firestore {
           return request.resource.data.currentPrice != resource.data.currentPrice;
         }
 
+        // Offerta valida (9/10): prima il prezzo era controllato solo dal
+        // client, e dalla console si poteva scrivere qualunque prezzo o
+        // mettere un altro membro come offerente. Ora un'offerta di un
+        // membro normale deve: essere a proprio nome, alzare il prezzo, su
+        // un'asta attiva, entro la puntata massima della lega e entro il
+        // proprio budget rimanente. La riserva per i posti rosa ancora da
+        // riempire resta un controllo del client (servirebbe contare la
+        // rosa, qui non è proporzionato).
+        function isValidBid() {
+          let settings = get(/databases/$(database)/documents/fantas/$(fantaId)).data.get('settings', {});
+          let bidder = get(/databases/$(database)/documents/fantas/$(fantaId)/members/$(request.auth.uid)).data;
+          return resource.data.status == 'active'
+            && request.resource.data.status == 'active'
+            && request.resource.data.highestBidderId == request.auth.uid
+            && request.resource.data.currentPrice > resource.data.currentPrice
+            && request.resource.data.currentPrice <= settings.get('maxBid', 1000000000)
+            && request.resource.data.currentPrice <= bidder.get('budgetLeft', 0);
+        }
+
         // isMember() (8/10): prima chiunque loggato, anche di un'altra
         // lega, poteva cambiare offerente, stato o countdown di un'asta.
+        // Admin/vice/developer liberi (assegnazioni a mano, riaperture);
+        // un'offerta di un membro normale va validata e, a mercato
+        // chiuso, non è permessa.
         allow update: if request.auth != null && isMember() && (
-          !seasonStarted()
-          || isAdminOrVice()
+          isAdminOrVice()
           || !isPriceChange()
+          || (!seasonStarted() && isValidBid())
         );
 
         match /bids/{bidId} {
@@ -519,6 +541,14 @@ service cloud.firestore {
             && request.resource.data.userId == request.auth.uid
             // "revealed" lo scrive solo la chiusura turno.
             && request.resource.data.get('revealed', false) == false
+            // Solo prima della fine del turno (9/10): prima il blocco
+            // era solo nell'interfaccia, e dalla console si poteva
+            // scegliere a turno finito, cioè a risultati noti. Il turno
+            // Pick/Ban ha lo stesso id del turno di calendario.
+            && (
+              !exists(/databases/$(database)/documents/fantas/$(fantaId)/calendar/$(pickDocId.split('_')[0]))
+              || get(/databases/$(database)/documents/fantas/$(fantaId)/calendar/$(pickDocId.split('_')[0])).data.endDate > request.time
+            )
             && (
               !exists(/databases/$(database)/documents/fantas/$(fantaId)/championPickRounds/$(pickDocId.split('_')[0]))
               || get(/databases/$(database)/documents/fantas/$(fantaId)/championPickRounds/$(pickDocId.split('_')[0])).data.closed != true

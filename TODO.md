@@ -4,6 +4,36 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
+## Ricalcolo automatico e bug aperti (9/10, branch fix/auto-recalc-open-bugs)
+
+Dettaglio in `REVIEW.md` (E4).
+- [x] **Ricalcolo automatico** con Cloud Functions (`functions/`):
+      punteggi di tutte le leghe LoL e chiusura dei turni Pick/Ban finiti
+      alle 6:10 e alle 18:10 (ora italiana); i turni già chiusi senza
+      `revealed` vengono ricalcolati e rivelati da soli, quindi non serve
+      più che un admin prema "Ricalcola Punti" dopo il deploy.
+- [x] **Aste chiuse dal server**: ogni minuto una funzione chiude e
+      assegna le aste col countdown scaduto (asta, rosa, budget e storico
+      in un'unica transazione), anche se nessuno ha la pagina aperta.
+- [x] Motore di calcolo unico in `lib/recalc.ts`, usato sia dal bottone
+      sia dalle funzioni: niente due versioni che divergono.
+- [x] Regole: scelte Pick/Ban solo prima della fine del turno; offerte
+      validate lato server (a proprio nome, al rialzo, entro puntata
+      massima e budget). Emulatore: 74/74.
+
+### Da fare tu perché le funzioni partano (una volta sola)
+- [ ] Alla service account del secret `FIREBASE_SERVICE_ACCOUNT` (Google
+      Cloud Console → IAM) aggiungere i ruoli: **Cloud Functions Admin**,
+      **Service Account User**, **Cloud Scheduler Admin**, **Secret
+      Manager Admin**, **Artifact Registry Administrator**. Senza, il
+      workflow "Deploy Cloud Functions" fallisce con un errore di permessi
+      (il resto dell'app si aggiorna comunque).
+- [x] Primo deploy fatto a mano dal PC (9/10): `scheduledRecalculation`
+      e `closeExpiredAuctionsJob` creati in us-central1, indice delle aste
+      pubblicato, API attivate. I log di ogni giro sono in Firebase
+      Console → Functions → Log.
+- [ ] Aggiornare `firebase-functions` all'ultima major (avviso al deploy:
+      ha modifiche incompatibili, va fatto in un branch a parte).
 ## Inviti: chi li ha usati (9/10, branch fix/invite-used-by)
 
 - [x] In Impostazioni → Inviti, un invito usato mostra nome ed email di
@@ -31,8 +61,10 @@ revisione a schermo). In sintesi:
       contro gli emulatori Firebase, senza toccare la produzione.
 
 ### Da fare subito dopo il deploy
-- [ ] Un admin preme "Ricalcola Punti" su ogni turno Pick/Ban già chiuso:
-      senza il nuovo campo `revealed` ognuno vede solo i propri pick.
+- [x] ~~Un admin preme "Ricalcola Punti" su ogni turno Pick/Ban già
+      chiuso~~: lo fa da solo la funzione pianificata (9/10). Fino al suo
+      primo giro, o se le funzioni non sono ancora deployate, il bottone
+      resta l'alternativa.
 - [ ] Prova sul telefono vero: entrare in una lega da link, chiudere un
       turno Pick/Ban, un ricalcolo, un'asta per il coach, il menu mobile.
 
@@ -544,22 +576,24 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
 ### Limiti noti, non banali da risolvere senza infrastruttura in più
 (Entrambi i punti qui sotto sono "roba Firebase" — Cloud Functions/regole
 Firestore — quindi non toccati su richiesta esplicita.)
-- [ ] La chiusura automatica di un'asta allo scadere del countdown richiede
-      che *qualcuno* abbia la pagina Aste aperta in quel momento (niente
-      Cloud Functions/cron). Se nessuno ce l'ha aperta, si chiude al
-      successivo accesso. Accettabile per un gruppo di amici, ma è un
-      limite architetturale, non un bug che si sistema in un file.
+- [x] ~~La chiusura di un'asta allo scadere richiede che qualcuno abbia
+      la pagina Aste aperta~~: dal 9/10 la chiude la Cloud Function
+      `closeExpiredAuctionsJob` entro un minuto (serve il deploy delle
+      funzioni, vedi sopra).
 - [x] ~~Regole che richiedono solo "utente loggato"~~: dal 8/10 ogni
       scrittura di lega richiede di esserne membro (o admin/vice per
       calendario, gironi, tabellone). Le letture restano aperte a chi è
       loggato.
-- [ ] Resta: un membro può "assegnare" a un altro membro un giocatore
-      inventato scalandogli il budget, perché l'assegnazione di un'asta
-      parte dal browser di chi è connesso. Si chiude solo spostando la
-      chiusura asta in una Cloud Function.
-- [ ] Pick/Ban: il blocco delle scelte a turno finito è solo
-      nell'interfaccia. Le regole non conoscono le date dei turni;
-      servirebbe copiarle su `championPickRounds`.
+- [ ] Resta: un membro può ancora aggiungere un giocatore inventato a una
+      rosa (la propria, o un'altra scalandole il budget) scrivendo dalla
+      console, perché l'assegnazione di un'asta parte anche dal browser.
+      Ora che il server chiude le aste da solo si può chiudere del tutto:
+      togliere la chiusura asta dal client e permettere di scrivere le
+      rose solo a server e admin. Cambia il comportamento della
+      chiusura (fino a un minuto di attesa), quindi va deciso.
+- [x] ~~Pick/Ban: blocco delle scelte a turno finito solo
+      nell'interfaccia~~: dal 9/10 anche nelle regole (data di fine del
+      turno di calendario).
 
 ### Feature ancora finte/incomplete (basso impatto)
 - [ ] Non esiste nessun invio reale di notifiche (push/email/in-app): il
@@ -567,10 +601,10 @@ Firestore — quindi non toccati su richiesta esplicita.)
       Serve un canale di invio vero prima che questi checkbox contino
       qualcosa — è una feature nuova, non un bug, quindi non l'ho aggiunta
       di mia iniziativa.
-- [ ] Validazione server-side di budget/puntate: parziale dal 8/10 (le
-      regole impongono un budget coerente, niente budget gonfiati), ma il
-      prezzo di un'offerta non è verificato contro maxBid/budget lato
-      server.
+- [x] ~~Validazione server-side di budget/puntate~~: dal 9/10 le regole
+      validano ogni offerta (a proprio nome, al rialzo, entro maxBid e
+      budget rimanente). Resta solo lato client la riserva di 1 credito
+      per ogni posto rosa ancora da riempire.
 - [ ] Pagine Aste (~1680 righe) e Classifica (~1170) da spezzare in
       componenti: refactor, non urgente.
 
