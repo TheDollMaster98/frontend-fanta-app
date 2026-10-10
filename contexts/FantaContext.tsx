@@ -436,16 +436,6 @@ function mapBracketRoundDoc(
   };
 }
 
-// Bonus CS + proxy Vision Score (wards) da lolesports per un turno
-// (calendario a girone o bracket): per ogni membro coinvolto, somma il
-// bonus dei suoi pick player/jolly con playerTeam impostato, dalle
-// partite reali della loro squadra in [dateRange.start, dateRange.end).
-// Usata SOLO per i turni (finestra di date nota): il totale cumulativo
-// (TeamPick.points, "Classifica Generale") resta solo Leaguepedia — qui
-// servirebbe sfogliare tutto lo storico del circuito squadra per squadra,
-// un costo che Leaguepedia non ha (query diretta via Cargo). leagueId
-// null (circuito senza corrispondente lolesports, es. "ALTRO") o nessun
-// pick con playerTeam -> mappa vuota, nessun errore.
 // Applica le scritture prodotte da lib/recalc.ts con l'SDK web, a gruppi
 // di 450 (limite di 500 operazioni per batch Firestore).
 async function applyWrites(writes: WriteOp[]): Promise<void> {

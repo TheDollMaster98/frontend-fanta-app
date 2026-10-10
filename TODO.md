@@ -4,6 +4,34 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
+## Obiettivi di squadra nel punteggio (10/10, branch feat/team-objectives-scoring)
+
+Dettaglio in `REVIEW.md` (E6).
+- [x] **Squadre e coach**: vittorie, torri, draghi, void grub, araldi,
+      inibitori, Atakhan, baroni, kill fatte e subite, oro da
+      `ScoreboardGames`; assist e CS sommati dai giocatori (query in più
+      solo se la lega dà loro un peso). Prima contava solo la vittoria,
+      che di default vale 0: con i pesi di default una squadra faceva
+      sempre 0 punti.
+- [x] **Giocatori**: CS, Vision Score e pentakill da `ScoreboardPlayers`
+      con i pesi del ruolo, sia nel totale sia nei turni.
+- [x] Tolto il bonus CS/wards da lolesports nei turni: doppione del
+      Vision Score Leaguepedia, contato solo nei turni e non nel totale.
+- [x] Statistiche a mano: contano solo se Leaguepedia non ha partite per
+      quel pick (`autoGames`), altrimenti si conterebbero due volte.
+- [x] Editor pesi: tolti i pallini gialli "non calcolato".
+
+### Da sapere prima del merge
+- [ ] Al primo ricalcolo dopo il deploy i punti di squadre e coach
+      cambiano in tutte le leghe (prima erano 0 con i pesi di default). Se
+      una lega ha già turni giocati, i punti dei turni passati cambiano
+      anche loro: il ricalcolo li riscrive tutti.
+
+## Rose scrivibili solo dal server (prossimo branch)
+- [ ] Togliere al client la chiusura asta/assegnazione verso altri membri
+      e stringere `members.update`: oggi un membro può aggiungersi pick
+      finti dalla console.
+
 ## Ricalcolo automatico e bug aperti (9/10, branch fix/auto-recalc-open-bugs)
 
 Dettaglio in `REVIEW.md` (E4).
@@ -22,7 +50,7 @@ Dettaglio in `REVIEW.md` (E4).
       massima e budget). Emulatore: 74/74.
 
 ### Da fare tu perché le funzioni partano (una volta sola)
-- [ ] Alla service account del secret `FIREBASE_SERVICE_ACCOUNT` (Google
+- [x] Alla service account del secret `FIREBASE_SERVICE_ACCOUNT` (Google
       Cloud Console → IAM) aggiungere i ruoli: **Cloud Functions Admin**,
       **Service Account User**, **Cloud Scheduler Admin**, **Secret
       Manager Admin**, **Artifact Registry Administrator**. Senza, il
@@ -386,8 +414,9 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
 - [ ] **Step 5 — Doppia fase**: dipende da Step 2 e 4. Step 4 è pronto;
       step 2 ha solo la fase singola (nessuna logica di
       girone→eliminazione ancora).
-- [ ] **Step 6 — Statistiche extra (MVP/CS/obiettivi)**: da verificare se
-      Leaguepedia le ha davvero, non scontato.
+- [x] **Step 6 — Statistiche extra (CS/obiettivi)**: fatto il 10/10, vedi
+      "Obiettivi di squadra nel punteggio" in cima. MVP resta fuori:
+      Leaguepedia non lo registra per partita.
 
 ## Fatto in questo giro (asta live)
 

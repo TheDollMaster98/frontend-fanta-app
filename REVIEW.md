@@ -402,3 +402,33 @@ prima o poi divergono, quindi:
 | Accanto a "Usato" c'era la data di creazione dell'invito, che sembrava la data d'uso | Usato: "Usato da Nome (email) il gg/mm/aaaa" con la data d'uso; libero: "Libero · creato il gg/mm/aaaa" | idem |
 
 Verificato a schermo sugli emulatori con un invito usato e uno libero.
+
+### E6 — Obiettivi di squadra nel punteggio (10/10, `feat/team-objectives-scoring`)
+
+| Problema | Correzione | Dove |
+| --- | --- | --- |
+| I pesi degli obiettivi (torri, draghi, baroni...) si salvavano ma il calcolo li ignorava: squadra e coach prendevano solo vittoria × peso, e il peso vittoria di default è 0, quindi 0 punti fissi | Statistiche per lato (Team1/Team2) da `ScoreboardGames`, kill subite = kill dell'avversario, formula con tutti i pesi | `lib/leaguepediaApi.ts` (`getFantasyTeamStats`), `lib/scoring.ts` (`teamPoints`) |
+| Assist e CS di squadra non esistono su `ScoreboardGames` | Somma dai giocatori della squadra su `ScoreboardPlayers`, solo se il peso non è 0 (default 0: nessuna query in più) | idem, `lib/recalc.ts` |
+| CS, Vision Score e pentakill dei giocatori ignorati (CS/wards da lolesports solo nei turni, mai nel totale) | Campi `CS`, `VisionScore`, `Pentakills` di `ScoreboardPlayers` nella stessa query di kill/morti/assist; tolto il bonus lolesports | `lib/leaguepediaApi.ts`, `lib/scoring.ts` (`playerPoints`), `lib/recalc.ts` |
+| Le statistiche a mano si sarebbero sommate a quelle automatiche | Valgono solo se Leaguepedia non ha partite per il pick (`TeamPick.autoGames`, scritto dal ricalcolo); il dettaglio pick dice quando sono ignorate | `lib/scoring.ts`, `app/dashboard/standings/page.tsx` |
+| Valori vuoti su Leaguepedia (partite vecchie senza VisionScore o Atakhan) davano `NaN` | `cargoNumber`: vuoto = 0 | `lib/leaguepediaApi.ts` |
+
+**Verifiche:**
+- Ricalcolo con risposte Leaguepedia finte (stesso trasporto delle
+  funzioni): giocatore 43 punti attesi e ottenuti (con CS, vision e
+  pentakill, campi vuoti a 0); squadra e coach 18,75 con i pesi di
+  default (squadra a volte Team1, a volte Team2); con pesi kill/morte/
+  assist/CS/oro 72 attesi e ottenuti, con la query sui giocatori fatta
+  solo in quel caso; statistiche a mano ignorate con partite e contate
+  senza.
+- App: typecheck, lint (solo i 2 avvisi `<img>` di prima), build.
+  Funzioni: typecheck e bundle.
+
+**Non verificato e da sapere:**
+- Nomi dei campi presi da `action=cargofields`, ma non ho potuto fare una
+  query reale (da qui Leaguepedia risponde con rate limit). Se un campo
+  fosse vuoto per un circuito, quel campo vale 0, non rompe il calcolo.
+- `VisionScore` esiste su Leaguepedia solo per le partite in cui è stato
+  registrato: nei circuiti minori può mancare e valere 0.
+- Le funzioni lolesports per CS/wards per game (`getTeamGameIdsInRange`,
+  `getGamePlayerStats`) restano nel file ma non sono più usate.
