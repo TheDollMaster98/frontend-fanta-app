@@ -1,0 +1,53 @@
+name: Deploy Cloud Functions
+
+# Cloud Functions (functions/, 9/10): ricalcolo automatico dei punteggi e
+# del Pick/Ban due volte al giorno, chiusura delle aste scadute ogni minuto.
+# Parte a ogni push su master che tocca le funzioni o il codice condiviso
+# che impacchettano (lib/, types/), più "Run workflow" manuale.
+#
+# Stesso secret FIREBASE_SERVICE_ACCOUNT degli altri deploy. Per le
+# funzioni la service account ha bisogno, oltre a "Firebase Admin", dei
+# ruoli: Cloud Functions Admin, Service Account User, Cloud Scheduler Admin,
+# Secret Manager Admin (per collegare LEAGUEPEDIA_BOT_PASSWORD) e Artifact
+# Registry Administrator. Il progetto deve essere sul piano Blaze (lo è
+# già: App Hosting lo richiede). Vedi TODO.md.
+on:
+  push:
+    branches: [master]
+    paths:
+      - "functions/**"
+      - "lib/**"
+      - "types/**"
+      - "firebase.json"
+  workflow_dispatch:
+
+jobs:
+  deploy-functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Installa dipendenze delle funzioni
+        run: npm ci --prefix functions
+
+      - name: Configura credenziali Google Cloud
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "${RUNNER_TEMP}/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${RUNNER_TEMP}/firebase-service-account.json" >> "$GITHUB_ENV"
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      # --force: non chiede conferma per la policy di pulizia delle immagini
+      # in Artifact Registry al primo deploy (senza, in --non-interactive
+      # il deploy si fermerebbe).
+      - name: Deploy funzioni
+        run: >
+          npx firebase-tools@latest deploy
+          --only functions
+          --project fam-fanta-app
+          --non-interactive
+          --force

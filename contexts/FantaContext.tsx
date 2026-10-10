@@ -47,23 +47,10 @@ import {
 import { generateRoundRobin } from "@/lib/roundRobin";
 import {
   seedFirstRound,
-  isRoundComplete,
-  nextRoundFromWinners,
   rankGroupMembers,
 } from "@/lib/bracket";
-import {
-  getFantasyPlayerStats,
-  getFantasyTeamStats,
-  getChampionGamesInRange,
-} from "@/lib/leaguepediaApi";
-import {
-  findLeagueId,
-  getTeamGameIdsInRange,
-  getGamePlayerStats,
-  stripTeamTagFromSummonerName,
-} from "@/lib/lolesportsApi";
-import { totalPickPoints, computeAutoPoints, computeLolesportsBonusPoints } from "@/lib/scoring";
-import { computeChampionPickResults } from "@/lib/championPickScoring";
+import { totalPickPoints } from "@/lib/scoring";
+import { computeChampionPickWrites, computeScoreWrites, type WriteOp } from "@/lib/recalc";
 import { buildDraftSlots, getDraftTurnUserId, advanceDraftTurn } from "@/lib/draft";
 import type {
   Fanta,
@@ -77,8 +64,6 @@ import type {
   CalendarRound,
   FantaGroup,
   BracketRound,
-  BracketMatch,
-  RoleScoringWeights,
   ManualPlayerStats,
   ManualTeamStats,
   DraftState,
@@ -461,6 +446,26 @@ function mapBracketRoundDoc(
 // un costo che Leaguepedia non ha (query diretta via Cargo). leagueId
 // null (circuito senza corrispondente lolesports, es. "ALTRO") o nessun
 // pick con playerTeam -> mappa vuota, nessun errore.
+// Applica le scritture prodotte da lib/recalc.ts con l'SDK web, a gruppi
+// di 450 (limite di 500 operazioni per batch Firestore).
+async function applyWrites(writes: WriteOp[]): Promise<void> {
+  for (let i = 0; i < writes.length; i += 450) {
+    const batch = writeBatch(db);
+    writes.slice(i, i + 450).forEach((op) => {
+      if (op.type === "create") {
+        const [first, ...rest] = op.collectionPath;
+        batch.set(doc(collection(db, first, ...rest)), op.data);
+      } else {
+        const [first, ...rest] = op.path;
+        const ref = doc(db, first, ...rest);
+        if (op.type === "update") batch.update(ref, op.data);
+        else batch.set(ref, op.data);
+      }
+    });
+    await batch.commit();
+  }
+}
+
 // Pick di draft (turno normale o assegnazione a mano di un turno saltato).
 // Ruolo: per uno slot "player" è quello fisso dello slot; per un jolly è
 // il ruolo reale del giocatore scelto, senza il quale computeAutoPoints
@@ -486,71 +491,6 @@ function buildDraftTeamPick(
     purchasePrice: 0,
     acquiredAt: new Date(),
   };
-}
-
-async function computeLolesportsRoundBonuses(
-  involvedUserIds: string[],
-  dateRange: { start: Date; end: Date },
-  leagueId: string | null,
-  roleWeights: RoleScoringWeights,
-  fantaMembers: FantaMemberProfile[],
-): Promise<Map<string, number>> {
-  const bonuses = new Map<string, number>();
-  if (!leagueId) return bonuses;
-
-  const picksByTeam = new Map<
-    string,
-    { userId: string; playerName: string; playerRole?: string }[]
-  >();
-  involvedUserIds.forEach((uid) => {
-    const member = fantaMembers.find((m) => m.userId === uid);
-    member?.team.forEach((pick) => {
-      if ((pick.pickType === "player" || pick.pickType === "jolly") && pick.playerTeam) {
-        const list = picksByTeam.get(pick.playerTeam) || [];
-        list.push({ userId: uid, playerName: pick.playerName, playerRole: pick.playerRole });
-        picksByTeam.set(pick.playerTeam, list);
-      }
-    });
-  });
-
-  const teamNames = Array.from(picksByTeam.keys());
-  if (teamNames.length === 0) return bonuses;
-
-  const gameIds = await getTeamGameIdsInRange(leagueId, teamNames, dateRange);
-  if (gameIds.length === 0) return bonuses;
-
-  const gamesStats = await Promise.all(gameIds.map((id) => getGamePlayerStats(id)));
-
-  const statsByStrippedName = new Map<
-    string,
-    { creepScore: number; wardsPlaced: number; wardsDestroyed: number }
-  >();
-  gamesStats.flat().forEach((p) => {
-    const name = stripTeamTagFromSummonerName(p.summonerName).trim().toLowerCase();
-    const prev = statsByStrippedName.get(name) || {
-      creepScore: 0,
-      wardsPlaced: 0,
-      wardsDestroyed: 0,
-    };
-    statsByStrippedName.set(name, {
-      creepScore: prev.creepScore + p.creepScore,
-      wardsPlaced: prev.wardsPlaced + p.wardsPlaced,
-      wardsDestroyed: prev.wardsDestroyed + p.wardsDestroyed,
-    });
-  });
-
-  picksByTeam.forEach((picks) => {
-    picks.forEach(({ userId, playerName, playerRole }) => {
-      const role = toLolRole(playerRole);
-      const weights = role ? roleWeights[role] : undefined;
-      const stats = statsByStrippedName.get(playerName.trim().toLowerCase());
-      if (!weights || !stats) return;
-      const points = computeLolesportsBonusPoints(stats, weights);
-      bonuses.set(userId, (bonuses.get(userId) || 0) + points);
-    });
-  });
-
-  return bonuses;
 }
 
 function mapDraftStateDoc(data: Record<string, unknown>): DraftState {
@@ -1705,29 +1645,16 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     const pickDocs = fetched.filter((snap) => snap.exists());
     if (pickDocs.length === 0) return;
 
-    const games = await getChampionGamesInRange(
-      currentFanta.settings.circuitType || "",
-      { start: round.startDate, end: round.endDate },
-    );
-    // cargoQuery restituisce [] anche quando Leaguepedia è in rate limit
-    // o non risponde: senza questo controllo il turno si chiuderebbe con
-    // 0 punti a tutti come se nessuna partita fosse stata giocata. Il
-    // turno resta chiuso (scelte rivelate), i punti si ricalcolano
-    // rilanciando la stessa azione ("Ricalcola Punti" in UI).
-    if (games.length === 0) {
-      throw new Error("NO_GAMES");
-    }
-
-    // Squadra pro in rosa di ogni membro, per valutare il ban sulla sua
-    // squadra (vedi lib/championPickScoring.ts per il ripiego sul
-    // circuito se non ce l'ha o se non ha giocato nel turno).
-    const memberTeams: Record<string, string | undefined> = {};
-    fantaMembers.forEach((m) => {
-      memberTeams[m.userId] = m.team?.find((t) => t.pickType === "team")?.playerName;
-    });
-
-    const results = computeChampionPickResults(
-      pickDocs.map((docSnap) => {
+    // Calcolo in lib/recalc.ts (computeChampionPickWrites), condiviso con
+    // la Cloud Function che chiude da sola i turni finiti. Lancia NO_GAMES
+    // se Leaguepedia non restituisce partite: il turno resta chiuso
+    // (scelte rivelate solo dopo i punti), si rilancia con "Ricalcola Punti".
+    const writes = await computeChampionPickWrites({
+      fantaId: currentFanta.id,
+      circuitType: currentFanta.settings.circuitType || "",
+      round,
+      members: fantaMembers,
+      picks: pickDocs.map((docSnap) => {
         const data = docSnap.data() ?? {};
         return {
           id: docSnap.id,
@@ -1736,17 +1663,8 @@ export function FantaProvider({ children }: { children: ReactNode }) {
           banChampionName: data.banChampionName as string | undefined,
         };
       }),
-      games,
-      memberTeams,
-    );
-
-    // revealed: rende il pick visibile agli altri via la query
-    // where("revealed", "==", true) del listener.
-    const batch = writeBatch(db);
-    pickDocs.forEach((docSnap) => {
-      batch.update(docSnap.ref, { ...results[docSnap.id], revealed: true });
     });
-    await batch.commit();
+    await applyWrites(writes);
   };
 
   // Chiude il mercato (niente più aste nuove/offerte/pick di draft/rimozioni
@@ -1783,348 +1701,18 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  // Ricalcola i punti fantasy di ogni pick in rosa dalle statistiche reali
-  // Leaguepedia (kill/morti/assist/vittorie per player/jolly, sole vittorie
-  // per team/coach — vedi lib/leaguepediaApi.ts), pesati con gli
-  // scoringWeights della lega — uno per ruolo (playerRole del pick), più un
-  // set separato (teamScoringWeights) per le pick team/coach. Nessun
-  // automatismo: va rilanciato a mano (bottone admin/dev) quando si
-  // vogliono punti aggiornati, non c'è un cron/Cloud Function che lo fa da
-  // solo. CS + proxy Vision Score (wardsPlaced+wardsDestroyed, vedi
-  // lib/lolesportsApi.ts) si sommano SOLO ai punti di un turno (calendario
-  // a girone o bracket, finestra di date nota) via
-  // computeLolesportsRoundBonuses, non al totale cumulativo qui sopra:
-  // lolesports non supporta una query diretta "tutte le partite di sempre"
-  // come il Cargo di Leaguepedia. Obiettivi di squadra/CS-oro team/
-  // pentakill/ban restano NON calcolati automaticamente — vedi
-  // l'avvertenza su ScoringWeights/TeamScoringWeights in types/index.ts.
+  // Ricalcolo punteggi: logica in lib/recalc.ts (computeScoreWrites),
+  // condivisa con la Cloud Function che lo fa da sola due volte al giorno
+  // (functions/src/index.ts). Qui resta il bottone manuale per admin/dev.
   const recalculateScores = async (): Promise<void> => {
     if (!currentFanta) return;
-    const circuitType = currentFanta.settings.circuitType;
-    if (!circuitType) return;
-    const roleWeights = currentFanta.settings.scoringWeights || {};
-    const teamWeights =
-      currentFanta.settings.teamScoringWeights || DEFAULT_TEAM_SCORING_WEIGHTS;
-    // Risolto una volta sola per tutta la chiamata: null per i circuiti
-    // senza corrispondente lolesports (es. "ALTRO"), nel qual caso i bonus
-    // CS/wards restano semplicemente 0 per ogni turno, senza errori.
-    const leagueId = await findLeagueId(circuitType);
-
-    const playerNames = new Set<string>();
-    const teamNames = new Set<string>();
-    fantaMembers.forEach((m) => {
-      m.team.forEach((pick) => {
-        if (pick.pickType === "player" || pick.pickType === "jolly") {
-          playerNames.add(pick.playerName);
-        } else if (pick.pickType === "team") {
-          teamNames.add(pick.playerName);
-        } else if (pick.pickType === "coach" && pick.playerTeam) {
-          teamNames.add(pick.playerTeam);
-        }
-      });
+    const writes = await computeScoreWrites({
+      fanta: currentFanta,
+      members: fantaMembers,
+      calendar,
+      bracketRounds,
     });
-
-    const [playerStats, teamStats] = await Promise.all([
-      getFantasyPlayerStats(Array.from(playerNames), circuitType),
-      getFantasyTeamStats(Array.from(teamNames), circuitType),
-    ]);
-
-    const batch = writeBatch(db);
-    let hasWrites = false;
-
-    fantaMembers.forEach((m) => {
-      let changed = false;
-      const updatedTeam = m.team.map((pick) => {
-        const points = computeAutoPoints(
-          pick,
-          playerStats,
-          teamStats,
-          roleWeights,
-          teamWeights,
-        );
-        if (points === undefined) return pick;
-        const rounded = Math.round(points * 100) / 100;
-        if (rounded !== pick.points) changed = true;
-        return { ...pick, points: rounded };
-      });
-
-      if (changed) {
-        hasWrites = true;
-        batch.update(
-          doc(db, "fantas", currentFanta.id, "members", m.userId),
-          { team: updatedTeam },
-        );
-      }
-    });
-
-    if (hasWrites) await batch.commit();
-
-    // Punteggio di ogni turno di calendario (confronto diretto tra i due
-    // membri di una fixture): stessa formula sopra, ma le stats vengono
-    // richieste filtrate sulla finestra [startDate, endDate) del turno,
-    // invece che cumulative di sempre — vedi getFantasyPlayerStats/
-    // getFantasyTeamStats in lib/leaguepediaApi.ts. Una query per turno,
-    // non per fixture: i membri coinvolti in un turno condividono la stessa
-    // finestra di date.
-    if (calendar.length > 0) {
-      const roundBatch = writeBatch(db);
-      let hasRoundWrites = false;
-
-      for (const round of calendar) {
-        const involvedUserIds = Array.from(
-          new Set(
-            round.fixtures.flatMap((f) =>
-              [f.homeUserId, f.awayUserId].filter((id): id is string => !!id),
-            ),
-          ),
-        );
-        const roundPlayerNames = new Set<string>();
-        const roundTeamNames = new Set<string>();
-        involvedUserIds.forEach((uid) => {
-          const member = fantaMembers.find((m) => m.userId === uid);
-          member?.team.forEach((pick) => {
-            if (pick.pickType === "player" || pick.pickType === "jolly") {
-              roundPlayerNames.add(pick.playerName);
-            } else if (pick.pickType === "team") {
-              roundTeamNames.add(pick.playerName);
-            } else if (pick.pickType === "coach" && pick.playerTeam) {
-              roundTeamNames.add(pick.playerTeam);
-            }
-          });
-        });
-
-        const dateRange = { start: round.startDate, end: round.endDate };
-        const [roundPlayerStats, roundTeamStats, lolesportsBonuses] = await Promise.all([
-          getFantasyPlayerStats(
-            Array.from(roundPlayerNames),
-            circuitType,
-            dateRange,
-          ),
-          getFantasyTeamStats(
-            Array.from(roundTeamNames),
-            circuitType,
-            dateRange,
-          ),
-          computeLolesportsRoundBonuses(
-            involvedUserIds,
-            dateRange,
-            leagueId,
-            roleWeights,
-            fantaMembers,
-          ),
-        ]);
-
-        const memberRoundPoints = (userId: string): number => {
-          const member = fantaMembers.find((m) => m.userId === userId);
-          if (!member) return 0;
-          const autoPoints = member.team.reduce((sum, pick) => {
-            const points = computeAutoPoints(
-              pick,
-              roundPlayerStats,
-              roundTeamStats,
-              roleWeights,
-              teamWeights,
-            );
-            return sum + (points || 0);
-          }, 0);
-          return autoPoints + (lolesportsBonuses.get(userId) || 0);
-        };
-
-        let roundChanged = false;
-        const updatedFixtures = round.fixtures.map((f) => {
-          const homePoints =
-            Math.round(memberRoundPoints(f.homeUserId) * 100) / 100;
-          const awayPoints = f.awayUserId
-            ? Math.round(memberRoundPoints(f.awayUserId) * 100) / 100
-            : undefined;
-          if (homePoints !== f.homePoints || awayPoints !== f.awayPoints) {
-            roundChanged = true;
-          }
-          return { ...f, homePoints, awayPoints };
-        });
-
-        if (roundChanged) {
-          hasRoundWrites = true;
-          roundBatch.update(
-            doc(db, "fantas", currentFanta.id, "calendar", round.id),
-            { fixtures: updatedFixtures },
-          );
-        }
-      }
-
-      if (hasRoundWrites) await roundBatch.commit();
-    }
-
-    // Punteggio del tabellone a eliminazione diretta (fase 2, solo
-    // WORLDS/MSI): stessa logica del calendario a girone sopra, applicata a
-    // ogni turno del bracket. Quando un turno risulta completamente deciso
-    // (ogni match ha un vincitore, bye inclusi) e il turno successivo non
-    // esiste ancora, lo genera in automatico accoppiando i vincitori (vedi
-    // lib/bracket.ts) — nessun cron: basta premere di nuovo "Ricalcola
-    // Punteggi" per far avanzare il tabellone di un turno alla volta.
-    if (bracketRounds.length > 0) {
-      // Spareggio dei pareggi: punti totali in stagione dalla rosa (stessa
-      // somma mostrata in Classifica, totalPickPoints).
-      const memberSeasonPoints = (userId: string): number => {
-        const member = fantaMembers.find((m) => m.userId === userId);
-        if (!member) return 0;
-        return member.team.reduce(
-          (sum, pick) => sum + totalPickPoints(pick, roleWeights, teamWeights),
-          0,
-        );
-      };
-      const bracketBatch = writeBatch(db);
-      let hasBracketWrites = false;
-      const sortedRounds = [...bracketRounds].sort(
-        (a, b) => a.roundIndex - b.roundIndex,
-      );
-
-      for (const round of sortedRounds) {
-        const involvedUserIds = Array.from(
-          new Set(
-            round.matches.flatMap((m) =>
-              [m.homeUserId, m.awayUserId].filter(
-                (id): id is string => !!id,
-              ),
-            ),
-          ),
-        );
-        const roundPlayerNames = new Set<string>();
-        const roundTeamNames = new Set<string>();
-        involvedUserIds.forEach((uid) => {
-          const member = fantaMembers.find((m) => m.userId === uid);
-          member?.team.forEach((pick) => {
-            if (pick.pickType === "player" || pick.pickType === "jolly") {
-              roundPlayerNames.add(pick.playerName);
-            } else if (pick.pickType === "team") {
-              roundTeamNames.add(pick.playerName);
-            } else if (pick.pickType === "coach" && pick.playerTeam) {
-              roundTeamNames.add(pick.playerTeam);
-            }
-          });
-        });
-
-        const dateRange = { start: round.startDate, end: round.endDate };
-        const [roundPlayerStats, roundTeamStats, lolesportsBonuses] = await Promise.all([
-          getFantasyPlayerStats(
-            Array.from(roundPlayerNames),
-            circuitType,
-            dateRange,
-          ),
-          getFantasyTeamStats(
-            Array.from(roundTeamNames),
-            circuitType,
-            dateRange,
-          ),
-          computeLolesportsRoundBonuses(
-            involvedUserIds,
-            dateRange,
-            leagueId,
-            roleWeights,
-            fantaMembers,
-          ),
-        ]);
-
-        const memberBracketPoints = (userId: string): number => {
-          const member = fantaMembers.find((m) => m.userId === userId);
-          if (!member) return 0;
-          const autoPoints = member.team.reduce((sum, pick) => {
-            const points = computeAutoPoints(
-              pick,
-              roundPlayerStats,
-              roundTeamStats,
-              roleWeights,
-              teamWeights,
-            );
-            return sum + (points || 0);
-          }, 0);
-          return autoPoints + (lolesportsBonuses.get(userId) || 0);
-        };
-
-        // Il vincitore si decide solo a turno finito: prima un ricalcolo a
-        // metà turno fissava per sempre chi era avanti in quel momento (il
-        // match veniva poi saltato perché "già deciso") e il tabellone
-        // avanzava su risultati parziali (code review, 8/10). Fino alla
-        // fine del turno si aggiornano solo i punti.
-        const roundEnded = Date.now() >= round.endDate.getTime();
-
-        let roundChanged = false;
-        const updatedMatches: BracketMatch[] = round.matches.map((match) => {
-          // Già deciso (bye, o turno finito e già calcolato) oppure ancora
-          // TBD in attesa del turno precedente: niente da calcolare qui.
-          if (match.winnerUserId || !match.homeUserId || !match.awayUserId) {
-            return match;
-          }
-          const homePoints =
-            Math.round(memberBracketPoints(match.homeUserId) * 100) / 100;
-          const awayPoints =
-            Math.round(memberBracketPoints(match.awayUserId) * 100) / 100;
-          // Pareggio a turno finito: passa chi ha più punti cumulativi in
-          // stagione, poi il seed migliore (home, vedi seedFirstRound/
-          // nextRoundFromWinners in lib/bracket.ts). Prima un pareggio
-          // (es. 0-0 senza partite giocate) lasciava il match senza
-          // vincitore per sempre e il tabellone si fermava.
-          const winnerUserId = !roundEnded
-            ? undefined
-            : homePoints > awayPoints
-              ? match.homeUserId
-              : awayPoints > homePoints
-                ? match.awayUserId
-                : memberSeasonPoints(match.awayUserId) >
-                    memberSeasonPoints(match.homeUserId)
-                  ? match.awayUserId
-                  : match.homeUserId;
-          if (
-            homePoints !== match.homePoints ||
-            awayPoints !== match.awayPoints ||
-            winnerUserId !== match.winnerUserId
-          ) {
-            roundChanged = true;
-          }
-          return {
-            ...match,
-            homePoints,
-            awayPoints,
-            ...(winnerUserId ? { winnerUserId } : {}),
-          };
-        });
-
-        if (roundChanged) {
-          hasBracketWrites = true;
-          bracketBatch.update(
-            doc(db, "fantas", currentFanta.id, "bracket", round.id),
-            { matches: updatedMatches },
-          );
-        }
-
-        const nextRoundExists = sortedRounds.some(
-          (r) => r.roundIndex === round.roundIndex + 1,
-        );
-        if (!nextRoundExists && isRoundComplete(updatedMatches)) {
-          const nextMatches = nextRoundFromWinners(updatedMatches);
-          if (nextMatches.length > 0) {
-            const nextRoundLengthDays =
-              currentFanta.settings.bracketRoundLengthDays || 7;
-            const nextStart = round.endDate;
-            const nextEnd = new Date(
-              nextStart.getTime() + nextRoundLengthDays * 86400000,
-            );
-            hasBracketWrites = true;
-            bracketBatch.set(
-              doc(collection(db, "fantas", currentFanta.id, "bracket")),
-              {
-                roundIndex: round.roundIndex + 1,
-                matches: nextMatches,
-                startDate: Timestamp.fromDate(nextStart),
-                endDate: Timestamp.fromDate(nextEnd),
-              },
-            );
-          }
-        }
-      }
-
-      if (hasBracketWrites) await bracketBatch.commit();
-    }
+    await applyWrites(writes);
   };
 
   // Classifica: somma dei punti di ogni pick in rosa, per membro. Non è

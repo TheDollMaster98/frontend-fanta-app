@@ -6,6 +6,7 @@
  * per ottenere dati reali su giocatori professionistici di League of Legends.
  */
 
+import { apiFetch } from "@/lib/apiTransport";
 import { toLolRole } from "@/lib/constants";
 
 const ALLOWED_PRO_ROLES = [
@@ -273,7 +274,7 @@ async function cargoQuery(params: {
   if (params.group_by) queryParams.append("group_by", params.group_by);
 
   try {
-    const response = await fetch(`/api/leaguepedia?${queryParams.toString()}`);
+    const response = await apiFetch(`/api/leaguepedia?${queryParams.toString()}`);
 
     if (!response.ok) {
       console.warn(
