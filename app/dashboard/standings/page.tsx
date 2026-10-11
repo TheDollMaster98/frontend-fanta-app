@@ -38,7 +38,9 @@ import {
   type TeamGameLog,
 } from "@/lib/leaguepediaApi";
 import { computeManualBonus, manualBonusApplies, totalPickPoints } from "@/lib/scoring";
-import { rankGroupMembers } from "@/lib/bracket";
+import { bracketRoundName, rankGroupMembers } from "@/lib/bracket";
+import { useAuth } from "@/contexts/AuthContext";
+import { PlayoffHowToWin } from "@/components/PlayoffHowToWin";
 import type { TeamPick, TeamPickType, CalendarRound } from "@/types";
 import { DEFAULT_TEAM_SCORING_WEIGHTS, PLAYOFF_CIRCUITS, toLolRole } from "@/lib/constants";
 import { toast } from "sonner";
@@ -176,6 +178,7 @@ export default function StandingsPage() {
     generateGroups,
     generateBracket,
   } = useFanta();
+  const { user } = useAuth();
   const [selectedMember, setSelectedMember] = useState<FantaMemberProfile | null>(
     null,
   );
@@ -198,7 +201,11 @@ export default function StandingsPage() {
 
   const [isBracketDialogOpen, setIsBracketDialogOpen] = useState(false);
   const [isGeneratingBracket, setIsGeneratingBracket] = useState(false);
-  const [qualifiersPerGroup, setQualifiersPerGroup] = useState(2);
+  // null = non toccato: vale quello salvato nella lega (o 2).
+  const [qualifiersInput, setQualifiersInput] = useState<number | null>(null);
+  const qualifiersPerGroup =
+    qualifiersInput ?? currentFanta?.settings.qualifiersPerGroup ?? 2;
+  const setQualifiersPerGroup = (value: number) => setQualifiersInput(value);
   const [bracketStartDate, setBracketStartDate] = useState(
     () => new Date().toISOString().slice(0, 10),
   );
@@ -278,7 +285,12 @@ export default function StandingsPage() {
   const handleGenerateGroups = async () => {
     setIsGeneratingGroups(true);
     try {
-      await generateGroups(groupCount, new Date(groupsStartDate), groupsRoundLengthDays);
+      await generateGroups(
+        groupCount,
+        new Date(groupsStartDate),
+        groupsRoundLengthDays,
+        qualifiersPerGroup,
+      );
       toast.success("Gironi generati");
       setIsGroupsDialogOpen(false);
     } catch (error) {
@@ -349,6 +361,14 @@ export default function StandingsPage() {
   const circuitMissing = !currentFanta.settings.circuitType;
   const isPlayoffCircuit = PLAYOFF_CIRCUITS.includes(
     currentFanta.settings.circuitType || "",
+  );
+  // Chi è davvero nel tabellone, una volta generato: il badge dei gironi
+  // segue quello, non più una stima.
+  const firstBracketRound = [...bracketRounds].sort((a, b) => a.roundIndex - b.roundIndex)[0];
+  const bracketUserIds = new Set(
+    (firstBracketRound?.matches || []).flatMap((m) =>
+      [m.homeUserId, m.awayUserId].filter((id): id is string => !!id),
+    ),
   );
   const cumulativePointsByUserId = new Map(
     standings.map((s) => [s.userId, s.totalPoints]),
@@ -438,6 +458,21 @@ export default function StandingsPage() {
                           value={groupCount}
                           onChange={(e) =>
                             setGroupCount(Math.max(1, Number(e.target.value) || 1))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="groupsQualifiers">
+                          Quanti passano al tabellone da ogni gruppo
+                        </Label>
+                        <Input
+                          id="groupsQualifiers"
+                          type="number"
+                          min={1}
+                          max={8}
+                          value={qualifiersPerGroup}
+                          onChange={(e) =>
+                            setQualifiersPerGroup(Math.max(1, Number(e.target.value) || 1))
                           }
                         />
                       </div>
@@ -631,16 +666,35 @@ export default function StandingsPage() {
         </p>
       )}
 
+      {/* Mondiali/MSI (11/10): "Come si vince" prima di tutto. Sotto, la
+          classifica a punti non decide chi vince (lo decide il
+          tabellone), e messa per prima sembrava la classifica finale. */}
+      {isPlayoffCircuit && (
+        <PlayoffHowToWin
+          userId={user?.id}
+          groups={groups}
+          calendar={calendar}
+          bracketRounds={bracketRounds}
+          qualifiersPerGroup={currentFanta.settings.qualifiersPerGroup ?? qualifiersPerGroup}
+          cumulativePoints={cumulativePointsByUserId}
+          getMemberName={getMemberName}
+        />
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-foreground flex items-center gap-2">
             <Trophy className="w-5 h-5" />
-            Classifica Generale
+            {isPlayoffCircuit ? "Punti in stagione" : "Classifica Generale"}
           </CardTitle>
           <CardDescription className="text-muted-foreground">
-            Somma dei punti fantasy di ogni pick in rosa (kill/morti/assist/
-            vittorie per giocatori e jolly, vittorie per squadra/coach).
-            Clicca un membro per il dettaglio, poi un pick per le partite.
+            {isPlayoffCircuit
+              ? "Non decide chi vince (lo decide il tabellone): serve per gli spareggi. "
+              : ""}
+            Somma dei punti fantasy di ogni pick in rosa (giocatori e jolly:
+            kill, morti, assist, vittorie, CS, vision, pentakill; squadre e
+            coach: vittorie e obiettivi). Clicca un membro per il dettaglio,
+            poi un pick per le partite.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -726,8 +780,16 @@ export default function StandingsPage() {
                             </span>
                             {getMemberName(userId)}
                           </span>
-                          {index < qualifiersPerGroup && (
-                            <Badge variant="secondary">Qualificato</Badge>
+                          {bracketUserIds.size > 0 ? (
+                            bracketUserIds.has(userId) ? (
+                              <Badge variant="success">Qualificato</Badge>
+                            ) : (
+                              <Badge variant="outline">Fuori</Badge>
+                            )
+                          ) : (
+                            index < qualifiersPerGroup && (
+                              <Badge variant="secondary">In zona qualificazione</Badge>
+                            )
                           )}
                         </div>
                       ))}
@@ -749,9 +811,10 @@ export default function StandingsPage() {
             <CardHeader>
               <CardTitle className="text-foreground">Tabellone</CardTitle>
               <CardDescription className="text-muted-foreground">
-                Eliminazione diretta tra i qualificati dei gironi. Un turno
-                avanza automaticamente al successivo quando tutti i match
-                sono decisi, alla prossima &quot;Ricalcola Punteggi&quot;.
+                Eliminazione diretta tra i qualificati dei gironi: in ogni
+                sfida passa chi fa più punti nei giorni del turno (pareggio:
+                chi ha più punti in stagione). Il risultato diventa
+                definitivo a fine turno e il turno dopo si crea da solo.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -769,9 +832,7 @@ export default function StandingsPage() {
                     .map((round) => (
                       <div key={round.id}>
                         <p className="text-sm font-medium text-foreground mb-2">
-                          {round.matches.length === 1
-                            ? "Finale"
-                            : `Turno ${round.roundIndex + 1}`}
+                          {bracketRoundName(round.matches.length, round.roundIndex)}
                           <span className="text-muted-foreground font-normal ml-2">
                             {round.startDate.toLocaleDateString("it-IT", {
                               day: "2-digit",
@@ -810,7 +871,7 @@ export default function StandingsPage() {
                                 >
                                   {match.homeUserId
                                     ? getMemberName(match.homeUserId)
-                                    : "TBD"}
+                                    : "Da decidere"}
                                   {hasResult && (
                                     <span className="text-muted-foreground font-normal ml-1">
                                       ({match.homePoints})
@@ -820,7 +881,7 @@ export default function StandingsPage() {
                                 <span className="text-muted-foreground">
                                   {!match.homeUserId || !match.awayUserId
                                     ? match.winnerUserId
-                                      ? "bye"
+                                      ? "passa il turno"
                                       : "vs"
                                     : hasResult
                                       ? "-"
@@ -840,7 +901,7 @@ export default function StandingsPage() {
                                   )}
                                   {match.awayUserId
                                     ? getMemberName(match.awayUserId)
-                                    : "TBD"}
+                                    : "Da decidere"}
                                 </span>
                               </div>
                             );

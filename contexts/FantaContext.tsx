@@ -54,6 +54,7 @@ import {
 } from "@/lib/bracket";
 import { totalPickPoints } from "@/lib/scoring";
 import { findPickOwner, pickKey } from "@/lib/uniquePicks";
+import { buildPickBanRounds } from "@/lib/pickBanRounds";
 import { computeChampionPickWrites, computeScoreWrites, type WriteOp } from "@/lib/recalc";
 import { buildDraftSlots, buildDraftTeamPick, advanceDraftTurn, getDraftTurnUserId } from "@/lib/draft";
 import type {
@@ -216,6 +217,7 @@ interface FantaContextType {
     groupCount: number,
     startDate?: Date,
     roundLengthDays?: number,
+    qualifiersPerGroup?: number,
   ) => Promise<void>;
   generateBracket: (
     qualifiersPerGroup?: number,
@@ -1371,6 +1373,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     groupCount: number,
     startDate: Date = new Date(),
     roundLengthDays = 7,
+    qualifiersPerGroup = 2,
   ): Promise<void> => {
     if (!currentFanta || groupCount < 1) return;
     const memberIds = fantaMembers.map((m) => m.userId);
@@ -1419,6 +1422,12 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     });
 
     await batch.commit();
+    // Deciso qui e salvato (11/10): così la classifica dei gironi mostra a
+    // tutti chi è in zona qualificazione fin dal primo turno.
+    updateFanta({
+      ...currentFanta,
+      settings: { ...currentFanta.settings, qualifiersPerGroup },
+    });
   };
 
   // Fase 2 (dopo i gironi): calcola i qualificati di ogni gruppo — ordinati
@@ -1465,7 +1474,11 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     await batch.commit();
     updateFanta({
       ...currentFanta,
-      settings: { ...currentFanta.settings, bracketRoundLengthDays: roundLengthDays },
+      settings: {
+        ...currentFanta.settings,
+        bracketRoundLengthDays: roundLengthDays,
+        qualifiersPerGroup,
+      },
     });
   };
 
@@ -1599,7 +1612,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
   // vede scritture pendenti dello stesso batch).
   const closeChampionPickRound = async (roundId: string): Promise<void> => {
     if (!currentFanta) return;
-    const round = calendar.find((r) => r.id === roundId);
+    const round = buildPickBanRounds(calendar, bracketRounds).find((r) => r.id === roundId);
     if (!round) return;
 
     await setDoc(

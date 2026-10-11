@@ -135,31 +135,20 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       icon: Trophy,
     });
 
-    // Pick'em (1/10): pronostico sul bracket vero del torneo, ha senso solo
-    // per i circuiti a eliminazione diretta (WORLDS/MSI), non per un
-    // campionato normale che non ha un bracket da pronosticare.
-    if (PLAYOFF_CIRCUITS.includes(currentFanta.settings.circuitType || "")) {
-      const pickemIndex = navigation.findIndex(
-        (item) => item.href === "/dashboard/standings",
-      );
-      navigation.splice(pickemIndex + 1, 0, {
-        name: "Pick'em",
-        href: "/dashboard/pickem",
-        icon: ListChecks,
-      });
-    } else {
-      // Pick/ban campione settimanale (1/10): l'opposto del Pick'em,
-      // serve il calendario a girone (CalendarRound) che i circuiti a
-      // eliminazione non hanno finché non entrano in fase a eliminazione.
-      const standingsIdx = navigation.findIndex(
-        (item) => item.href === "/dashboard/standings",
-      );
-      navigation.splice(standingsIdx + 1, 0, {
-        name: "Pick/Ban",
-        href: "/dashboard/championpick",
-        icon: ListChecks,
-      });
-    }
+    // Pick/Ban campione: ogni lega LoL, Mondiali/MSI compresi (11/10:
+    // prima solo i campionati normali, mentre il gruppo lo voleva proprio
+    // durante i Mondiali). Pick'em: solo Mondiali/MSI, è il pronostico sul
+    // tabellone vero del torneo, che un campionato normale non ha.
+    const standingsIdx = navigation.findIndex(
+      (item) => item.href === "/dashboard/standings",
+    );
+    const extras = [
+      { name: "Pick/Ban", href: "/dashboard/championpick", icon: ListChecks },
+      ...(PLAYOFF_CIRCUITS.includes(currentFanta.settings.circuitType || "")
+        ? [{ name: "Pick'em", href: "/dashboard/pickem", icon: ListChecks }]
+        : []),
+    ];
+    navigation.splice(standingsIdx + 1, 0, ...extras);
   }
 
   // Mostra "Gestione" a chi può davvero entrarci: creatore, vice-admin o

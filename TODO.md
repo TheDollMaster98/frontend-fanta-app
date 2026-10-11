@@ -4,6 +4,36 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
+## Mondiali più chiari (11/10, branch feat/worlds-clarity)
+
+Feedback del gruppo: la parte Mondiali non si capisce, soprattutto il
+tabellone, e non è chiaro come si vince; il Pick/Ban campioni serve
+proprio durante i Mondiali. Dettaglio in `REVIEW.md` (E9).
+- [x] Pick/Ban attivo anche in Mondiali/MSI: un turno per turno dei
+      gironi e uno per turno del tabellone, chiusura automatica compresa.
+- [x] Classifica Mondiali: scheda "Come si vince" in cima (tre passi,
+      fase attuale, la tua situazione); la classifica a punti si chiama
+      "Punti in stagione" e dice che non decide chi vince.
+- [x] Tabellone: Quarti/Semifinali/Finale invece di "Turno N", "Da
+      decidere" invece di "TBD", "passa il turno" invece di "bye".
+- [x] Qualificati per girone salvati nella lega e scelti già in "Genera
+      Gironi": prima il badge "Qualificato" segnava i primi 2 a tutti,
+      qualunque numero avesse scelto l'admin.
+- [x] Guida aggiornata.
+- [ ] **Decisione tua**: Pick'em e Pick/Ban oggi sono classifiche a
+      parte e non contano per vincere la lega. Se devono contare, va
+      deciso come (bonus nei turni? spareggio?).
+
+### Deploy della release 11/10 (master 355849c)
+- [ ] **Da fare tu**: Cloud Functions fallite su `closeAuction` e
+      `makeDraftPick` ("Failed to set the IAM Policy"): manca il ruolo
+      Cloud Run Admin alla service account. Comando in REVIEW.md (E7),
+      poi rilanciare il workflow "Deploy Cloud Functions". Finché non
+      gira, le pick del draft falliscono con un messaggio; le aste si
+      chiudono comunque col job ogni minuto.
+- [x] CI rossa per un file di test finito per errore in `functions/`:
+      tolto e ignorato (in questo branch).
+
 ## Obiettivi di squadra nel punteggio (10/10, branch feat/team-objectives-scoring)
 
 Dettaglio in `REVIEW.md` (E6).

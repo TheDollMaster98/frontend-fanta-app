@@ -135,3 +135,13 @@ export function nextRoundFromWinners(prevMatches: BracketMatch[]): BracketMatch[
   }
   return matches;
 }
+
+// Nome di un turno del tabellone dal numero di match (11/10): "Turno 2"
+// non diceva quanto mancava alla fine.
+export function bracketRoundName(matchCount: number, roundIndex: number): string {
+  if (matchCount === 1) return "Finale";
+  if (matchCount === 2) return "Semifinali";
+  if (matchCount === 4) return "Quarti di finale";
+  if (matchCount === 8) return "Ottavi di finale";
+  return `Turno ${roundIndex + 1}`;
+}

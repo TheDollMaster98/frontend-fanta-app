@@ -290,7 +290,7 @@ export interface ChampionPickDoc {
 export async function computeChampionPickWrites(input: {
   fantaId: string;
   circuitType: string;
-  round: CalendarRound;
+  round: { startDate: Date; endDate: Date };
   picks: ChampionPickDoc[];
   members: FantaMember[];
   allowEmpty?: boolean;

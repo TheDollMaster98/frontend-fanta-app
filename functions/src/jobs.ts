@@ -4,7 +4,7 @@ import {
   type QueryDocumentSnapshot,
   type Firestore,
 } from "firebase-admin/firestore";
-import { PLAYOFF_CIRCUITS } from "@/lib/constants";
+import { buildPickBanRounds } from "@/lib/pickBanRounds";
 import {
   computeChampionPickWrites,
   computeScoreWrites,
@@ -92,9 +92,9 @@ async function settleChampionPicks(
   now: number,
   log: Log,
 ): Promise<void> {
-  const { fanta, members, calendar } = league;
+  const { fanta, members, calendar, bracketRounds } = league;
   const circuitType = fanta.settings.circuitType || "";
-  if (!circuitType || PLAYOFF_CIRCUITS.includes(circuitType)) return;
+  if (!circuitType) return;
 
   const base = db.collection("fantas").doc(fanta.id);
   const [statesSnap, picksSnap] = await Promise.all([
@@ -105,7 +105,8 @@ async function settleChampionPicks(
     statesSnap.docs.filter((d) => d.data().closed === true).map((d) => d.id),
   );
 
-  for (const round of calendar.filter((r) => !r.groupId)) {
+  // Anche gironi e tabellone di Mondiali/MSI (lib/pickBanRounds.ts).
+  for (const round of buildPickBanRounds(calendar, bracketRounds)) {
     const endedAt = round.endDate.getTime();
     if (now < endedAt + PICKBAN_GRACE_MS) continue;
 

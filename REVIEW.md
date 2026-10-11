@@ -483,3 +483,27 @@ Verificato a schermo sugli emulatori con un invito usato e uno libero.
 | Su mobile la barra del browser restava chiara sopra un'app scura | `themeColor` = colore dello sfondo (`#080b10`) | `app/layout.tsx` |
 
 Logo: confermato com'è (11/10).
+
+### E9 — Mondiali più chiari (11/10, `feat/worlds-clarity`)
+
+Feedback del gruppo: "la parte dei Mondiali è confusionaria, soprattutto
+il tabellone; non si capisce come uno potrebbe vincere; il Pick/Ban
+campioni serve durante i Mondiali".
+
+| Problema | Correzione | Dove |
+| --- | --- | --- |
+| La prima cosa in Classifica era "Classifica Generale" a punti, ma ai Mondiali vince chi vince il tabellone: il primo di quella lista poteva essere già eliminato | Scheda "Come si vince" in cima: tre passi (gironi, tabellone, finale), fase attuale e situazione di chi guarda (posto nel girone, prossimo avversario, eliminato a quale turno). La classifica a punti diventa "Punti in stagione" e dice che serve per gli spareggi | `components/PlayoffHowToWin.tsx`, `app/dashboard/standings/page.tsx` |
+| Pick/Ban spento in Mondiali/MSI perché legato ai turni del calendario normale | Turni Pick/Ban come finestre di date: un turno per numero di turno dei gironi, uno per turno del tabellone. Pagina, menu, chiusura dal browser e chiusura automatica usano lo stesso elenco; le regole negano le scelte anche a turno di tabellone finito | `lib/pickBanRounds.ts`, `app/dashboard/championpick/page.tsx`, `app/dashboard/layout.tsx`, `contexts/FantaContext.tsx`, `functions/src/jobs.ts`, `firestore.rules` |
+| Tabellone: "Turno 2", "TBD", "bye" | "Quarti di finale/Semifinali/Finale", "Da decidere", "passa il turno"; spiegato chi passa e quando il risultato è definitivo | `lib/bracket.ts` (`bracketRoundName`), `standings/page.tsx` |
+| Badge "Qualificato" sui primi 2 di ogni girone per tutti: il numero vero stava solo nel dialog dell'admin | `settings.qualifiersPerGroup`, scelto in "Genera Gironi" e salvato; a tabellone generato il badge segue chi c'è davvero ("Qualificato"/"Fuori"), prima "In zona qualificazione" | `types/fanta.types.ts`, `FantaContext` (`generateGroups`, `generateBracket`), `standings/page.tsx` |
+
+**Verifiche:**
+- A schermo, lega Mondiali finta negli emulatori (8 membri, 2 gironi,
+  semifinali in corso), desktop e mobile: scheda in cima con "Tabellone:
+  Semifinali" e "ora sfidi Ivo Conti"; Pick/Ban con "Gironi, turno 1-3" e
+  "Tabellone: Semifinali" aperto; menu con Pick/Ban e Pick'em.
+- Regole: 87/87 (aggiunte scelta a turno di tabellone in corso e finito).
+- App: typecheck, lint, build. Funzioni: typecheck e bundle.
+
+**Aperto, decisione tua:** Pick'em e Pick/Ban non contano per vincere la
+lega. Ora è scritto chiaramente; se devono contare va deciso come.

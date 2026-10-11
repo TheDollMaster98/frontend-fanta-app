@@ -503,10 +503,16 @@ service cloud.firestore {
             // Solo prima della fine del turno (9/10): prima il blocco
             // era solo nell'interfaccia, e dalla console si poteva
             // scegliere a turno finito, cioè a risultati noti. Il turno
-            // Pick/Ban ha lo stesso id del turno di calendario.
+            // Pick/Ban ha lo stesso id del turno di calendario, o del turno
+            // del tabellone nelle leghe Mondiali/MSI (11/10,
+            // lib/pickBanRounds.ts).
             && (
               !exists(/databases/$(database)/documents/fantas/$(fantaId)/calendar/$(pickDocId.split('_')[0]))
               || get(/databases/$(database)/documents/fantas/$(fantaId)/calendar/$(pickDocId.split('_')[0])).data.endDate > request.time
+            )
+            && (
+              !exists(/databases/$(database)/documents/fantas/$(fantaId)/bracket/$(pickDocId.split('_')[0]))
+              || get(/databases/$(database)/documents/fantas/$(fantaId)/bracket/$(pickDocId.split('_')[0])).data.endDate > request.time
             )
             && (
               !exists(/databases/$(database)/documents/fantas/$(fantaId)/championPickRounds/$(pickDocId.split('_')[0]))
