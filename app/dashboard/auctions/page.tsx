@@ -383,7 +383,7 @@ export default function AuctionsPage() {
   const createAuction = () => {
     if (!currentFanta || !user || !newAuction.playerName) return;
 
-    createAuctionInFirestore({
+    const error = createAuctionInFirestore({
       pickType: newAuction.pickType,
       playerName: newAuction.playerName,
       playerRole: newAuction.pickType === "coach" ? undefined : newAuction.playerRole,
@@ -398,6 +398,11 @@ export default function AuctionsPage() {
       basePrice: newAuction.basePrice,
       countdownSeconds: newAuction.countdownSeconds,
     });
+    // Già in una rosa o già all'asta: il form resta com'è.
+    if (error) {
+      toast.error(error);
+      return;
+    }
 
     setSelectedAuctionPlayer(null);
     setSelectedAuctionPlayerImage(null);

@@ -466,8 +466,13 @@ Verificato a schermo sugli emulatori con un invito usato e uno libero.
   permesso di cambiare le IAM di Cloud Run. Se il workflow fallisce con
   `run.services.setIamPolicy`:
   `gcloud projects add-iam-policy-binding fam-fanta-app --member="serviceAccount:firebase-adminsdk-fbsvc@fam-fanta-app.iam.gserviceaccount.com" --role="roles/run.admin"`
-- Draft: lo stesso giocatore può finire in due rose. Non c'era controllo
-  neanche prima; è una regola di gioco, la decidi tu.
+- Scelta unica per lega (aggiunta l'11/10 su tua decisione):
+  `lib/uniquePicks.ts` (player e jolly stessa categoria, squadra e coach a
+  parte, nomi senza maiuscole/spazi). Draft: rifiutata dal server in
+  transazione, turno fermo; lista del draft senza i già presi. Aste:
+  controllo alla creazione (browser), non nelle regole: un'asta per un
+  giocatore già preso creata dalla console verrebbe comunque assegnata.
+  Funzioni contro l'emulatore: 23/23.
 
 ### E8 — Tema (10/10, `feat/team-objectives-scoring`)
 
@@ -477,5 +482,4 @@ Verificato a schermo sugli emulatori con un invito usato e uno libero.
 | Scrollbar, date picker e campi nativi seguivano il tema del sistema operativo | `color-scheme: dark` | idem, `app/layout.tsx` (`viewport`) |
 | Su mobile la barra del browser restava chiara sopra un'app scura | `themeColor` = colore dello sfondo (`#080b10`) | `app/layout.tsx` |
 
-Il logo non l'ho toccato: è la proposta della design review e manca un
-tuo parere su cosa non va. Cambiarlo senza saperlo è tirare a indovinare.
+Logo: confermato com'è (11/10).

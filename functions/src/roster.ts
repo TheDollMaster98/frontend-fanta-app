@@ -11,6 +11,7 @@ import {
   getDraftTurnUserId,
 } from "@/lib/draft";
 import { MIN_COUNTDOWN_SECONDS } from "@/lib/constants";
+import { findPickOwner } from "@/lib/uniquePicks";
 import type { Fanta, TeamPick } from "@/types";
 
 // Scritture sulle rose dal server (10/10). Prima un'asta chiusa o una pick
@@ -148,10 +149,11 @@ export async function makeDraftPickForMember(
   const callerRef = fantaRef.collection("members").doc(input.uid);
 
   return db.runTransaction(async (tx) => {
-    const [fantaSnap, stateSnap, callerSnap] = await Promise.all([
+    const [fantaSnap, stateSnap, callerSnap, membersSnap] = await Promise.all([
       tx.get(fantaRef),
       tx.get(stateRef),
       tx.get(callerRef),
+      tx.get(fantaRef.collection("members")),
     ]);
     if (!fantaSnap.exists) throw new RosterError("not-found", "Lega inesistente");
     if (!callerSnap.exists) {
@@ -184,6 +186,24 @@ export async function makeDraftPickForMember(
       }
     }
 
+    // Una scelta unica per lega: già in un'altra rosa (o nella propria)
+    // non si può riscegliere.
+    const owner = findPickOwner(
+      membersSnap.docs.map((d) => ({
+        userId: d.id,
+        teamName: (d.data().teamName as string) || "un altro membro",
+        team: (d.data().team as TeamPick[]) || [],
+      })),
+      slot.pickType,
+      playerName,
+    );
+    if (owner) {
+      throw new RosterError(
+        "failed-precondition",
+        `${playerName} è già in rosa: ${owner.userId === input.uid ? "la tua squadra" : owner.teamName}`,
+      );
+    }
+
     const pickSeconds = fanta.settings?.draftPickSeconds || MIN_COUNTDOWN_SECONDS;
     const next = advanceDraftTurn(order, slots.length, slotIndex, turnIndex);
     const historyRef = fantaRef.collection("history").doc();
@@ -193,10 +213,13 @@ export async function makeDraftPickForMember(
       playerTeam: input.playerTeam?.trim() || undefined,
     });
     const targetRef = fantaRef.collection("members").doc(targetUserId);
-    const targetSnap = targetUserId === input.uid ? callerSnap : await tx.get(targetRef);
-    if (!targetSnap.exists) {
+    const targetSnap = membersSnap.docs.find((d) => d.id === targetUserId);
+    if (!targetSnap?.exists) {
       throw new RosterError("failed-precondition", "Il membro di turno non è più nella lega");
     }
+    // Nome per lo storico dal profilo utente, come faceva il browser
+    // (getMemberName): il documento membro non ha un nome.
+    const targetProfile = await tx.get(db.doc(`users/${targetUserId}`));
 
     tx.update(stateRef, {
       status: next.completed ? "completed" : "active",
@@ -215,7 +238,7 @@ export async function makeDraftPickForMember(
       ...(pick.playerRole ? { playerRole: pick.playerRole } : {}),
       ...(pick.playerTeam ? { playerTeam: pick.playerTeam } : {}),
       buyerUserId: targetUserId,
-      buyerName: (targetSnap.data()?.name as string) || "Utente",
+      buyerName: (targetProfile.data()?.name as string) || "Utente",
       price: 0,
       purchasedAt: FieldValue.serverTimestamp(),
     });

@@ -53,6 +53,7 @@ import {
   rankGroupMembers,
 } from "@/lib/bracket";
 import { totalPickPoints } from "@/lib/scoring";
+import { findPickOwner, pickKey } from "@/lib/uniquePicks";
 import { computeChampionPickWrites, computeScoreWrites, type WriteOp } from "@/lib/recalc";
 import { buildDraftSlots, buildDraftTeamPick, advanceDraftTurn, getDraftTurnUserId } from "@/lib/draft";
 import type {
@@ -275,7 +276,7 @@ interface FantaContextType {
       | "basePrice"
       | "countdownSeconds"
     >,
-  ) => void;
+  ) => string | null;
   startAuction: (auctionId: string, countdownSeconds: number) => void;
   pauseAuction: (auctionId: string) => void;
   placeBid: (auctionId: string, amount: number) => void;
@@ -1712,9 +1713,20 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       .sort((a, b) => b.totalPoints - a.totalPoints);
   }, [fantaMembers, currentFanta]);
 
+  // Restituisce un messaggio d'errore se l'asta non si può creare, null
+  // se è partita la scrittura. Una scelta unica per lega (10/10): niente
+  // asta per chi è già in una rosa o ha già un'asta aperta.
   const createAuction: FantaContextType["createAuction"] = (auction) => {
-    if (!currentFanta || !user) return;
-    if (currentFanta.settings.seasonStarted) return;
+    if (!currentFanta || !user) return "Nessuna lega selezionata";
+    if (currentFanta.settings.seasonStarted) return "Mercato chiuso";
+    const owner = findPickOwner(fantaMembers, auction.pickType, auction.playerName);
+    if (owner) {
+      return `${auction.playerName} è già nella rosa di ${owner.teamName || getMemberName(owner.userId)}`;
+    }
+    const key = pickKey(auction.pickType, auction.playerName);
+    if (auctions.some((a) => a.status !== "closed" && pickKey(a.pickType, a.playerName) === key)) {
+      return `C'è già un'asta aperta per ${auction.playerName}`;
+    }
     addDoc(collection(db, "fantas", currentFanta.id, "auctions"), {
       ...auction,
       // Difensivo: il form UI ha già min/max, ma non fidarsi solo del client.
@@ -1728,7 +1740,11 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       createdBy: user.id,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+    }).catch((error) => {
+      console.error("Errore nella creazione dell'asta:", error);
+      toast.error("Creazione dell'asta non riuscita, riprova");
     });
+    return null;
   };
 
   const startAuction = (auctionId: string, countdownSeconds: number): void => {

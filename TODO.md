@@ -50,16 +50,16 @@ Dettaglio in `REVIEW.md` (E7).
 - [ ] Finché le funzioni nuove non sono pubblicate, le pick del draft
       falliscono (con messaggio) e le aste si chiudono solo col job ogni
       minuto. Il deploy delle funzioni parte insieme agli altri.
-- [ ] Aperto, decisione tua: nel draft lo stesso giocatore può finire in
-      due rose (non c'era controllo neanche prima). Se non deve, si
-      aggiunge in `makeDraftPick`.
+- [x] Una scelta unica per lega (decisione tua, 11/10): lo stesso
+      giocatore, squadra o coach sta in una sola rosa. Draft: il server
+      rifiuta e la lista nasconde chi è già preso. Aste: niente asta per
+      chi è già in rosa o ha già un'asta aperta.
 
 ## Tema (10/10, stesso branch)
 - [x] Solo scuro: tolta la palette chiara mai attivabile, `color-scheme:
       dark` (scrollbar e campi nativi scuri) e barra del browser mobile
       del colore dello sfondo.
-- [ ] **Logo**: non toccato. È la proposta del 9/10 e non mi hai detto
-      cosa non va: rifarlo alla cieca sarebbe tirare a indovinare.
+- [x] **Logo**: confermato così com'è (11/10).
 
 ## Ricalcolo automatico e bug aperti (9/10, branch fix/auto-recalc-open-bugs)
 

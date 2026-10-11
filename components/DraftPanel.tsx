@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "sonner";
+import { pickKey } from "@/lib/uniquePicks";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildDraftSlots, getDraftTurnUserId } from "@/lib/draft";
@@ -246,15 +247,30 @@ export function DraftPanel() {
     };
   }, [currentFanta, currentSlot, teamSearch]);
 
+  // Una scelta unica per lega: chi è già in una rosa non compare più
+  // (il server lo rifiuta comunque, vedi makeDraftPick).
+  const takenKeys = useMemo(
+    () =>
+      new Set(
+        fantaMembers.flatMap((m) => m.team.map((p) => pickKey(p.pickType, p.playerName))),
+      ),
+    [fantaMembers],
+  );
+  const availableTeams = useMemo(
+    () => teams.filter((t) => !takenKeys.has(pickKey("team", t.name))),
+    [teams, takenKeys],
+  );
+
   const filteredPlayers = useMemo(() => {
-    const base =
+    const base = (
       currentSlot?.pickType === "player"
         ? players.filter((p) => p.role === currentSlot.role)
-        : players;
+        : players
+    ).filter((p) => !takenKeys.has(pickKey("player", p.player)));
     if (!playerSearch.trim()) return base;
     const q = playerSearch.trim().toLowerCase();
     return base.filter((p) => `${p.player} ${p.team || ""}`.toLowerCase().includes(q));
-  }, [players, playerSearch, currentSlot]);
+  }, [players, playerSearch, currentSlot, takenKeys]);
 
   // La pick la registra il server (makeDraftPick): se rifiuta (turno
   // scaduto, non è il tuo turno, mercato chiuso) lo dice il messaggio.
@@ -430,12 +446,12 @@ export function DraftPanel() {
               placeholder="Cerca per nome o sigla..."
             />
             <div className="max-h-60 space-y-1 overflow-y-auto">
-              {teams.length === 0 ? (
+              {availableTeams.length === 0 ? (
                 <p className="px-2 py-4 text-sm text-muted-foreground">
                   Nessuna squadra trovata
                 </p>
               ) : (
-                teams.map((team) => (
+                availableTeams.map((team) => (
                   <button
                     key={team.name}
                     onClick={() => submitTeamPick(team)}
