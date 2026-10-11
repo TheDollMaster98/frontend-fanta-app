@@ -26,6 +26,13 @@ import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { PLAYOFF_CIRCUITS } from "@/lib/constants";
 import type { PickemRound } from "@/types";
+import {
+  isDerivedMatch,
+  isValidPickemBracket,
+  matchTeams,
+  prunePicks,
+  standardPickemRounds,
+} from "@/lib/pickem";
 
 // Stato locale di editing: stessa forma di PickemRound/PickemMatch ma con
 // un id client-side su ogni match (crypto.randomUUID) per poterli
@@ -138,12 +145,7 @@ export default function PickemPage() {
       ),
     );
 
-  const canSaveBracket = editRounds.every(
-    (r) =>
-      r.name.trim() &&
-      r.matches.length > 0 &&
-      r.matches.every((m) => m.teamA.trim() && m.teamB.trim()),
-  );
+  const canSaveBracket = isValidPickemBracket(editRounds);
 
   const handleSaveBracket = async () => {
     setIsSavingBracket(true);
@@ -209,9 +211,11 @@ export default function PickemPage() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Pick&apos;em</h1>
         <p className="text-muted-foreground mt-2">
-          {currentFanta?.name} — pronostica il vincitore di ogni scontro del
-          bracket a eliminazione diretta. Niente play-in/gironi: si parte da
-          dove l&apos;admin ha impostato il bracket.
+          {currentFanta?.name} — pronostica tutta la fase a eliminazione del
+          torneo vero prima che inizi: scegli chi vince ogni quarto, poi tra
+          le tue vincenti chi vince le semifinali e la finale. Ogni
+          pronostico giusto vale i punti del suo turno. Classifica a parte:
+          non cambia chi vince la lega.
         </p>
       </div>
 
@@ -222,10 +226,11 @@ export default function PickemPage() {
               Gestione Bracket (admin/vice)
             </CardTitle>
             <CardDescription>
-              Round, scontri e punti per pronostico corretto in ogni round.
-              Salvare sostituisce l&apos;intero bracket — gli id dei match già
-              esistenti restano invariati, i pronostici già inviati per quei
-              match restano validi.
+              1. Crea la struttura (o i turni a mano). 2. Scrivi le squadre
+              del primo turno: i turni dopo si riempiono da soli coi
+              vincenti. 3. Salva. 4. Blocca i pronostici prima del primo
+              match. 5. Inserisci i vincitori veri man mano che si giocano.
+              Salvare di nuovo non cancella i pronostici già inviati.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -239,13 +244,19 @@ export default function PickemPage() {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {pickemBracket.locked
-                      ? "Nessun membro può più inviare o modificare il proprio pronostico"
-                      : "I membri possono ancora inviare o modificare il pronostico"}
+                      ? "Nessuno può più modificare il pronostico. Ora inserisci i vincitori veri man mano."
+                      : "I membri possono ancora pronosticare. Bloccalo prima del primo match: i vincitori veri si inseriscono solo dopo."}
                   </p>
                 </div>
                 <Button
                   variant={pickemBracket.locked ? "outline" : "default"}
                   onClick={handleToggleLock}
+                  // Con risultati veri già inseriti, riaprire vorrebbe dire
+                  // pronosticare conoscendo i vincitori.
+                  disabled={
+                    pickemBracket.locked &&
+                    pickemBracket.rounds.some((r) => r.matches.some((m) => m.winner))
+                  }
                 >
                   {pickemBracket.locked ? "Sblocca" : "Blocca Pronostici"}
                 </Button>
@@ -292,61 +303,95 @@ export default function PickemPage() {
                 </div>
 
                 <div className="space-y-2">
-                  {round.matches.map((match) => (
-                    <div key={match.id} className="flex items-center gap-2">
-                      <Input
-                        value={match.teamA}
-                        onChange={(e) =>
-                          updateMatch(roundIndex, match.id, {
-                            teamA: e.target.value,
-                          })
-                        }
-                        placeholder="Squadra A"
-                      />
-                      <span className="text-muted-foreground text-sm">vs</span>
-                      <Input
-                        value={match.teamB}
-                        onChange={(e) =>
-                          updateMatch(roundIndex, match.id, {
-                            teamB: e.target.value,
-                          })
-                        }
-                        placeholder="Squadra B"
-                      />
-                      {pickemBracket && (
-                        <Select
-                          value={match.winner || ""}
-                          onValueChange={(winner) =>
-                            setPickemMatchWinner(roundIndex, match.id, winner)
-                          }
-                        >
-                          <SelectTrigger className="w-40 shrink-0">
-                            <SelectValue placeholder="Vincitore" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {match.teamA && (
-                              <SelectItem value={match.teamA}>
-                                {match.teamA}
-                              </SelectItem>
-                            )}
-                            {match.teamB && (
-                              <SelectItem value={match.teamB}>
-                                {match.teamB}
-                              </SelectItem>
-                            )}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeMatch(roundIndex, match.id)}
-                        aria-label="Rimuovi scontro"
+                  {round.matches.map((match, matchIndex) => {
+                    // Squadre vere dello scontro: scritte, o i vincitori
+                    // reali degli scontri del turno prima.
+                    const [realA, realB] = matchTeams(
+                      editRounds,
+                      roundIndex,
+                      matchIndex,
+                      (feeder) => feeder.winner,
+                    );
+                    const derived = isDerivedMatch(roundIndex, match);
+                    return (
+                      // Mobile: squadre su una riga, vincitore ed elimina
+                      // sotto; da sm in su tutto su una riga.
+                      <div
+                        key={match.id}
+                        className="flex flex-col gap-2 border-b border-border pb-2 last:border-0 sm:flex-row sm:items-center sm:border-0 sm:pb-0"
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                        {derived ? (
+                          <span className="min-w-0 flex-1 text-sm text-muted-foreground">
+                            {realA ||
+                              `Vincente ${editRounds[roundIndex - 1].name || "turno prima"} ${matchIndex * 2 + 1}`}{" "}
+                            vs{" "}
+                            {realB ||
+                              `Vincente ${editRounds[roundIndex - 1].name || "turno prima"} ${matchIndex * 2 + 2}`}
+                          </span>
+                        ) : (
+                          <>
+                            <Input
+                              className="min-w-0 flex-1"
+                              value={match.teamA}
+                              onChange={(e) =>
+                                updateMatch(roundIndex, match.id, {
+                                  teamA: e.target.value,
+                                })
+                              }
+                              placeholder="Squadra A"
+                            />
+                            <span className="text-muted-foreground text-sm">vs</span>
+                            <Input
+                              className="min-w-0 flex-1"
+                              value={match.teamB}
+                              onChange={(e) =>
+                                updateMatch(roundIndex, match.id, {
+                                  teamB: e.target.value,
+                                })
+                              }
+                              placeholder="Squadra B"
+                            />
+                          </>
+                        )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                        {pickemBracket && (
+                          <Select
+                            value={match.winner || ""}
+                            onValueChange={(winner) =>
+                              setPickemMatchWinner(roundIndex, match.id, winner)
+                            }
+                            // Vincitori veri solo a pronostici bloccati:
+                            // prima chi pronostica tardi vedrebbe i
+                            // risultati già inseriti.
+                            disabled={!pickemBracket.locked || !realA || !realB}
+                          >
+                            <SelectTrigger className="flex-1 sm:w-40 sm:flex-none">
+                              <SelectValue
+                                placeholder={
+                                  pickemBracket.locked ? "Vincitore vero" : "Prima blocca"
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {realA && <SelectItem value={realA}>{realA}</SelectItem>}
+                              {realB && <SelectItem value={realB}>{realB}</SelectItem>}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeMatch(roundIndex, match.id)}
+                          aria-label="Rimuovi scontro"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
                   <Button
                     variant="outline"
                     size="sm"
@@ -359,7 +404,17 @@ export default function PickemPage() {
               </div>
             ))}
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              {editRounds.length === 0 && (
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    setEditRounds(standardPickemRounds(() => crypto.randomUUID()))
+                  }
+                >
+                  Struttura Mondiali (quarti, semifinali, finale)
+                </Button>
+              )}
               <Button variant="outline" onClick={addRound}>
                 <Plus className="w-4 h-4 mr-1" />
                 Aggiungi Round
@@ -394,43 +449,61 @@ export default function PickemPage() {
                   </h3>
                   <Badge variant="secondary">{round.points} pt</Badge>
                 </div>
-                {round.matches.map((match) => (
-                  <div
-                    key={match.id}
-                    className="flex items-center justify-between gap-2 rounded-md border border-border p-3"
-                  >
-                    <span className="text-sm text-foreground">
-                      {match.teamA} vs {match.teamB}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {match.winner && (
-                        <Badge variant="outline">Vinta: {match.winner}</Badge>
-                      )}
-                      <Select
-                        value={myPicks[match.id] || ""}
-                        onValueChange={(winner) =>
-                          setMyPicks((prev) => ({
-                            ...prev,
-                            [match.id]: winner,
-                          }))
-                        }
-                        disabled={pickemBracket.locked}
-                      >
-                        <SelectTrigger className="w-44">
-                          <SelectValue placeholder="Il tuo pronostico" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={match.teamA}>
-                            {match.teamA}
-                          </SelectItem>
-                          <SelectItem value={match.teamB}>
-                            {match.teamB}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                {round.matches.map((match, matchIndex) => {
+                  // Le squadre tra cui scegliere: scritte dall'admin, o i
+                  // tuoi vincenti degli scontri del turno prima.
+                  const [optA, optB] = matchTeams(
+                    pickemBracket.rounds,
+                    roundIndex,
+                    matchIndex,
+                    (feeder) => myPicks[feeder.id],
+                  );
+                  const myPick = myPicks[match.id];
+                  const result = match.winner
+                    ? myPick === match.winner
+                      ? "right"
+                      : "wrong"
+                    : null;
+                  return (
+                    <div
+                      key={match.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3"
+                    >
+                      <span className="text-sm text-foreground">
+                        {optA || "da scegliere sopra"} vs {optB || "da scegliere sopra"}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {match.winner && (
+                          <Badge variant={result === "right" ? "success" : "outline"}>
+                            {result === "right"
+                              ? `Indovinato +${round.points}`
+                              : `Ha vinto ${match.winner}`}
+                          </Badge>
+                        )}
+                        <Select
+                          value={myPick || ""}
+                          onValueChange={(winner) =>
+                            setMyPicks((prev) =>
+                              prunePicks(pickemBracket.rounds, {
+                                ...prev,
+                                [match.id]: winner,
+                              }),
+                            )
+                          }
+                          disabled={pickemBracket.locked || !optA || !optB}
+                        >
+                          <SelectTrigger className="w-44">
+                            <SelectValue placeholder="Chi vince?" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {optA && <SelectItem value={optA}>{optA}</SelectItem>}
+                            {optB && <SelectItem value={optB}>{optB}</SelectItem>}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ))}
 

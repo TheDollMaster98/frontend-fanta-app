@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { PLAYOFF_CIRCUITS } from "@/lib/constants";
+import { buildPickBanRounds } from "@/lib/pickBanRounds";
 import {
   CHAMPION_BAN_CIRCUIT_POINTS,
   CHAMPION_BAN_TEAM_POINTS,
@@ -47,6 +47,7 @@ export default function ChampionPickPage() {
     currentMember,
     isFantaViceOrAdmin,
     calendar,
+    bracketRounds,
     championPickRounds,
     championPicks,
     submitChampionPick,
@@ -54,14 +55,10 @@ export default function ChampionPickPage() {
     getMemberName,
   } = useFanta();
 
-  // Pick/Ban ha senso solo per leghe lol SENZA circuito a eliminazione
-  // (serve il calendario a girone, che WORLDS/MSI non hanno): se si
-  // cambia "Lega Attiva" verso una lega dove non si applica mentre si è
-  // su questa pagina, rimanda alla dashboard (bug segnalato, 2/10).
-  const isValidForFanta =
-    !!currentFanta &&
-    currentFanta.sportType === "lol" &&
-    !PLAYOFF_CIRCUITS.includes(currentFanta.settings.circuitType || "");
+  // Pick/Ban vale per ogni lega LoL, Mondiali/MSI compresi (11/10): se
+  // si cambia "Lega Attiva" verso una lega personalizzata mentre si è su
+  // questa pagina, rimanda alla dashboard (bug segnalato, 2/10).
+  const isValidForFanta = !!currentFanta && currentFanta.sportType === "lol";
 
   useEffect(() => {
     if (!fantaLoading && currentFanta && !isValidForFanta) {
@@ -74,13 +71,9 @@ export default function ChampionPickPage() {
   const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
   const [isClosing, setIsClosing] = useState<string | null>(null);
 
-  // Solo i turni di un girone normale (niente groupId): la fase a gironi/
-  // bracket dei circuiti a eliminazione non ha questo concetto di "turno
-  // settimanale" a cui agganciare il pick campione (vedi
-  // types/championpick.types.ts).
-  const rounds = calendar
-    .filter((r) => !r.groupId)
-    .sort((a, b) => a.roundNumber - b.roundNumber);
+  // Turni: calendario normale, oppure gironi e tabellone nelle leghe
+  // Mondiali/MSI (lib/pickBanRounds.ts).
+  const rounds = buildPickBanRounds(calendar, bracketRounds);
 
   // Squadra pro in rosa (pick "team"): il ban si scommette su di lei.
   const myTeamName = currentMember?.team?.find((t) => t.pickType === "team")?.playerName;
@@ -186,8 +179,9 @@ export default function ChampionPickPage() {
       {rounds.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
-            Nessun turno ancora generato. Serve prima un calendario a girone
-            (Classifica → Genera Calendario).
+            Nessun turno ancora generato. Serve prima il calendario
+            (Classifica → Genera Calendario, o Genera Gironi per Mondiali e
+            MSI).
           </CardContent>
         </Card>
       ) : (
@@ -204,7 +198,7 @@ export default function ChampionPickPage() {
                 className="flex items-center justify-between rounded-lg border border-border px-4 py-3 text-sm"
               >
                 <span className="font-medium text-foreground">
-                  Turno {round.roundNumber}
+                  {round.label}
                 </span>
                 <span className="text-muted-foreground">
                   dal {round.startDate.toLocaleDateString("it-IT")}
@@ -218,7 +212,7 @@ export default function ChampionPickPage() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-foreground">
-                    Turno {round.roundNumber}
+                    {round.label}
                   </CardTitle>
                   <Badge
                     variant={closed ? "outline" : ended ? "secondary" : "success"}
