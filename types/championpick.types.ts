@@ -8,11 +8,9 @@
 // giocato da una squadra vincente, e il ban vale +2 sulla propria
 // squadra o +1 sull'intero circuito come ripiego.
 //
-// Solo leghe a campionato normale (round-robin, CalendarRound esiste
-// già): WORLDS/MSI (gironi+bracket, niente turni calendario) restano
-// esclusi — non hanno un concetto di "turno settimanale" a cui agganciare
-// questa feature, a differenza del Pick'em che pronostica il torneo
-// intero (vedi types/pickem.types.ts).
+// Ogni lega LoL. Turni: quelli del calendario in un campionato normale;
+// in WORLDS/MSI un turno per turno dei gironi e uno per turno del
+// tabellone (11/10, lib/pickBanRounds.ts). Prima WORLDS/MSI erano esclusi.
 //
 // Si blocca al salvataggio: non modificabile dopo l'invio, e nascosto
 // agli altri membri finché admin/vice non chiude il turno (rivelando
@@ -21,7 +19,7 @@
 // turno non è chiuso, non è solo un filtro lato UI.
 
 // fantas/{fantaId}/championPickRounds/{roundId} — stato del turno
-// (CalendarRound.id): closed=true rivela le scelte di tutti e permette
+// (PickBanRound.id: id di un turno di calendario o del tabellone): closed=true rivela le scelte di tutti e permette
 // il ricalcolo punti.
 export interface ChampionPickRoundState {
   roundId: string;

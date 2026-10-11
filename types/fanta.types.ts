@@ -24,6 +24,9 @@ export interface Fanta {
   // quel bootstrap è già avvenuto per loro sotto le regole precedenti, non
   // va ripetuto.
   createdBy?: string;
+  // Ora dell'ultimo ricalcolo punti (bottone o job automatico, 11/10):
+  // mostrata in Classifica per capire se i punti sono aggiornati.
+  lastRecalculatedAt?: Date;
 }
 
 export interface ScoringWeights {
@@ -120,6 +123,11 @@ export interface FantaSettings {
   // da recalculateScores quando genera automaticamente il turno successivo
   // a un round completato. Assente = 7 giorni di default.
   bracketRoundLengthDays?: number;
+  // Quanti passano al tabellone da ogni girone (WORLDS/MSI, 11/10): prima
+  // era solo nello stato locale del dialog dell'admin, e la classifica dei
+  // gironi segnava "Qualificato" ai primi 2 per tutti gli altri a
+  // prescindere da quanti ne avrebbe poi qualificati davvero.
+  qualifiersPerGroup?: number;
 }
 
 // Ruolo di un membro NELLA LEGA (permessi) — non va confuso col ruolo del

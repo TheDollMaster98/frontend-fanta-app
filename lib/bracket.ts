@@ -135,3 +135,38 @@ export function nextRoundFromWinners(prevMatches: BracketMatch[]): BracketMatch[
   }
   return matches;
 }
+
+// Nome di un turno del tabellone dal numero di match (11/10): "Turno 2"
+// non diceva quanto mancava alla fine.
+export function bracketRoundName(matchCount: number, roundIndex: number): string {
+  if (matchCount === 1) return "Finale";
+  if (matchCount === 2) return "Semifinali";
+  if (matchCount === 4) return "Quarti di finale";
+  if (matchCount === 8) return "Ottavi di finale";
+  return `Turno ${roundIndex + 1}`;
+}
+
+/**
+ * Qualificati dei gironi in ordine di seed: i primi `qualifiersPerGroup`
+ * di ogni gruppo, interlacciati (1° A, 1° B, ..., 2° A, 2° B, ...) così
+ * che chi viene dallo stesso gruppo si incontri il più tardi possibile.
+ * Usata dalla generazione a mano (FantaContext.generateBracket) e da
+ * quella automatica a fine gironi (lib/recalc.ts): stesso risultato.
+ */
+export function seedsFromGroups(
+  groups: FantaGroup[],
+  calendar: CalendarRound[],
+  cumulativePoints: Map<string, number>,
+  qualifiersPerGroup: number,
+): string[] {
+  const qualifiersByGroup = groups.map((group) =>
+    rankGroupMembers(group, calendar, cumulativePoints).slice(0, qualifiersPerGroup),
+  );
+  const seeds: string[] = [];
+  for (let rank = 0; rank < qualifiersPerGroup; rank++) {
+    qualifiersByGroup.forEach((qualifiers) => {
+      if (qualifiers[rank]) seeds.push(qualifiers[rank]);
+    });
+  }
+  return seeds;
+}

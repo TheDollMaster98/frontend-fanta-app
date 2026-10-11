@@ -4,14 +4,14 @@ import {
   type QueryDocumentSnapshot,
   type Firestore,
 } from "firebase-admin/firestore";
-import { PLAYOFF_CIRCUITS } from "@/lib/constants";
+import { buildPickBanRounds } from "@/lib/pickBanRounds";
 import {
   computeChampionPickWrites,
   computeScoreWrites,
   type ChampionPickDoc,
   type WriteOp,
 } from "@/lib/recalc";
-import type { BracketRound, CalendarRound, Fanta, FantaMember } from "@/types";
+import type { BracketRound, CalendarRound, Fanta, FantaGroup, FantaMember } from "@/types";
 import { closeAuctionIfExpired } from "./roster";
 
 // Logica dei job pianificati (9/10), separata da index.ts per poterla
@@ -55,10 +55,11 @@ export async function applyWritesAdmin(db: Firestore, writes: WriteOp[]): Promis
 
 async function loadLeague(db: Firestore, fantaDoc: QueryDocumentSnapshot) {
   const base = fantaDoc.ref;
-  const [members, calendar, bracket] = await Promise.all([
+  const [members, calendar, bracket, groups] = await Promise.all([
     base.collection("members").get(),
     base.collection("calendar").get(),
     base.collection("bracket").get(),
+    base.collection("groups").get(),
   ]);
   const fanta = { id: fantaDoc.id, ...revive<DocumentData>(fantaDoc.data()) } as Fanta;
   return {
@@ -73,6 +74,7 @@ async function loadLeague(db: Firestore, fantaDoc: QueryDocumentSnapshot) {
     bracketRounds: bracket.docs.map(
       (d) => ({ id: d.id, ...revive<DocumentData>(d.data()) }) as BracketRound,
     ),
+    groups: groups.docs.map((d) => ({ id: d.id, ...d.data() }) as FantaGroup),
   };
 }
 
@@ -92,9 +94,9 @@ async function settleChampionPicks(
   now: number,
   log: Log,
 ): Promise<void> {
-  const { fanta, members, calendar } = league;
+  const { fanta, members, calendar, bracketRounds } = league;
   const circuitType = fanta.settings.circuitType || "";
-  if (!circuitType || PLAYOFF_CIRCUITS.includes(circuitType)) return;
+  if (!circuitType) return;
 
   const base = db.collection("fantas").doc(fanta.id);
   const [statesSnap, picksSnap] = await Promise.all([
@@ -105,7 +107,8 @@ async function settleChampionPicks(
     statesSnap.docs.filter((d) => d.data().closed === true).map((d) => d.id),
   );
 
-  for (const round of calendar.filter((r) => !r.groupId)) {
+  // Anche gironi e tabellone di Mondiali/MSI (lib/pickBanRounds.ts).
+  for (const round of buildPickBanRounds(calendar, bracketRounds)) {
     const endedAt = round.endDate.getTime();
     if (now < endedAt + PICKBAN_GRACE_MS) continue;
 

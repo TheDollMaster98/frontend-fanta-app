@@ -47,3 +47,4 @@ next-env.d.ts
 # Cloud Functions: dipendenze e bundle generato da "npm run build"
 /functions/node_modules
 /functions/lib
+/functions/.*-test.js
