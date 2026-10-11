@@ -11,7 +11,15 @@ import {
   type ChampionPickDoc,
   type WriteOp,
 } from "@/lib/recalc";
-import type { BracketRound, CalendarRound, Fanta, FantaGroup, FantaMember } from "@/types";
+import type {
+  BracketRound,
+  CalendarRound,
+  Fanta,
+  FantaGroup,
+  FantaMember,
+  PickemBracket,
+} from "@/types";
+import type { WorldsBonusData } from "@/lib/worldsBonus";
 import { closeAuctionIfExpired } from "./roster";
 
 // Logica dei job pianificati (9/10), separata da index.ts per poterla
@@ -75,6 +83,43 @@ async function loadLeague(db: Firestore, fantaDoc: QueryDocumentSnapshot) {
       (d) => ({ id: d.id, ...revive<DocumentData>(d.data()) }) as BracketRound,
     ),
     groups: groups.docs.map((d) => ({ id: d.id, ...d.data() }) as FantaGroup),
+  };
+}
+
+// Dati del bonus Mondiali: tutti i Pick/Ban (l'SDK admin li legge anche
+// non rivelati, ma i punti ci sono solo a turno chiuso), stato dei turni,
+// bracket e pronostici Pick'em.
+async function loadWorldsBonusData(
+  fantaRef: QueryDocumentSnapshot["ref"],
+): Promise<WorldsBonusData> {
+  const [picks, rounds, pickem] = await Promise.all([
+    fantaRef.collection("championPicks").get(),
+    fantaRef.collection("championPickRounds").get(),
+    fantaRef.collection("pickem").get(),
+  ]);
+  const bracketDoc = pickem.docs.find((d) => d.id === "bracket");
+  return {
+    championPicks: picks.docs.map((d) => ({
+      roundId: (d.data().roundId as string) || "",
+      userId: (d.data().userId as string) || "",
+      points: d.data().points as number | undefined,
+    })),
+    closedPickBanRounds: new Set(
+      rounds.docs.filter((d) => d.data().closed === true).map((d) => d.id),
+    ),
+    pickemBracket: bracketDoc
+      ? {
+          rounds: (bracketDoc.data().rounds as PickemBracket["rounds"]) || [],
+          locked: !!bracketDoc.data().locked,
+        }
+      : null,
+    pickemPredictions: pickem.docs
+      .filter((d) => d.id.startsWith("prediction_"))
+      .map((d) => ({
+        userId: d.id.slice("prediction_".length),
+        picks: (d.data().picks as Record<string, string>) || {},
+        submittedAt: new Date(0),
+      })),
   };
 }
 
@@ -167,10 +212,14 @@ export async function runRecalculation(
     try {
       const league = await loadLeague(db, fantaDoc);
       if (!league.fanta.settings?.circuitType) continue;
-      const writes = await computeScoreWrites({ ...league, now });
+      // Prima il Pick/Ban (chiude i turni finiti e scrive i punti), poi i
+      // punteggi: nelle leghe WORLDS/MSI i punti Pick/Ban e Pick'em entrano
+      // nei turni (lib/worldsBonus.ts), quindi devono essere già pronti.
+      await settleChampionPicks(db, league, now, log);
+      const worlds = await loadWorldsBonusData(fantaDoc.ref);
+      const writes = await computeScoreWrites({ ...league, worlds, now });
       await applyWritesAdmin(db, writes);
       log("Punteggi ricalcolati", { fantaId: fantaDoc.id, writes: writes.length });
-      await settleChampionPicks(db, league, now, log);
     } catch (error) {
       failed += 1;
       log("Ricalcolo lega fallito", {

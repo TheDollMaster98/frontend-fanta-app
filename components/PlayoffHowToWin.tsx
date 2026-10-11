@@ -138,9 +138,10 @@ export function PlayoffHowToWin(props: Props) {
             <p className="font-medium text-foreground">1. Gironi</p>
             <p className="text-muted-foreground">
               Sei in un gruppo. Ogni turno sfidi un altro del gruppo: vince
-              chi fa più punti fantasy in quei giorni, cioè i punti dei tuoi
-              giocatori nelle partite vere giocate nel turno. Nel girone
-              conta prima il numero di vittorie, poi i punti fatti.
+              chi fa più punti in quei giorni. I punti del turno sono quelli
+              dei tuoi giocatori nelle partite vere, più il bonus (vedi
+              sotto). Nel girone conta prima il numero di vittorie, poi i
+              punti fatti.
             </p>
           </li>
           <li>
@@ -159,10 +160,15 @@ export function PlayoffHowToWin(props: Props) {
             </p>
           </li>
         </ol>
-        <p className="text-muted-foreground">
-          Pick&apos;em e Pick/Ban hanno classifiche a parte: non cambiano chi
-          vince la lega.
-        </p>
+        <div>
+          <p className="font-medium text-foreground">Bonus</p>
+          <p className="text-muted-foreground">
+            I punti del Pick/Ban di ogni turno e quelli del Pick&apos;em
+            (pronostici giusti sui match veri decisi nei giorni del turno)
+            si sommano ai tuoi punti di quel turno, nei gironi e nel
+            tabellone. Pronosticare bene ti può far passare il turno.
+          </p>
+        </div>
         <p className="text-xs text-muted-foreground">
           Punti aggiornati:{" "}
           {props.lastRecalculatedAt

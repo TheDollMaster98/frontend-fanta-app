@@ -24,7 +24,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bell } from "lucide-react";
+import { Bell, FlaskConical } from "lucide-react";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreateFantaDialog } from "@/components/CreateFantaDialog";
@@ -174,6 +174,33 @@ export default function SettingsPage() {
           Le notifiche (richieste di ingresso, aste in partenza, ecc.) sono
           ora nella campanella in alto nella barra di navigazione.
         </p>
+      </div>
+
+      {/* Demo Mondiali/MSI per tutti (11/10): colore "info" (blu) e
+          etichetta DEMO per non confonderla con una lega vera. */}
+      <div className="flex flex-col gap-3 rounded-lg border border-info/50 bg-info/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="rounded bg-info px-1.5 py-0.5 text-xs font-semibold text-info-foreground">
+              DEMO
+            </span>
+            <p className="font-semibold text-foreground">
+              Inizia una demo di fanta per i Mondiali/MSI
+            </p>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Una lega finta per capire come si gioca: gironi, tabellone,
+            Pick&apos;em e Pick/Ban, dalla fase a gironi alla finale. Non
+            salva niente e non tocca le tue leghe.
+          </p>
+        </div>
+        <Button
+          className="shrink-0 bg-info text-info-foreground hover:bg-info/90"
+          onClick={() => router.push("/dashboard/demo-mondiali")}
+        >
+          <FlaskConical className="mr-2 h-4 w-4" />
+          Apri la demo
+        </Button>
       </div>
 
       <Tabs defaultValue="profile" className="space-y-4">

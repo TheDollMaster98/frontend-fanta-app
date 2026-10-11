@@ -214,8 +214,9 @@ export default function PickemPage() {
           {currentFanta?.name} — pronostica tutta la fase a eliminazione del
           torneo vero prima che inizi: scegli chi vince ogni quarto, poi tra
           le tue vincenti chi vince le semifinali e la finale. Ogni
-          pronostico giusto vale i punti del suo turno. Classifica a parte:
-          non cambia chi vince la lega.
+          pronostico giusto vale i punti del suo turno, che si sommano anche
+          ai tuoi punti nella lega: vanno al turno in cui l&apos;admin inserisce
+          il risultato vero.
         </p>
       </div>
 

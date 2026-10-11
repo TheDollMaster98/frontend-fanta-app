@@ -313,7 +313,11 @@ interface FantaContextType {
   ) => void;
 }
 
-const FantaContext = createContext<FantaContextType | undefined>(undefined);
+// Esportato solo per la modalità demo dei developer
+// (app/dashboard/demo-mondiali): lì le pagine vere ricevono una lega finta
+// tramite un Provider con valori sostituiti. Il resto dell'app usa useFanta.
+export const FantaContext = createContext<FantaContextType | undefined>(undefined);
+export type { FantaContextType };
 
 function toDate(value: Timestamp | Date | undefined): Date {
   if (!value) return new Date();
@@ -1518,8 +1522,10 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         ? round
         : {
             ...round,
+            // decidedAt: il bonus Pick'em va al turno della lega in cui
+            // il risultato viene inserito (lib/worldsBonus.ts).
             matches: round.matches.map((m) =>
-              m.id === matchId ? { ...m, winner } : m,
+              m.id === matchId ? { ...m, winner, decidedAt: Date.now() } : m,
             ),
           },
     );
@@ -1696,6 +1702,14 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       calendar,
       bracketRounds,
       groups,
+      worlds: {
+        championPicks,
+        closedPickBanRounds: new Set(
+          championPickRounds.filter((r) => r.closed).map((r) => r.roundId),
+        ),
+        pickemBracket,
+        pickemPredictions,
+      },
     });
     await applyWrites(writes);
   };

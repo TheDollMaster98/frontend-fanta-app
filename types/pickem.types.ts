@@ -21,6 +21,10 @@ export interface PickemMatch {
   // automatica: vedi nota in FantaContext sul perché non si collega a
   // lolesports qui).
   winner?: string;
+  // Quando l'admin ha inserito il vincitore (ms epoch, 11/10): i punti
+  // Pick'em si sommano al turno della lega in cui cade (lib/worldsBonus.ts).
+  // Assente sui risultati inseriti prima: quelli non danno bonus.
+  decidedAt?: number;
 }
 
 export interface PickemRound {
