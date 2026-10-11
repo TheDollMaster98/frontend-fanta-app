@@ -46,15 +46,16 @@ export interface TeamPick {
   purchasePrice: number;
   auctionId?: string;
   acquiredAt: Date;
-  // Punti fantasy calcolati dalle statistiche reali (step 2): assente finché
-  // non gira almeno una volta "Ricalcola Punteggi", poi aggiornato ad ogni
-  // ricalcolo. Per pickType "team"/"coach" sono punti-vittoria della
-  // squadra; per "player"/"jolly" derivano da kill/morti/assist/vittorie
-  // pesati con gli scoringWeights della lega. Il totale mostrato in UI è
-  // points + il bonus calcolato da manualPlayerStats/manualTeamStats (vedi
-  // lib/scoring.ts) — quest'ultimo non richiede "Ricalcola Punteggi",
-  // basta salvare le statistiche manuali.
+  // Punti fantasy calcolati dalle statistiche reali Leaguepedia: assente
+  // finché non gira almeno un ricalcolo. player/jolly: kill/morti/assist/
+  // vittorie/CS/Vision Score/pentakill pesati col ruolo; team/coach:
+  // vittorie e obiettivi della squadra (10/10). Il totale in UI è points +
+  // il bonus da manualPlayerStats/manualTeamStats, che però conta solo se
+  // Leaguepedia non ha partite per il pick (autoGames 0 o assente), così le
+  // stesse statistiche non si contano due volte (vedi lib/scoring.ts).
   points?: number;
+  // Partite trovate su Leaguepedia nell'ultimo ricalcolo (10/10).
+  autoGames?: number;
   manualPlayerStats?: ManualPlayerStats; // solo pickType player/jolly
   manualTeamStats?: ManualTeamStats; // solo pickType team/coach
 }

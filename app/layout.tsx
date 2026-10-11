@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -21,6 +21,13 @@ export const metadata: Metadata = {
     template: "%s | Fanta Points",
   },
   description: "Gestione leghe, aste e punteggi per fantasy sportivi",
+};
+
+// Barra del browser su mobile dello stesso colore dello sfondo (--background,
+// #080b10): l'app è solo scura, una barra chiara sopra stonava.
+export const viewport: Viewport = {
+  themeColor: "#080b10",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({

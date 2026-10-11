@@ -17,43 +17,38 @@ const EMPTY_WEIGHTS: ScoringWeights = {
 };
 const TEAM_TAB = "__team__";
 
-// Campi non ancora collegati a un calcolo reale: il peso si salva e si
-// mostra, ma FantaContext.recalculateScores non li applica finché non ho
-// nomi di campo Leaguepedia confermati per CS/Vision Score/Pentakills
-// (ScoreboardPlayers) e obiettivi di squadra (ScoreboardGames). Vedi
-// types/index.ts e TODO.md.
+// Tutti i pesi sono applicati dal ricalcolo (lib/scoring.ts), obiettivi
+// di squadra compresi (10/10).
 const PLAYER_FIELDS: {
   key: keyof ScoringWeights;
   label: string;
-  pending?: boolean;
 }[] = [
   { key: "kills", label: "Kill" },
   { key: "deaths", label: "Morte" },
   { key: "assists", label: "Assist" },
   { key: "win", label: "Vittoria (bonus se la squadra vince)" },
-  { key: "csPer50", label: "Ogni 50 CS", pending: true },
-  { key: "visionPer10", label: "Ogni 10 Vision Score", pending: true },
-  { key: "pentakill", label: "Pentakill", pending: true },
+  { key: "csPer50", label: "Ogni 50 CS" },
+  { key: "visionPer10", label: "Ogni 10 Vision Score" },
+  { key: "pentakill", label: "Pentakill" },
 ];
 
 const TEAM_FIELDS: {
   key: keyof TeamScoringWeights;
   label: string;
-  pending?: boolean;
 }[] = [
-  { key: "tower", label: "Torre", pending: true },
-  { key: "dragon", label: "Drago (elementale)", pending: true },
-  { key: "voidGrub", label: "Void Grub", pending: true },
-  { key: "riftHerald", label: "Rift Herald", pending: true },
-  { key: "inhibitor", label: "Inibitore", pending: true },
-  { key: "atakhan", label: "Atakhan", pending: true },
-  { key: "baron", label: "Barone", pending: true },
-  { key: "kill", label: "Kill" },
-  { key: "death", label: "Morte" },
+  { key: "tower", label: "Torre" },
+  { key: "dragon", label: "Drago (elementale)" },
+  { key: "voidGrub", label: "Void Grub" },
+  { key: "riftHerald", label: "Rift Herald" },
+  { key: "inhibitor", label: "Inibitore" },
+  { key: "atakhan", label: "Atakhan" },
+  { key: "baron", label: "Barone" },
+  { key: "kill", label: "Kill fatte" },
+  { key: "death", label: "Kill subite" },
   { key: "assist", label: "Assist" },
-  { key: "csPer100", label: "Ogni 100 CS", pending: true },
+  { key: "csPer100", label: "Ogni 100 CS" },
   { key: "win", label: "Vittoria" },
-  { key: "goldPer10k", label: "Ogni 10k oro", pending: true },
+  { key: "goldPer10k", label: "Ogni 10k oro" },
 ];
 
 interface RoleScoringWeightsEditorProps {
@@ -97,11 +92,9 @@ export function RoleScoringWeightsEditor({
       <p className="text-xs text-muted-foreground">
         Quanti punti valgono le statistiche reali, un set per ruolo (kill/
         morti/assist non valgono uguale ovunque) più uno per le pick
-        Squadra/Coach. Modificabile dopo, ma bloccato a partite iniziate. I
-        campi con <span className="text-warning">●</span> non sono ancora
-        calcolati in automatico da Leaguepedia (nomi campo non confermati):
-        contano solo se inseriti a mano su un pick, in Classifica → dettaglio
-        membro → dettaglio pick.
+        Squadra/Coach. Modificabile dopo, ma bloccato a partite iniziate. Tutti
+        calcolati in automatico da Leaguepedia, obiettivi di squadra
+        compresi.
       </p>
       <div className="flex flex-wrap gap-1">
         {roles.map((role) => (
@@ -127,11 +120,10 @@ export function RoleScoringWeightsEditor({
 
       {isTeamTab ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {TEAM_FIELDS.map(({ key, label, pending }) => (
+          {TEAM_FIELDS.map(({ key, label }) => (
             <div key={key} className="space-y-1">
               <Label htmlFor={`wTeam-${key}`} className="text-xs font-normal">
                 {label}
-                {pending && <span className="text-warning"> ●</span>}
               </Label>
               <Input
                 id={`wTeam-${key}`}
@@ -145,11 +137,10 @@ export function RoleScoringWeightsEditor({
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {PLAYER_FIELDS.map(({ key, label, pending }) => (
+          {PLAYER_FIELDS.map(({ key, label }) => (
             <div key={key} className="space-y-1">
               <Label htmlFor={`w-${key}`} className="text-xs font-normal">
                 {label}
-                {pending && <span className="text-warning"> ●</span>}
               </Label>
               <Input
                 id={`w-${key}`}

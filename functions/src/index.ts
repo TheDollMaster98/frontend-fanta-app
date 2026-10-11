@@ -1,4 +1,5 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
 import { initializeApp } from "firebase-admin/app";
@@ -7,13 +8,17 @@ import { setApiTransport } from "@/lib/apiTransport";
 import { proxyLeaguepedia } from "@/lib/server/leaguepediaProxy";
 import { proxyLolesports } from "@/lib/server/lolesportsProxy";
 import { closeExpiredAuctions, runRecalculation } from "./jobs";
+import { closeAuctionForMember, makeDraftPickForMember, RosterError } from "./roster";
 
 // Cloud Functions di Fanta Points (9/10). Due job pianificati:
 // - ricalcolo: punteggi di tutte le leghe LoL e chiusura automatica dei
 //   turni Pick/Ban finiti, due volte al giorno;
 // - aste: chiude e assegna ogni asta col countdown scaduto, ogni minuto.
-// Il bottone "Ricalcola" e la chiusura asta dal browser restano: fanno la
-// stessa cosa, prima se qualcuno è connesso.
+// Il bottone "Ricalcola" resta: fa la stessa cosa, subito.
+// Due funzioni chiamate dal browser (10/10), le uniche vie con cui un
+// membro normale fa crescere una rosa (vedi roster.ts):
+// - closeAuction: chiusura di un'asta allo scadere del countdown;
+// - makeDraftPick: pick del proprio turno di draft.
 
 initializeApp();
 const db = getFirestore();
@@ -77,3 +82,50 @@ export const closeExpiredAuctionsJob = onSchedule(
     if (closed > 0) logger.info("Aste scadute chiuse", { closed });
   },
 );
+
+// Errori di dominio -> HttpsError con lo stesso codice; il resto resta un
+// "internal" generico, senza dettagli verso il client.
+async function asCallable<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof RosterError) throw new HttpsError(error.code, error.message);
+    logger.error("Errore funzione chiamabile", {
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    throw new HttpsError("internal", "Errore interno");
+  }
+}
+
+function requireUid(auth: { uid: string } | undefined): string {
+  if (!auth) throw new HttpsError("unauthenticated", "Accesso richiesto");
+  return auth.uid;
+}
+
+export const closeAuction = onCall({ memory: "256MiB", timeoutSeconds: 30 }, (request) => {
+  const uid = requireUid(request.auth);
+  const data = (request.data || {}) as { fantaId?: string; auctionId?: string };
+  return asCallable(async () => ({
+    closed: await closeAuctionForMember(db, {
+      uid,
+      fantaId: String(data.fantaId || ""),
+      auctionId: String(data.auctionId || ""),
+    }),
+  }));
+});
+
+export const makeDraftPick = onCall({ memory: "256MiB", timeoutSeconds: 30 }, (request) => {
+  const uid = requireUid(request.auth);
+  const data = (request.data || {}) as Record<string, unknown>;
+  const text = (value: unknown) => (typeof value === "string" ? value : undefined);
+  return asCallable(async () => {
+    const pick = await makeDraftPickForMember(db, {
+      uid,
+      fantaId: text(data.fantaId) || "",
+      playerName: text(data.playerName) || "",
+      playerRole: text(data.playerRole),
+      playerTeam: text(data.playerTeam),
+    });
+    return { pickId: pick.id };
+  });
+});

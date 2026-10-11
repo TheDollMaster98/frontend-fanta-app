@@ -661,6 +661,33 @@ export interface FantasyPlayerStats {
   assists: number;
   wins: number;
   gamesPlayed: number;
+  // Da ScoreboardPlayers (campi CS/VisionScore/Pentakills verificati con
+  // action=cargofields, 10/10). Vuoti su Leaguepedia -> 0.
+  cs: number;
+  visionScore: number;
+  pentakills: number;
+}
+
+// Obiettivi e totali di squadra per il punteggio dei pick team/coach
+// (10/10). Da ScoreboardGames, lato Team1 o Team2 a seconda di dove gioca
+// la squadra; deaths = kill dell'avversario. assists e cs non esistono su
+// ScoreboardGames: si sommano da ScoreboardPlayers solo se servono (vedi
+// includePlayerTotals).
+export interface FantasyTeamStats {
+  wins: number;
+  gamesPlayed: number;
+  towers: number;
+  dragons: number;
+  voidGrubs: number;
+  riftHeralds: number;
+  inhibitors: number;
+  atakhans: number;
+  barons: number;
+  kills: number;
+  deaths: number;
+  gold: number;
+  assists: number;
+  cs: number;
 }
 
 // Cargo usa "YYYY-MM-DD HH:MM:SS" in UTC per DateTime_UTC: confrontabile
@@ -669,18 +696,51 @@ function toCargoDateTime(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
+// Campo numerico Cargo: stringa vuota o assente (statistica non registrata
+// per quella partita) vale 0 invece di NaN.
+function cargoNumber(value: string | undefined): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function circuitClause(circuitType: string): string {
+  return `(T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")`;
+}
+
+function dateClauseFor(dateRange?: { start: Date; end: Date }): string {
+  return dateRange
+    ? ` AND SG.DateTime_UTC >= "${toCargoDateTime(dateRange.start)}" AND SG.DateTime_UTC < "${toCargoDateTime(dateRange.end)}"`
+    : "";
+}
+
+// Tutte le pagine di una query Cargo (strict: un rate limit interrompe il
+// ricalcolo invece di restituire zeri).
+async function cargoQueryAll(
+  params: Omit<Parameters<typeof cargoQuery>[0], "limit" | "offset">,
+): Promise<CargoRecord[]> {
+  const results: CargoRecord[] = [];
+  const pageSize = 500;
+  let offset = 0;
+  while (true) {
+    const page = await cargoQuery({ ...params, limit: pageSize, offset }, { strict: true });
+    results.push(...page);
+    if (page.length < pageSize) break;
+    offset += pageSize;
+  }
+  return results;
+}
+
 /**
- * Statistiche reali (kill/morti/assist/vittorie) di una lista di giocatori
- * in un circuito, aggregate da ScoreboardPlayers+ScoreboardGames. La
- * formula punti (pesi kill/morti/assist/vittoria) resta fuori da qui: la
- * applica il chiamante con gli scoringWeights della lega, così questa
+ * Statistiche reali (kill/morti/assist/vittorie, CS, Vision Score,
+ * pentakill) di una lista di giocatori in un circuito, aggregate da
+ * ScoreboardPlayers+ScoreboardGames. La formula punti resta fuori da qui:
+ * la applica il chiamante con gli scoringWeights della lega, così questa
  * funzione non deve sapere nulla delle impostazioni di una lega specifica.
  * Nomi in batch da 30 per non costruire where-clause troppo lunghe.
  *
  * dateRange opzionale: se passato, limita l'aggregazione alle sole partite
- * giocate in quella finestra (usato per il punteggio di un singolo turno di
- * calendario — vedi FantaContext.recalculateScores). Omesso = statistiche
- * cumulative di sempre nel circuito, comportamento originale.
+ * giocate in quella finestra (punteggio di un singolo turno). Omesso =
+ * statistiche cumulative di sempre nel circuito.
  */
 export async function getFantasyPlayerStats(
   playerNames: string[],
@@ -690,44 +750,38 @@ export async function getFantasyPlayerStats(
   const names = Array.from(new Set(playerNames.map((n) => n.trim()).filter(Boolean)));
   const stats: Record<string, FantasyPlayerStats> = {};
   names.forEach((n) => {
-    stats[n] = { kills: 0, deaths: 0, assists: 0, wins: 0, gamesPlayed: 0 };
+    stats[n] = {
+      kills: 0,
+      deaths: 0,
+      assists: 0,
+      wins: 0,
+      gamesPlayed: 0,
+      cs: 0,
+      visionScore: 0,
+      pentakills: 0,
+    };
   });
   if (names.length === 0) return stats;
 
-  const dateClause = dateRange
-    ? ` AND SG.DateTime_UTC >= "${toCargoDateTime(dateRange.start)}" AND SG.DateTime_UTC < "${toCargoDateTime(dateRange.end)}"`
-    : "";
-
   for (const group of chunk(names, 30)) {
     const nameList = group.map((n) => `"${escapeCargoValue(n)}"`).join(",");
-    const results: CargoRecord[] = [];
-    const pageSize = 500;
-    let offset = 0;
-
-    while (true) {
-      const page = await cargoQuery({
-        tables: "ScoreboardPlayers=SP, ScoreboardGames=SG, Tournaments=T, PlayerRedirects=PR",
-        fields:
-          "PR.AllName=QueryName, SP.Team, SP.Kills, SP.Deaths, SP.Assists, SG.WinTeam",
-        where: `PR.AllName IN (${nameList}) AND (T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")${dateClause}`,
-        join_on:
-          "SP.GameId=SG.GameId, SG.OverviewPage=T.OverviewPage, SP.Link=PR.AllName",
-        limit: pageSize,
-        offset,
-      }, { strict: true });
-
-      results.push(...page);
-      if (page.length < pageSize) break;
-      offset += pageSize;
-    }
+    const results = await cargoQueryAll({
+      tables: "ScoreboardPlayers=SP, ScoreboardGames=SG, Tournaments=T, PlayerRedirects=PR",
+      fields:
+        "PR.AllName=QueryName, SP.Team, SP.Kills, SP.Deaths, SP.Assists, SP.CS, SP.VisionScore, SP.Pentakills, SG.WinTeam",
+      where: `PR.AllName IN (${nameList}) AND ${circuitClause(circuitType)}${dateClauseFor(dateRange)}`,
+      join_on: "SP.GameId=SG.GameId, SG.OverviewPage=T.OverviewPage, SP.Link=PR.AllName",
+    });
 
     results.forEach((r) => {
-      const key = r.QueryName;
-      const stat = stats[key];
+      const stat = stats[r.QueryName];
       if (!stat) return;
-      stat.kills += parseInt(r.Kills || "0");
-      stat.deaths += parseInt(r.Deaths || "0");
-      stat.assists += parseInt(r.Assists || "0");
+      stat.kills += cargoNumber(r.Kills);
+      stat.deaths += cargoNumber(r.Deaths);
+      stat.assists += cargoNumber(r.Assists);
+      stat.cs += cargoNumber(r.CS);
+      stat.visionScore += cargoNumber(r.VisionScore);
+      stat.pentakills += cargoNumber(r.Pentakills);
       stat.gamesPlayed += 1;
       if (r.Team && r.WinTeam && r.Team === r.WinTeam) stat.wins += 1;
     });
@@ -736,58 +790,112 @@ export async function getFantasyPlayerStats(
   return stats;
 }
 
+function emptyTeamStats(): FantasyTeamStats {
+  return {
+    wins: 0,
+    gamesPlayed: 0,
+    towers: 0,
+    dragons: 0,
+    voidGrubs: 0,
+    riftHeralds: 0,
+    inhibitors: 0,
+    atakhans: 0,
+    barons: 0,
+    kills: 0,
+    deaths: 0,
+    gold: 0,
+    assists: 0,
+    cs: 0,
+  };
+}
+
 /**
- * Vittorie/partite di una lista di squadre in un circuito. Unica statistica
- * di squadra usabile via Leaguepedia per il punteggio fantasy: obiettivi e
- * MVP non sono disponibili a livello di singola squadra/giocatore in
- * ScoreboardGames (verificato a mano con l'utente, vedi step 6 nel TODO).
+ * Vittorie e obiettivi (torri, draghi, void grub, araldi, inibitori,
+ * Atakhan, baroni, kill/morti, oro) di una lista di squadre in un
+ * circuito, da ScoreboardGames (campi verificati con action=cargofields,
+ * 10/10: prima si contavano solo le vittorie e i pesi degli obiettivi
+ * venivano salvati ma ignorati).
+ *
+ * includePlayerTotals: somma anche assist e CS dei giocatori della squadra
+ * da ScoreboardPlayers. È una query in più, quindi il chiamante la chiede
+ * solo se i pesi assist/CS della lega non sono 0 (default: 0).
  */
 export async function getFantasyTeamStats(
   teamNames: string[],
   circuitType: string,
   dateRange?: { start: Date; end: Date },
-): Promise<Record<string, { wins: number; gamesPlayed: number }>> {
+  options: { includePlayerTotals?: boolean } = {},
+): Promise<Record<string, FantasyTeamStats>> {
   const names = Array.from(new Set(teamNames.map((n) => n.trim()).filter(Boolean)));
-  const stats: Record<string, { wins: number; gamesPlayed: number }> = {};
+  const stats: Record<string, FantasyTeamStats> = {};
   names.forEach((n) => {
-    stats[n] = { wins: 0, gamesPlayed: 0 };
+    stats[n] = emptyTeamStats();
   });
   if (names.length === 0) return stats;
 
-  const dateClause = dateRange
-    ? ` AND SG.DateTime_UTC >= "${toCargoDateTime(dateRange.start)}" AND SG.DateTime_UTC < "${toCargoDateTime(dateRange.end)}"`
-    : "";
+  const sideFields = [
+    "Towers",
+    "Dragons",
+    "VoidGrubs",
+    "RiftHeralds",
+    "Inhibitors",
+    "Atakhans",
+    "Barons",
+    "Kills",
+    "Gold",
+  ];
+  const fields = [
+    "SG.Team1",
+    "SG.Team2",
+    "SG.WinTeam",
+    ...sideFields.flatMap((f) => [`SG.Team1${f}`, `SG.Team2${f}`]),
+  ].join(", ");
 
   for (const group of chunk(names, 30)) {
     const nameList = group.map((n) => `"${escapeCargoValue(n)}"`).join(",");
-    const results: CargoRecord[] = [];
-    const pageSize = 500;
-    let offset = 0;
-
-    while (true) {
-      const page = await cargoQuery({
-        tables: "ScoreboardGames=SG, Tournaments=T",
-        fields: "SG.WinTeam, SG.LossTeam",
-        where: `(SG.WinTeam IN (${nameList}) OR SG.LossTeam IN (${nameList})) AND (T.Name LIKE "%${escapeCargoValue(circuitType)}%" OR T.League LIKE "%${escapeCargoValue(circuitType)}%")${dateClause}`,
-        join_on: "SG.OverviewPage=T.OverviewPage",
-        limit: pageSize,
-        offset,
-      }, { strict: true });
-
-      results.push(...page);
-      if (page.length < pageSize) break;
-      offset += pageSize;
-    }
+    const results = await cargoQueryAll({
+      tables: "ScoreboardGames=SG, Tournaments=T",
+      fields,
+      where: `(SG.Team1 IN (${nameList}) OR SG.Team2 IN (${nameList})) AND ${circuitClause(circuitType)}${dateClauseFor(dateRange)}`,
+      join_on: "SG.OverviewPage=T.OverviewPage",
+    });
 
     results.forEach((r) => {
-      if (r.WinTeam && stats[r.WinTeam]) {
-        stats[r.WinTeam].wins += 1;
-        stats[r.WinTeam].gamesPlayed += 1;
-      }
-      if (r.LossTeam && stats[r.LossTeam]) {
-        stats[r.LossTeam].gamesPlayed += 1;
-      }
+      ([1, 2] as const).forEach((side) => {
+        const team = (r[`Team${side}`] || "").trim();
+        const stat = stats[team];
+        if (!stat) return;
+        const other = side === 1 ? 2 : 1;
+        const own = (field: string) => cargoNumber(r[`Team${side}${field}`]);
+        stat.gamesPlayed += 1;
+        if (r.WinTeam && r.WinTeam.trim() === team) stat.wins += 1;
+        stat.towers += own("Towers");
+        stat.dragons += own("Dragons");
+        stat.voidGrubs += own("VoidGrubs");
+        stat.riftHeralds += own("RiftHeralds");
+        stat.inhibitors += own("Inhibitors");
+        stat.atakhans += own("Atakhans");
+        stat.barons += own("Barons");
+        stat.kills += own("Kills");
+        stat.gold += own("Gold");
+        stat.deaths += cargoNumber(r[`Team${other}Kills`]);
+      });
     });
+
+    if (options.includePlayerTotals) {
+      const playerRows = await cargoQueryAll({
+        tables: "ScoreboardPlayers=SP, ScoreboardGames=SG, Tournaments=T",
+        fields: "SP.Team, SP.Assists, SP.CS",
+        where: `SP.Team IN (${nameList}) AND ${circuitClause(circuitType)}${dateClauseFor(dateRange)}`,
+        join_on: "SP.GameId=SG.GameId, SG.OverviewPage=T.OverviewPage",
+      });
+      playerRows.forEach((r) => {
+        const stat = stats[(r.Team || "").trim()];
+        if (!stat) return;
+        stat.assists += cargoNumber(r.Assists);
+        stat.cs += cargoNumber(r.CS);
+      });
+    }
   }
 
   return stats;

@@ -1,5 +1,4 @@
 import {
-  FieldValue,
   Timestamp,
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -13,6 +12,7 @@ import {
   type WriteOp,
 } from "@/lib/recalc";
 import type { BracketRound, CalendarRound, Fanta, FantaMember } from "@/types";
+import { closeAuctionIfExpired } from "./roster";
 
 // Logica dei job pianificati (9/10), separata da index.ts per poterla
 // provare contro l'emulatore Firestore senza il runtime delle Functions.
@@ -180,10 +180,9 @@ export async function runRecalculation(
 }
 
 // Job "aste scadute": chiude ogni asta attiva col countdown finito e la
-// assegna al miglior offerente, in un'unica transazione (asta chiusa +
-// rosa e budget del vincitore + storico). Prima succedeva solo se qualcuno
-// aveva la pagina Aste aperta allo scadere. Il client continua a poterlo
-// fare (chi arriva prima vince, la transazione controlla lo stato).
+// assegna al miglior offerente (closeAuctionIfExpired, roster.ts). Il
+// browser allo scadere chiama closeAuction, che fa la stessa cosa subito:
+// chi arriva prima vince, la transazione controlla lo stato.
 export async function closeExpiredAuctions(
   db: Firestore,
   options: { now?: number; log?: Log } = {},
@@ -198,55 +197,12 @@ export async function closeExpiredAuctions(
 
   let closed = 0;
   for (const auctionDoc of expired.docs) {
-    const fantaRef = auctionDoc.ref.parent.parent;
-    if (!fantaRef) continue;
-    const didClose = await db.runTransaction(async (tx) => {
-      const snap = await tx.get(auctionDoc.ref);
-      const data = snap.data();
-      if (!snap.exists || !data || data.status !== "active") return false;
-      const endsAt = data.countdownEndsAt as Timestamp | undefined;
-      if (!endsAt || endsAt.toMillis() > now.toMillis()) return false;
-
-      tx.update(auctionDoc.ref, {
-        status: "closed",
-        closedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-
-      const winnerId = data.highestBidderId as string | undefined;
-      if (winnerId) {
-        const price = (data.currentPrice as number) || 0;
-        const pick: Record<string, unknown> = {
-          id: auctionDoc.id,
-          pickType: data.pickType || "player",
-          playerName: data.playerName,
-          purchasePrice: price,
-          auctionId: auctionDoc.id,
-          acquiredAt: now,
-          ...(data.playerRole ? { playerRole: data.playerRole } : {}),
-          ...(data.playerTeam ? { playerTeam: data.playerTeam } : {}),
-        };
-        tx.update(fantaRef.collection("members").doc(winnerId), {
-          team: FieldValue.arrayUnion(pick),
-          budgetSpent: FieldValue.increment(price),
-          budgetLeft: FieldValue.increment(-price),
-        });
-        tx.set(fantaRef.collection("history").doc(), {
-          playerName: data.playerName,
-          ...(data.playerRole ? { playerRole: data.playerRole } : {}),
-          ...(data.playerTeam ? { playerTeam: data.playerTeam } : {}),
-          buyerUserId: winnerId,
-          buyerName: (data.highestBidderName as string) || "Utente",
-          price,
-          auctionId: auctionDoc.id,
-          purchasedAt: FieldValue.serverTimestamp(),
-        });
-      }
-      return true;
-    });
-    if (didClose) {
+    if (await closeAuctionIfExpired(db, auctionDoc.ref, now)) {
       closed += 1;
-      log("Asta chiusa", { fantaId: fantaRef.id, auctionId: auctionDoc.id });
+      log("Asta chiusa", {
+        fantaId: auctionDoc.ref.parent.parent?.id,
+        auctionId: auctionDoc.id,
+      });
     }
   }
   return closed;

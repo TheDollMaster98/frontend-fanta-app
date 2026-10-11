@@ -402,3 +402,84 @@ prima o poi divergono, quindi:
 | Accanto a "Usato" c'era la data di creazione dell'invito, che sembrava la data d'uso | Usato: "Usato da Nome (email) il gg/mm/aaaa" con la data d'uso; libero: "Libero · creato il gg/mm/aaaa" | idem |
 
 Verificato a schermo sugli emulatori con un invito usato e uno libero.
+
+### E6 — Obiettivi di squadra nel punteggio (10/10, `feat/team-objectives-scoring`)
+
+| Problema | Correzione | Dove |
+| --- | --- | --- |
+| I pesi degli obiettivi (torri, draghi, baroni...) si salvavano ma il calcolo li ignorava: squadra e coach prendevano solo vittoria × peso, e il peso vittoria di default è 0, quindi 0 punti fissi | Statistiche per lato (Team1/Team2) da `ScoreboardGames`, kill subite = kill dell'avversario, formula con tutti i pesi | `lib/leaguepediaApi.ts` (`getFantasyTeamStats`), `lib/scoring.ts` (`teamPoints`) |
+| Assist e CS di squadra non esistono su `ScoreboardGames` | Somma dai giocatori della squadra su `ScoreboardPlayers`, solo se il peso non è 0 (default 0: nessuna query in più) | idem, `lib/recalc.ts` |
+| CS, Vision Score e pentakill dei giocatori ignorati (CS/wards da lolesports solo nei turni, mai nel totale) | Campi `CS`, `VisionScore`, `Pentakills` di `ScoreboardPlayers` nella stessa query di kill/morti/assist; tolto il bonus lolesports | `lib/leaguepediaApi.ts`, `lib/scoring.ts` (`playerPoints`), `lib/recalc.ts` |
+| Le statistiche a mano si sarebbero sommate a quelle automatiche | Valgono solo se Leaguepedia non ha partite per il pick (`TeamPick.autoGames`, scritto dal ricalcolo); il dettaglio pick dice quando sono ignorate | `lib/scoring.ts`, `app/dashboard/standings/page.tsx` |
+| Valori vuoti su Leaguepedia (partite vecchie senza VisionScore o Atakhan) davano `NaN` | `cargoNumber`: vuoto = 0 | `lib/leaguepediaApi.ts` |
+
+**Verifiche:**
+- Ricalcolo con risposte Leaguepedia finte (stesso trasporto delle
+  funzioni): giocatore 43 punti attesi e ottenuti (con CS, vision e
+  pentakill, campi vuoti a 0); squadra e coach 18,75 con i pesi di
+  default (squadra a volte Team1, a volte Team2); con pesi kill/morte/
+  assist/CS/oro 72 attesi e ottenuti, con la query sui giocatori fatta
+  solo in quel caso; statistiche a mano ignorate con partite e contate
+  senza.
+- App: typecheck, lint (solo i 2 avvisi `<img>` di prima), build.
+  Funzioni: typecheck e bundle.
+
+**Non verificato e da sapere:**
+- Nomi dei campi presi da `action=cargofields`, ma non ho potuto fare una
+  query reale (da qui Leaguepedia risponde con rate limit). Se un campo
+  fosse vuoto per un circuito, quel campo vale 0, non rompe il calcolo.
+- `VisionScore` esiste su Leaguepedia solo per le partite in cui è stato
+  registrato: nei circuiti minori può mancare e valere 0.
+- Le funzioni lolesports per CS/wards per game (`getTeamGameIdsInRange`,
+  `getGamePlayerStats`) restano nel file ma non sono più usate.
+
+### E7 — Rose scrivibili solo dal server (10/10, `feat/team-objectives-scoring`)
+
+| Problema | Correzione | Dove |
+| --- | --- | --- |
+| Asta chiusa e pick di draft venivano assegnate dal browser di chiunque fosse connesso, quindi le regole lasciavano a ogni membro far crescere qualunque rosa: dalla console ci si aggiungeva giocatori finti, o li si dava ad altri | Funzioni chiamabili `closeAuction` e `makeDraftPick`: controllano chi chiama (membro, turno giusto, mercato aperto) e scrivono asta/turno, rosa, budget e storico in un'unica transazione | `functions/src/roster.ts`, `functions/src/index.ts`, `contexts/FantaContext.tsx` |
+| Regole membri: un membro poteva scrivere sui documenti degli altri ("assegnazione") e sul proprio far crescere la rosa | Solo il proprio documento: nome squadra, o svincolo di un giocatore a mercato aperto (rosa = vecchia meno un pick, rimborso = il suo prezzo). Prima bastava "rosa più corta": si poteva rimborsarsi più del prezzo o sostituire pick | `firestore.rules` (`isSingleRelease`) |
+| Regole aste: ogni modifica senza cambio di prezzo era permessa a tutti (mettersi miglior offerente senza rilanciare, chiudere prima della fine) | Membro normale: solo offerta valida, che tocca solo i campi di un'offerta | `firestore.rules` (`isValidBid`) |
+| Regole draft: un membro poteva far avanzare i turni a piacere | Membro normale: solo saltare un turno già scaduto, di un passo, registrandolo tra quelli in sospeso | `firestore.rules` (`isExpiredSkip`) |
+| Chiusura a mano dell'admin: asta chiusa nella transazione, rosa e storico dopo e separati (asta "chiusa" senza giocatore se la seconda scrittura falliva) | Tutto nella stessa transazione | `contexts/FantaContext.tsx` (`finalizeAuction`) |
+| Svincolo: la rosa scritta era quella mappata in stato | Letta grezza dal documento in transazione, così combacia con quello che le regole confrontano | `contexts/FantaContext.tsx` (`removePlayerFromTeam`) |
+
+**Verifiche:**
+- Regole nell'emulatore: 85/85 (aggiunti: aggiungersi un giocatore,
+  assegnarlo ad altri, rimborso gonfiato, svincolo con sostituzione,
+  due svincoli insieme, svincolo senza rimborso, chiudere un'asta,
+  mettersi offerente senza rilanciare, offrire e chiudere insieme,
+  avanzare il draft senza registrare lo skip, saltare un turno non
+  scaduto o due turni, scrivere lo storico).
+- Funzioni contro l'emulatore: 19/19 (estraneo respinto; asta non scaduta
+  lasciata stare; asta scaduta assegnata una volta sola anche con due
+  chiamate e poi il job; draft: turno sbagliato, estraneo, nome vuoto,
+  pick al proprio turno con avanzamento e scadenza, admin per conto di
+  un altro, serpentina, mercato chiuso, draft finito).
+- App: typecheck, lint, build. Funzioni: typecheck e bundle.
+
+**Non verificato e da sapere:**
+- Il giro completo browser → funzione pubblicata non l'ho provato: il
+  codice nel browser è una chiamata `httpsCallable` con gestione errori.
+- Le funzioni chiamabili devono essere invocabili da chiunque (l'accesso
+  lo controlla il codice). Il deploy lo imposta da solo, ma serve il
+  permesso di cambiare le IAM di Cloud Run. Se il workflow fallisce con
+  `run.services.setIamPolicy`:
+  `gcloud projects add-iam-policy-binding fam-fanta-app --member="serviceAccount:firebase-adminsdk-fbsvc@fam-fanta-app.iam.gserviceaccount.com" --role="roles/run.admin"`
+- Scelta unica per lega (aggiunta l'11/10 su tua decisione):
+  `lib/uniquePicks.ts` (player e jolly stessa categoria, squadra e coach a
+  parte, nomi senza maiuscole/spazi). Draft: rifiutata dal server in
+  transazione, turno fermo; lista del draft senza i già presi. Aste:
+  controllo alla creazione (browser), non nelle regole: un'asta per un
+  giocatore già preso creata dalla console verrebbe comunque assegnata.
+  Funzioni contro l'emulatore: 23/23.
+
+### E8 — Tema (10/10, `feat/team-objectives-scoring`)
+
+| Problema | Correzione | Dove |
+| --- | --- | --- |
+| Palette chiara completa in `:root` ma mai attivabile (`html` sempre `dark`): codice morto che faceva sembrare il tema chiaro supportato | Tolta; i valori scuri stanno in `:root`. Scelta: solo scuro. Un selettore avrebbe voluto dire rivedere ogni schermata anche in chiaro | `app/globals.css` |
+| Scrollbar, date picker e campi nativi seguivano il tema del sistema operativo | `color-scheme: dark` | idem, `app/layout.tsx` (`viewport`) |
+| Su mobile la barra del browser restava chiara sopra un'app scura | `themeColor` = colore dello sfondo (`#080b10`) | `app/layout.tsx` |
+
+Logo: confermato com'è (11/10).

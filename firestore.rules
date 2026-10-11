@@ -242,37 +242,10 @@ service cloud.firestore {
           return request.resource.data.role != resource.data.role;
         }
 
-        // Il team di un membro cresce quando un'asta si chiude o parte una
-        // pick di draft — scritture che possono arrivare dal browser di
-        // QUALSIASI membro connesso (nessun cron/Cloud Function in
-        // quest'app, vedi i commenti in FantaContext.tsx), non solo
-        // dall'admin o dal proprietario. Bloccare quello romperebbe
-        // l'assegnazione automatica. L'unica cosa che blocchiamo a mercato
-        // chiuso è un membro normale che TOGLIE un proprio giocatore
-        // (team che si accorcia): admin/vice restano liberi di farlo per
-        // sistemare rose.
-        function isTeamShrinking() {
-          return ('team' in request.resource.data) && ('team' in resource.data)
-            && request.resource.data.team.size() < resource.data.team.size();
-        }
-
-        // Un cambio di ruolo (promuovere/rimuovere vice) richiede admin —
-        // prima chiunque poteva riscrivere il proprio (o altrui) role a
-        // "admin" via un update qualsiasi. Ogni altro campo (team, budget,
-        // teamName) segue la stessa logica di sempre, invariata.
-        // isMember() (8/10, code review): prima qualunque utente loggato,
-        // anche di un'altra lega, poteva riscrivere budget e rosa di
-        // chiunque. Resta il limite noto: un membro può ancora scrivere sui
-        // documenti degli altri membri, perché l'assegnazione di un'asta
-        // chiusa parte dal browser di chiunque sia connesso (nessuna Cloud
-        // Function, vedi TODO.md).
         // Budget coerente (8/10): budgetTot fisso, quanto scende budgetLeft
         // tanto sale budgetSpent (e viceversa), mai spesa negativa, e
         // budgetLeft mai oltre il budget totale (o oltre il valore che
-        // aveva già, se un admin l'aveva alzato). Le scritture legittime
-        // usano increment() con lo stesso importo sui due campi, quindi lo
-        // rispettano sempre. Prima un membro poteva scriversi
-        // budgetLeft: 99999 dalla console.
+        // aveva già, se un admin l'aveva alzato).
         function budgetConsistent() {
           let before = resource.data;
           let after = request.resource.data;
@@ -286,33 +259,45 @@ service cloud.firestore {
             );
         }
 
-        // Scrittura sul documento di UN ALTRO membro da parte di un membro
-        // normale: l'unico caso legittimo è l'assegnazione di un'asta
-        // chiusa o di una pick di draft, partita dal browser di chi era
-        // connesso (nessuna Cloud Function). Quindi solo rosa e budget,
-        // rosa che cresce, spesa che non scende. Niente nome squadra,
-        // niente rimborsi, niente giocatori tolti.
-        function isAssignmentToOther() {
+        // Svincolo di UN proprio giocatore a mercato aperto
+        // (removePlayerFromTeam): la rosa nuova è quella vecchia meno
+        // esattamente un pick, e il rimborso è esattamente il suo prezzo.
+        // Prima "rosa che si accorcia" bastava: si poteva togliere un pick
+        // da 1 credito e rimborsarsene 200, o sostituire pick mentre se ne
+        // toglieva uno.
+        function isSingleRelease() {
+          let before = resource.data.get('team', []);
+          let after = request.resource.data.get('team', []);
+          let removed = before.removeAll(after);
           return request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['team', 'budgetSpent', 'budgetLeft'])
-            && request.resource.data.team.size() > resource.data.team.size()
-            && request.resource.data.get('budgetSpent', 0) >= resource.data.get('budgetSpent', 0);
+            && after.size() == before.size() - 1
+            && before.hasAll(after)
+            && removed.size() == 1
+            && budgetConsistent()
+            && resource.data.get('budgetSpent', 0) - request.resource.data.get('budgetSpent', 0)
+              == removed[0].get('purchasePrice', 0);
         }
 
+        // Rose scrivibili solo da server e admin/vice (10/10). Prima un
+        // membro normale poteva far crescere qualunque rosa, propria o
+        // altrui, perché asta chiusa e pick di draft venivano assegnate dal
+        // browser di chi era connesso: dalla console ci si aggiungeva
+        // giocatori finti. Ora quelle assegnazioni le fanno le Cloud
+        // Functions (closeAuction, makeDraftPick, job delle aste), che non
+        // passano da queste regole.
         // Admin/vice/developer: liberi (ricalcolo punti, statistiche
         // manuali, assegnazioni a mano, correzioni di rosa). Membro
-        // normale: sul proprio documento come prima (rosa che si accorcia
-        // solo a mercato aperto) più budget coerente; su quello degli
-        // altri solo un'assegnazione.
+        // normale: solo sul proprio documento, solo il nome squadra o lo
+        // svincolo di un giocatore a mercato aperto.
         allow update: if request.auth != null && isMember() && (
           (isRoleChange() && isAdmin())
           || (!isRoleChange() && isAdminOrVice())
           || (
-            !isRoleChange()
-            && budgetConsistent()
+            request.auth.uid == memberId
             && (
-              (request.auth.uid == memberId && (!seasonStarted() || !isTeamShrinking()))
-              || (request.auth.uid != memberId && isAssignmentToOther())
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamName'])
+              || (!seasonStarted() && isSingleRelease())
             )
           )
         );
@@ -335,41 +320,35 @@ service cloud.firestore {
         // già esistenti, non serve crearne altre).
         allow create: if request.auth != null && !seasonStarted() && isMember();
 
-        // currentPrice cambia SOLO con un'offerta (placeBid): avvio/pausa/
-        // chiusura/annullamento/assegnazione manuale di un'asta non lo
-        // toccano mai, quindi restano sempre permessi. Un'offerta vera a
-        // mercato chiuso è permessa solo ad admin/vice.
-        function isPriceChange() {
-          return request.resource.data.currentPrice != resource.data.currentPrice;
-        }
-
         // Offerta valida (9/10): prima il prezzo era controllato solo dal
         // client, e dalla console si poteva scrivere qualunque prezzo o
         // mettere un altro membro come offerente. Ora un'offerta di un
         // membro normale deve: essere a proprio nome, alzare il prezzo, su
         // un'asta attiva, entro la puntata massima della lega e entro il
-        // proprio budget rimanente. La riserva per i posti rosa ancora da
-        // riempire resta un controllo del client (servirebbe contare la
-        // rosa, qui non è proporzionato).
+        // proprio budget rimanente, toccando solo i campi di un'offerta. La
+        // riserva per i posti rosa ancora da riempire resta un controllo
+        // del client (servirebbe contare la rosa, qui non è proporzionato).
         function isValidBid() {
           let settings = get(/databases/$(database)/documents/fantas/$(fantaId)).data.get('settings', {});
           let bidder = get(/databases/$(database)/documents/fantas/$(fantaId)/members/$(request.auth.uid)).data;
-          return resource.data.status == 'active'
-            && request.resource.data.status == 'active'
+          return request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['currentPrice', 'highestBidderId', 'highestBidderName', 'countdownEndsAt', 'updatedAt'])
+            && resource.data.status == 'active'
             && request.resource.data.highestBidderId == request.auth.uid
             && request.resource.data.currentPrice > resource.data.currentPrice
             && request.resource.data.currentPrice <= settings.get('maxBid', 1000000000)
             && request.resource.data.currentPrice <= bidder.get('budgetLeft', 0);
         }
 
-        // isMember() (8/10): prima chiunque loggato, anche di un'altra
-        // lega, poteva cambiare offerente, stato o countdown di un'asta.
-        // Admin/vice/developer liberi (assegnazioni a mano, riaperture);
-        // un'offerta di un membro normale va validata e, a mercato
-        // chiuso, non è permessa.
+        // Admin/vice/developer liberi (avvio, pausa, chiusura,
+        // assegnazioni a mano, riaperture: tutti bottoni solo loro in UI).
+        // Un membro normale può solo fare un'offerta valida a mercato
+        // aperto (10/10): prima qualunque modifica che non toccasse il
+        // prezzo era permessa, compreso mettersi come miglior offerente
+        // senza rilanciare o chiudere un'asta prima della fine. La
+        // chiusura allo scadere la fa il server (closeAuction).
         allow update: if request.auth != null && isMember() && (
           isAdminOrVice()
-          || !isPriceChange()
           || (!seasonStarted() && isValidBid())
         );
 
@@ -391,60 +370,40 @@ service cloud.firestore {
         // mai a mercato chiuso.
         allow create: if request.auth != null && !seasonStarted() && isAdminOrVice();
 
-        // Turno atteso ricavato dagli stessi dati usati lato client
-        // (lib/draft.ts#getDraftTurnUserId): a giro pari l'ordine è in
-        // avanti, a giro dispari invertito. Se il documento non ha ancora
-        // un ordine (stato iniziale teorico) l'espressione fallisce e la
-        // funzione chiamante nega, comportamento accettabile qui.
-        function expectedTurnUserId() {
-          let order = resource.data.order;
-          let slotIndex = resource.data.currentSlotIndex;
-          let turnIndex = resource.data.currentTurnIndex;
-          let forward = slotIndex % 2 == 0;
-          return forward
-            ? order[turnIndex]
-            : order[order.size() - 1 - turnIndex];
+        // Unica scrittura di un membro normale sul draft (10/10): saltare
+        // un turno già scaduto (skipDraftTurn, dal browser di chiunque sia
+        // connesso, come prima). Turno avanzato di uno, una voce in più tra
+        // le assegnazioni in sospeso, nient'altro. La pick del proprio
+        // turno la fa il server (makeDraftPick), quindi un membro non può
+        // più far avanzare il draft a piacere né saltare turni non scaduti.
+        function isExpiredSkip() {
+          let before = resource.data;
+          let after = request.resource.data;
+          return request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'currentSlotIndex', 'currentTurnIndex', 'pickDeadline', 'pendingAssignments', 'updatedAt'])
+            && before.status == 'active'
+            && before.pickDeadline < request.time
+            && after.get('pendingAssignments', []).size() == before.get('pendingAssignments', []).size() + 1
+            && (
+              (after.currentSlotIndex == before.currentSlotIndex
+                && after.currentTurnIndex == before.currentTurnIndex + 1)
+              || (after.currentSlotIndex == before.currentSlotIndex + 1
+                && after.currentTurnIndex == 0)
+            );
         }
 
-        // Blocca il caso "l'utente di turno sta facendo la propria pick"
-        // quando il mercato è chiuso: uno skip per timeout innescato da un
-        // client qualsiasi (non necessariamente l'utente di turno) resta
-        // permesso, altrimenti romperebbe lo stesso meccanismo "nessun
-        // cron" già usato per le aste.
-        function isSelfPickAttempt() {
-          return resource.data.status == 'active'
-            && request.auth.uid == expectedTurnUserId();
-        }
-
-        // L'ordine dei turni si scrive una volta sola, all'avvio del
-        // draft (startDraft, già ristretto ad admin/vice sopra): nessuna
-        // pick o skip legittimi lo toccano mai, quindi un cambio di
-        // `order` fuori da un create è sempre e solo un reset totale del
-        // draft. Va permesso ad admin/vice (possono aver bisogno di
-        // rifarlo da capo) ma mai a un membro normale, a prescindere dal
-        // mercato — non è la stessa cosa del lock stagione, è integrità
-        // dei dati.
-        function isOrderChange() {
-          return request.resource.data.order != resource.data.order;
-        }
-
-        // isMember() (8/10): prima chiunque loggato poteva far avanzare o
-        // saltare i turni del draft di qualunque lega.
         allow update: if request.auth != null && (
           isAdminOrVice()
-          || (
-            isMember()
-            && !isOrderChange()
-            && (!seasonStarted() || !isSelfPickAttempt())
-          )
+          || (isMember() && isExpiredSkip())
         );
       }
 
-      // Storico acquisti: scritto alla chiusura di un'asta o a una pick di
-      // draft, dal browser di un membro qualsiasi. Prima: chiunque loggato.
+      // Storico acquisti: scritto dal server (asta chiusa, pick di draft)
+      // o da admin/vice (assegnazioni a mano). Prima qualunque membro,
+      // perché quelle scritture partivano dal suo browser (10/10).
       match /history/{entryId} {
         allow read: if request.auth != null;
-        allow write: if request.auth != null && isMember();
+        allow write: if request.auth != null && isAdminOrVice();
       }
 
       // Calendario, gironi e tabellone: generati e ricalcolati solo da

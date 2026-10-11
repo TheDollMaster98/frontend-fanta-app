@@ -7,6 +7,7 @@ import {
   getFirestore,
   initializeFirestore,
 } from "firebase/firestore";
+import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -40,10 +41,13 @@ function createDb(): Firestore {
   }
 }
 export const db = createDb();
+// Funzioni chiamabili (closeAuction, makeDraftPick, 10/10): stessa regione
+// delle Cloud Functions già pubblicate.
+export const functions = getFunctions(app, "us-central1");
 
 // Solo sviluppo locale (8/10): NEXT_PUBLIC_FIREBASE_EMULATORS=true collega
-// Auth e Firestore agli emulatori di firebase-tools (porte di default 9099
-// e 8080, o quelle indicate), per provare l'app con dati finti e login
+// Auth, Firestore e Functions agli emulatori di firebase-tools (porte di default 9099,
+// 8080 e 5001, o quelle indicate), per provare l'app con dati finti e login
 // senza toccare la produzione. Assente in produzione: nessun effetto. Il
 // flag globale evita la doppia connessione, che lancia, in hot-reload.
 if (
@@ -60,6 +64,11 @@ if (
     db,
     "127.0.0.1",
     Number(process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_PORT || "8080"),
+  );
+  connectFunctionsEmulator(
+    functions,
+    "127.0.0.1",
+    Number(process.env.NEXT_PUBLIC_FUNCTIONS_EMULATOR_PORT || "5001"),
   );
 }
 export const storage = getStorage(app);
