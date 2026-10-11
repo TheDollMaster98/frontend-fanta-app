@@ -1,4 +1,6 @@
-import { DEFAULT_TEAM_SCORING_WEIGHTS } from "@/lib/constants";
+import { DEFAULT_TEAM_SCORING_WEIGHTS, PLAYOFF_CIRCUITS } from "@/lib/constants";
+import { groupPickBanRoundId } from "@/lib/pickBanRounds";
+import { worldsBonus, type WorldsBonusData } from "@/lib/worldsBonus";
 import {
   isRoundComplete,
   nextRoundFromWinners,
@@ -63,6 +65,9 @@ export interface ScoreRecalcInput {
   // Gironi di WORLDS/MSI: servono per generare da soli il tabellone a
   // fine gironi. Assenti = nessuna generazione automatica.
   groups?: FantaGroup[];
+  // Pick/Ban e Pick'em della lega: nelle leghe WORLDS/MSI i loro punti si
+  // sommano ai turni (lib/worldsBonus.ts). Assenti = nessun bonus.
+  worlds?: WorldsBonusData;
   now?: number;
 }
 
@@ -80,6 +85,15 @@ export interface ScoreRecalcInput {
 export async function computeScoreWrites(input: ScoreRecalcInput): Promise<WriteOp[]> {
   const { fanta, members, calendar, bracketRounds } = input;
   const groups = input.groups || [];
+  const worlds =
+    input.worlds && PLAYOFF_CIRCUITS.includes(fanta.settings.circuitType || "")
+      ? input.worlds
+      : undefined;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  // Un turno a eliminazione si decide solo col suo Pick/Ban già chiuso,
+  // altrimenti il bonus arriverebbe dopo il verdetto.
+  const pickBanSettled = (pickBanRoundId: string | undefined) =>
+    !worlds || !pickBanRoundId || worlds.closedPickBanRounds.has(pickBanRoundId);
   const now = input.now ?? Date.now();
   const writes: WriteOp[] = [];
   const circuitType = fanta.settings.circuitType;
@@ -172,13 +186,26 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
       end: round.endDate,
     });
 
+    // Bonus Pick/Ban + Pick'em solo nei turni dei gironi di WORLDS/MSI.
+    const roundWindow = { start: round.startDate, end: round.endDate };
+    const pickBanId =
+      worlds && round.groupId ? groupPickBanRoundId(calendar, round.roundNumber) : undefined;
+    const bonusOf = (userId: string) =>
+      worlds && round.groupId ? round2(worldsBonus(worlds, userId, pickBanId, roundWindow)) : 0;
+
     let roundChanged = false;
     const updatedFixtures = round.fixtures.map((f) => {
-      const homePoints = Math.round(pointsOf(f.homeUserId) * 100) / 100;
+      const homeBonus = bonusOf(f.homeUserId);
+      const awayBonus = f.awayUserId ? bonusOf(f.awayUserId) : 0;
+      const homePoints = round2(pointsOf(f.homeUserId) + homeBonus);
       const awayPoints = f.awayUserId
-        ? Math.round(pointsOf(f.awayUserId) * 100) / 100
+        ? round2(pointsOf(f.awayUserId) + awayBonus)
         : undefined;
-      if (homePoints !== f.homePoints || awayPoints !== f.awayPoints) {
+      if (
+        homePoints !== f.homePoints ||
+        awayPoints !== f.awayPoints ||
+        (worlds && round.groupId && (homeBonus !== (f.homeBonus ?? 0) || awayBonus !== (f.awayBonus ?? 0)))
+      ) {
         roundChanged = true;
       }
       // awayPoints omesso (non undefined) sul turno di riposo.
@@ -186,6 +213,7 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
         ...f,
         homePoints,
         ...(awayPoints !== undefined ? { awayPoints } : {}),
+        ...(worlds && round.groupId ? { homeBonus, ...(f.awayUserId ? { awayBonus } : {}) } : {}),
       };
     });
 
@@ -209,7 +237,8 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
     groups.length > 0 &&
     bracketRounds.length === 0 &&
     groupRounds.length > 0 &&
-    groupRounds.every((r) => now >= r.endDate.getTime())
+    groupRounds.every((r) => now >= r.endDate.getTime()) &&
+    groupRounds.every((r) => pickBanSettled(groupPickBanRoundId(calendar, r.roundNumber)))
   ) {
     const seasonPoints = new Map(members.map((m) => [m.userId, memberSeasonPoints(m.userId)]));
     const seeds = seedsFromGroups(
@@ -257,9 +286,13 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
         end: round.endDate,
       });
 
-      // Il vincitore si decide solo a turno finito: un ricalcolo a metà
-      // turno fissava per sempre chi era avanti in quel momento.
-      const roundEnded = now >= round.endDate.getTime();
+      // Il vincitore si decide solo a turno finito (un ricalcolo a metà
+      // turno fissava per sempre chi era avanti in quel momento) e, con il
+      // bonus Mondiali, a Pick/Ban del turno chiuso.
+      const roundEnded = now >= round.endDate.getTime() && pickBanSettled(round.id);
+      const roundWindow = { start: round.startDate, end: round.endDate };
+      const bonusOf = (userId: string) =>
+        worlds ? round2(worldsBonus(worlds, userId, round.id, roundWindow)) : 0;
 
       let roundChanged = false;
       const updatedMatches: BracketMatch[] = round.matches.map((match) => {
@@ -268,8 +301,10 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
         if (match.winnerUserId || !match.homeUserId || !match.awayUserId) {
           return match;
         }
-        const homePoints = Math.round(pointsOf(match.homeUserId) * 100) / 100;
-        const awayPoints = Math.round(pointsOf(match.awayUserId) * 100) / 100;
+        const homeBonus = bonusOf(match.homeUserId);
+        const awayBonus = bonusOf(match.awayUserId);
+        const homePoints = round2(pointsOf(match.homeUserId) + homeBonus);
+        const awayPoints = round2(pointsOf(match.awayUserId) + awayBonus);
         // Pareggio a turno finito: passa chi ha più punti cumulativi in
         // stagione, poi il seed migliore (home).
         const winnerUserId = !roundEnded
@@ -284,7 +319,8 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
         if (
           homePoints !== match.homePoints ||
           awayPoints !== match.awayPoints ||
-          winnerUserId !== match.winnerUserId
+          winnerUserId !== match.winnerUserId ||
+          (worlds && (homeBonus !== (match.homeBonus ?? 0) || awayBonus !== (match.awayBonus ?? 0)))
         ) {
           roundChanged = true;
         }
@@ -292,6 +328,7 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
           ...match,
           homePoints,
           awayPoints,
+          ...(worlds ? { homeBonus, awayBonus } : {}),
           ...(winnerUserId ? { winnerUserId } : {}),
         };
       });

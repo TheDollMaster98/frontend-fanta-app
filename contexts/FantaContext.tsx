@@ -1518,8 +1518,10 @@ export function FantaProvider({ children }: { children: ReactNode }) {
         ? round
         : {
             ...round,
+            // decidedAt: il bonus Pick'em va al turno della lega in cui
+            // il risultato viene inserito (lib/worldsBonus.ts).
             matches: round.matches.map((m) =>
-              m.id === matchId ? { ...m, winner } : m,
+              m.id === matchId ? { ...m, winner, decidedAt: Date.now() } : m,
             ),
           },
     );
@@ -1696,6 +1698,14 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       calendar,
       bracketRounds,
       groups,
+      worlds: {
+        championPicks,
+        closedPickBanRounds: new Set(
+          championPickRounds.filter((r) => r.closed).map((r) => r.roundId),
+        ),
+        pickemBracket,
+        pickemPredictions,
+      },
     });
     await applyWrites(writes);
   };

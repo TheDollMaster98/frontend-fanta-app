@@ -18,6 +18,20 @@ export interface PickBanRound {
   endDate: Date;
 }
 
+function firstById(rounds: CalendarRound[]): CalendarRound {
+  return [...rounds].sort((a, b) => a.id.localeCompare(b.id))[0];
+}
+
+// Id del turno Pick/Ban di un turno dei gironi (stesso per tutti i gruppi
+// di quel numero di turno).
+export function groupPickBanRoundId(
+  calendar: CalendarRound[],
+  roundNumber: number,
+): string | undefined {
+  const list = calendar.filter((r) => r.groupId && r.roundNumber === roundNumber);
+  return list.length ? firstById(list).id : undefined;
+}
+
 export function buildPickBanRounds(
   calendar: CalendarRound[],
   bracketRounds: BracketRound[],
@@ -44,7 +58,7 @@ export function buildPickBanRounds(
       groupRoundsByNumber.set(r.roundNumber, list);
     });
   groupRoundsByNumber.forEach((list, roundNumber) => {
-    const first = [...list].sort((a, b) => a.id.localeCompare(b.id))[0];
+    const first = firstById(list);
     rounds.push({
       id: first.id,
       label: `Gironi, turno ${roundNumber}`,

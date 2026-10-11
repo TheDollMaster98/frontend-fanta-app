@@ -129,7 +129,8 @@ function RoundFixturesList({
                 {getMemberName(fixture.homeUserId)}
                 {hasResult && (
                   <span className="text-muted-foreground font-normal ml-1">
-                    ({fixture.homePoints})
+                    ({fixture.homePoints}
+                    {fixture.homeBonus ? `, bonus ${fixture.homeBonus}` : ""})
                   </span>
                 )}
               </span>
@@ -145,7 +146,8 @@ function RoundFixturesList({
                   >
                     {hasResult && (
                       <span className="text-muted-foreground font-normal mr-1">
-                        ({fixture.awayPoints})
+                        ({fixture.awayPoints}
+                        {fixture.awayBonus ? `, bonus ${fixture.awayBonus}` : ""})
                       </span>
                     )}
                     {getMemberName(fixture.awayUserId)}
@@ -848,9 +850,10 @@ export default function StandingsPage() {
               <CardTitle className="text-foreground">Tabellone</CardTitle>
               <CardDescription className="text-muted-foreground">
                 Eliminazione diretta tra i qualificati dei gironi: in ogni
-                sfida passa chi fa più punti nei giorni del turno (pareggio:
-                chi ha più punti in stagione). Il risultato diventa
-                definitivo a fine turno e il turno dopo si crea da solo.
+                sfida passa chi fa più punti nei giorni del turno, bonus
+                Pick/Ban e Pick&apos;em compresi (pareggio: chi ha più punti in
+                stagione). Il risultato diventa definitivo a fine turno, col
+                Pick/Ban del turno chiuso, e il turno dopo si crea da solo.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -910,7 +913,8 @@ export default function StandingsPage() {
                                     : "Da decidere"}
                                   {hasResult && (
                                     <span className="text-muted-foreground font-normal ml-1">
-                                      ({match.homePoints})
+                                      ({match.homePoints}
+                                      {match.homeBonus ? `, bonus ${match.homeBonus}` : ""})
                                     </span>
                                   )}
                                 </span>
@@ -932,7 +936,8 @@ export default function StandingsPage() {
                                 >
                                   {hasResult && (
                                     <span className="text-muted-foreground font-normal mr-1">
-                                      ({match.awayPoints})
+                                      ({match.awayPoints}
+                                      {match.awayBonus ? `, bonus ${match.awayBonus}` : ""})
                                     </span>
                                   )}
                                   {match.awayUserId

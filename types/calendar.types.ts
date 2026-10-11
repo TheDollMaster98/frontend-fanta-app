@@ -11,6 +11,10 @@ export interface RoundFixture {
   awayUserId: string | null;
   homePoints?: number;
   awayPoints?: number;
+  // Parte di homePoints/awayPoints che viene da Pick/Ban e Pick'em (solo
+  // leghe WORLDS/MSI, lib/worldsBonus.ts): per mostrare "80 + 4".
+  homeBonus?: number;
+  awayBonus?: number;
 }
 
 export interface CalendarRound {
@@ -58,6 +62,8 @@ export interface BracketMatch {
   awayUserId: string | null;
   homePoints?: number;
   awayPoints?: number;
+  homeBonus?: number;
+  awayBonus?: number;
   winnerUserId?: string;
 }
 
