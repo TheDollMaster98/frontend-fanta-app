@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { FantaContext, useFanta, type FantaContextType } from "@/contexts/FantaContext";
 import { buildDemoWorlds, type DemoPhase } from "@/lib/demoWorlds";
@@ -12,7 +19,8 @@ import PickemPage from "@/app/dashboard/pickem/page";
 import ChampionPickPage from "@/app/dashboard/championpick/page";
 import type { ChampionPick, PickemBracket, PickemPrediction } from "@/types";
 
-// Modalità demo Mondiali, solo developer (11/10). Le pagine vere di
+// Modalità demo Mondiali (11/10), per tutti dal 11/10 (Impostazioni →
+// "Inizia una demo"): prima solo developer. Le pagine vere di
 // Classifica, Pick'em e Pick/Ban girano dentro un Provider con una lega
 // finta (lib/demoWorlds.ts): si vede ogni fase del torneo, da admin o da
 // membro, senza una lega reale. Nessuna scrittura su Firestore: ogni
@@ -37,17 +45,14 @@ const demoOnly = () => {
 };
 
 export default function DemoMondialiPage() {
-  const router = useRouter();
-  const { user, isPreviewingAsNonDeveloper } = useAuth();
+  const { user } = useAuth();
   const real = useFanta();
-  const isDeveloper = !!user?.isDeveloper && !isPreviewingAsNonDeveloper;
 
-  useEffect(() => {
-    if (user && !isDeveloper) router.push("/dashboard");
-  }, [user, isDeveloper, router]);
-
-  const [phase, setPhase] = useState<DemoPhase>("tabellone");
-  const [asAdmin, setAsAdmin] = useState(true);
+  // Si parte come un membro qualunque a gironi in corso: il punto di
+  // vista di chi sta imparando a giocare.
+  const [phase, setPhase] = useState<DemoPhase>("gironi");
+  const [asAdmin, setAsAdmin] = useState(false);
+  const [introOpen, setIntroOpen] = useState(true);
   const [tab, setTab] = useState<TabId>("standings");
   const [now] = useState(() => Date.now());
 
@@ -178,47 +183,114 @@ export default function DemoMondialiPage() {
     };
   })();
 
-  if (!isDeveloper || !value) return null;
+  if (!value) return null;
 
   const Page =
     tab === "standings" ? StandingsPage : tab === "pickem" ? PickemPage : ChampionPickPage;
 
+  // Attivo: pieno blu (anche le varianti dark: del bottone outline, che
+  // altrimenti restano sopra e lasciano testo scuro su fondo scuro).
+  const pill = (active: boolean) =>
+    active
+      ? "border-info bg-info text-info-foreground hover:bg-info/90 dark:bg-info dark:hover:bg-info/90 hover:text-info-foreground"
+      : "border-info/40 text-foreground hover:bg-info/10 dark:hover:bg-info/10";
+
   return (
     <div className="space-y-6">
-      <div className="space-y-3 rounded-lg border border-dashed border-primary/60 bg-primary/5 p-4">
-        <div>
-          <p className="font-semibold text-foreground">Demo Mondiali (solo developer)</p>
+      <Dialog open={introOpen} onOpenChange={setIntroOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <span className="w-fit rounded bg-info px-1.5 py-0.5 text-xs font-semibold text-info-foreground">
+              DEMO
+            </span>
+            <DialogTitle>Questa è una demo</DialogTitle>
+            <DialogDescription>
+              Una lega Mondiali finta, con 7 avversari inventati, per capire
+              come si gioca. Niente viene salvato e le tue leghe vere non
+              vengono toccate.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+            <li>
+              <span className="text-foreground">Fase</span>: passa da gironi a
+              semifinali a finale per vedere come avanza il torneo.
+            </li>
+            <li>
+              <span className="text-foreground">Vista</span>: membro per
+              giocare, admin per vedere cosa deve fare chi organizza.
+            </li>
+            <li>
+              Prova a pronosticare nel Pick&apos;em e a scegliere un campione
+              nel Pick/Ban: sono i punti bonus che si sommano ai turni.
+            </li>
+          </ul>
+          <DialogFooter>
+            <Button
+              className="bg-info text-info-foreground hover:bg-info/90"
+              onClick={() => setIntroOpen(false)}
+            >
+              Ho capito, inizia
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sempre visibile mentre si scorre: è una demo. */}
+      <div className="pointer-events-none fixed bottom-4 left-4 z-40 rounded-full bg-info px-3 py-1 text-xs font-semibold text-info-foreground shadow-lg">
+        MODALITÀ DEMO · niente viene salvato
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-info/50 bg-info/10 p-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="rounded bg-info px-1.5 py-0.5 text-xs font-semibold text-info-foreground">
+              DEMO
+            </span>
+            <p className="font-semibold text-foreground">Fanta Mondiali/MSI di prova</p>
+          </div>
           <p className="text-sm text-muted-foreground">
-            Lega finta, pagine vere. Niente viene salvato: pronostici, Pick/Ban,
-            blocco e risultati del Pick&apos;em cambiano solo questa demo, il
-            resto mostra un avviso.
+            Lega finta per imparare a giocare. Pronostici e Pick/Ban cambiano
+            solo questa demo; gli altri bottoni mostrano un avviso.{" "}
+            <button
+              type="button"
+              className="text-info underline-offset-4 hover:underline"
+              onClick={() => setIntroOpen(true)}
+            >
+              Come funziona
+            </button>
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-12 text-xs text-muted-foreground">Fase</span>
           {PHASES.map((p) => (
             <Button
               key={p.id}
               size="sm"
-              variant={phase === p.id ? "default" : "outline"}
+              variant="outline"
+              className={pill(phase === p.id)}
               onClick={() => changePhase(p.id)}
             >
               {p.label}
             </Button>
           ))}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant={asAdmin ? "default" : "outline"} onClick={() => changeView(true)}>
-            Vista admin
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-12 text-xs text-muted-foreground">Vista</span>
+          <Button size="sm" variant="outline" className={pill(!asAdmin)} onClick={() => changeView(false)}>
+            Membro
           </Button>
-          <Button size="sm" variant={!asAdmin ? "default" : "outline"} onClick={() => changeView(false)}>
-            Vista membro
+          <Button size="sm" variant="outline" className={pill(asAdmin)} onClick={() => changeView(true)}>
+            Admin
           </Button>
-          <span className="mx-1 hidden w-px bg-border sm:block" />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-12 text-xs text-muted-foreground">Pagina</span>
           {TABS.map((t) => (
             <Button
               key={t.id}
               size="sm"
-              variant={tab === t.id ? "secondary" : "ghost"}
+              variant="outline"
+              className={pill(tab === t.id)}
               onClick={() => setTab(t.id)}
             >
               {t.label}

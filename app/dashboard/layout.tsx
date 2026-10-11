@@ -37,14 +37,13 @@ import {
   Menu,
   ListChecks,
   HelpCircle,
-  FlaskConical,
 } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const { user, logout, isLoading, isPreviewingAsNonDeveloper } = useAuth();
+  const { user, logout, isLoading } = useAuth();
   const {
     currentFanta,
     fantas,
@@ -150,17 +149,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         : []),
     ];
     navigation.splice(standingsIdx + 1, 0, ...extras);
-  }
-
-  // Demo Mondiali: lega finta per provare la parte Mondiali in ogni fase,
-  // solo developer (app/dashboard/demo-mondiali).
-  if (user?.isDeveloper && !isPreviewingAsNonDeveloper) {
-    const guideIndex = navigation.findIndex((item) => item.href === "/dashboard/guide");
-    navigation.splice(guideIndex, 0, {
-      name: "Demo Mondiali",
-      href: "/dashboard/demo-mondiali",
-      icon: FlaskConical,
-    });
   }
 
   // Mostra "Gestione" a chi può davvero entrarci: creatore, vice-admin o

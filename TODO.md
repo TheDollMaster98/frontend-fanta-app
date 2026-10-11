@@ -44,9 +44,11 @@ proprio durante i Mondiali. Dettaglio in `REVIEW.md` (E9).
       gironi e nel tabellone (scelta mia: anche nei gironi, altrimenti lì
       il Pick/Ban non servirebbe). Un turno del tabellone si decide a
       Pick/Ban chiuso. Leghe normali invariate.
-- [x] **Demo Mondiali** (solo developer, menu "Demo Mondiali"): pagine
-      vere con una lega finta, tre fasi, vista admin o membro, niente
-      scritto su Firestore.
+- [x] **Demo Mondiali per tutti**: Impostazioni → "Inizia una demo di
+      fanta per i Mondiali/MSI" (card blu con etichetta DEMO). Pagine vere
+      con una lega finta, tre fasi, vista membro o admin, popup iniziale
+      che spiega come usarla, etichetta "MODALITÀ DEMO" sempre visibile.
+      Niente scritto su Firestore.
 
 ### Deploy della release 11/10 (master 355849c)
 - [ ] **Da fare tu**: Cloud Functions fallite su `closeAuction` e
