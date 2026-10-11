@@ -32,12 +32,8 @@ export interface ScoringWeights {
   assists: number;
   win: number; // bonus se la squadra del giocatore vince quella partita
   // csPer50/visionPer10/pentakill: punti ogni 50 CS, ogni 10 di Vision
-  // Score, e bonus per ogni pentakill segnata. NON calcolati
-  // automaticamente da Leaguepedia in FantaContext.recalculateScores —
-  // servono i nomi esatti dei campi (ScoreboardPlayers) per CS, Vision
-  // Score e Pentakills, non ancora confermati. Contano comunque nel
-  // punteggio se admin/vice/dev inseriscono le statistiche a mano su un
-  // pick (TeamPick.manualPlayerStats, vedi lib/scoring.ts).
+  // Score e per ogni pentakill. Calcolati in automatico da Leaguepedia
+  // (ScoreboardPlayers.CS/VisionScore/Pentakills, 10/10).
   csPer50: number;
   visionPer10: number;
   pentakill: number;
@@ -52,16 +48,11 @@ export interface ScoringWeights {
 export type RoleScoringWeights = Record<string, ScoringWeights>;
 
 // Pesi per le pick "team"/"coach": la squadra (o quella allenata dal
-// coach) non è un giocatore singolo, quindi ha un set di statistiche
-// completamente diverso — obiettivi di partita invece di kill/morti/
-// assist individuali. Stessa nota di ScoringWeights: tower/dragon/
-// voidGrub/riftHerald/inhibitor/atakhan/csPer100/goldPer10k NON sono
-// calcolati automaticamente (servono i nomi esatti dei campi Leaguepedia
-// ScoreboardGames, non ancora confermati), ma contano se inseriti a mano
-// su un pick (TeamPick.manualTeamStats, vedi lib/scoring.ts). kill/death/
-// assist/csPer100 restano 0 di default: sono qui per completezza
-// (rispecchiano lo schema a cui si è ispirata la lega), ma un pick "team"
-// non ha kill/morti/assist propri — solo obiettivi e vittoria.
+// coach) ha statistiche di partita invece che individuali. Tutti calcolati
+// in automatico da Leaguepedia (10/10): vittorie e obiettivi da
+// ScoreboardGames (lato Team1/Team2 della squadra), death = kill subite,
+// assist e CS sommati dai giocatori della squadra (ScoreboardPlayers, query
+// fatta solo se assist o csPer100 non sono 0).
 export interface TeamScoringWeights {
   win: number;
   tower: number;

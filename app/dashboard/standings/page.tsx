@@ -37,7 +37,7 @@ import {
   type PlayerGameLog,
   type TeamGameLog,
 } from "@/lib/leaguepediaApi";
-import { computeManualBonus, totalPickPoints } from "@/lib/scoring";
+import { computeManualBonus, manualBonusApplies, totalPickPoints } from "@/lib/scoring";
 import { rankGroupMembers } from "@/lib/bracket";
 import type { TeamPick, TeamPickType, CalendarRound } from "@/types";
 import { DEFAULT_TEAM_SCORING_WEIGHTS, PLAYOFF_CIRCUITS, toLolRole } from "@/lib/constants";
@@ -213,8 +213,8 @@ export default function StandingsPage() {
   const [teamLog, setTeamLog] = useState<TeamGameLog[]>([]);
   const [isLoadingLog, setIsLoadingLog] = useState(false);
 
-  // Form statistiche manuali (fallback finché Leaguepedia non copre CS/
-  // Vision Score/Pentakill/obiettivi in automatico — vedi lib/scoring.ts).
+  // Form statistiche manuali: ripiego per i pick senza partite su
+  // Leaguepedia (vedi manualBonusApplies in lib/scoring.ts).
   // Ripopolato dal pick ogni volta che si apre un nuovo drill-down.
   const [manualForm, setManualForm] = useState<Record<string, string>>({});
   // Solo leghe "custom": punti inseriti come numero diretto (vedi il campo
@@ -1019,10 +1019,9 @@ export default function StandingsPage() {
               {isFantaViceOrAdmin && currentFanta.sportType === "lol" && (
                 <div className="space-y-2 rounded-md border border-border p-3">
                   <p className="text-xs text-muted-foreground">
-                    Statistiche inserite a mano (CS/Vision Score/Pentakill/
-                    obiettivi non sono ancora calcolati in automatico da
-                    Leaguepedia): si sommano subito ai punti, senza dover
-                    ricalcolare tutta la lega.
+                    {manualBonusApplies(drillPick)
+                      ? "Statistiche a mano: Leaguepedia non ha ancora partite per questo pick, quindi queste si sommano subito ai punti."
+                      : `Statistiche a mano ignorate: CS, Vision Score, pentakill e obiettivi arrivano già in automatico da Leaguepedia (${drillPick.autoGames} partite). Contano solo se Leaguepedia non trova partite.`}
                   </p>
                   <div className="grid grid-cols-3 gap-2">
                     {manualFields.map(({ key, label }) => (
@@ -1049,7 +1048,9 @@ export default function StandingsPage() {
                   </div>
                   <div className="flex items-center justify-between pt-1">
                     <p className="text-xs text-muted-foreground">
-                      Bonus da queste statistiche:{" "}
+                      {manualBonusApplies(drillPick)
+                        ? "Bonus da queste statistiche: "
+                        : "Bonus (non conteggiato): "}
                       <span className="font-semibold text-success">
                         {Math.round(manualBonusPreview * 100) / 100}
                       </span>

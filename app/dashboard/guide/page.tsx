@@ -12,8 +12,10 @@ const SECTIONS: GuideSection[] = [
       <>
         <p>
           <strong>League of Legends</strong>: il punteggio dei giocatori/
-          squadre si calcola in automatico da dati reali (Leaguepedia/
-          lolesports) — kill, morti, assist, vittorie, CS, Vision Score.
+          squadre si calcola in automatico da Leaguepedia: per i giocatori
+          kill, morti, assist, vittorie, CS, Vision Score e pentakill; per
+          squadre e coach vittorie e obiettivi (torri, draghi, void grub,
+          araldi, inibitori, Atakhan, baroni, kill, oro).
           I ruoli sono quelli fissi del gioco (Top, Jungle, Mid, ADC,
           Support).
         </p>

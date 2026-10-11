@@ -4,6 +4,63 @@ Lista onesta di cosa manca, aggiornata dopo il giro di bugfix + persistenza
 aste su Firestore. Non è per uso commerciale: le priorità sono "l'app non si
 rompe" e "le aste funzionano per tutti", non sicurezza enterprise.
 
+## Obiettivi di squadra nel punteggio (10/10, branch feat/team-objectives-scoring)
+
+Dettaglio in `REVIEW.md` (E6).
+- [x] **Squadre e coach**: vittorie, torri, draghi, void grub, araldi,
+      inibitori, Atakhan, baroni, kill fatte e subite, oro da
+      `ScoreboardGames`; assist e CS sommati dai giocatori (query in più
+      solo se la lega dà loro un peso). Prima contava solo la vittoria,
+      che di default vale 0: con i pesi di default una squadra faceva
+      sempre 0 punti.
+- [x] **Giocatori**: CS, Vision Score e pentakill da `ScoreboardPlayers`
+      con i pesi del ruolo, sia nel totale sia nei turni.
+- [x] Tolto il bonus CS/wards da lolesports nei turni: doppione del
+      Vision Score Leaguepedia, contato solo nei turni e non nel totale.
+- [x] Statistiche a mano: contano solo se Leaguepedia non ha partite per
+      quel pick (`autoGames`), altrimenti si conterebbero due volte.
+- [x] Editor pesi: tolti i pallini gialli "non calcolato".
+
+### Da sapere prima del merge
+- [ ] Al primo ricalcolo dopo il deploy i punti di squadre e coach
+      cambiano in tutte le leghe (prima erano 0 con i pesi di default). Se
+      una lega ha già turni giocati, i punti dei turni passati cambiano
+      anche loro: il ricalcolo li riscrive tutti.
+
+## Rose scrivibili solo dal server (10/10, stesso branch)
+
+Dettaglio in `REVIEW.md` (E7).
+- [x] Due Cloud Functions chiamabili dal browser: `closeAuction`
+      (chiusura allo scadere del countdown) e `makeDraftPick` (pick del
+      proprio turno). Asta/turno, rosa, budget e storico in un'unica
+      transazione.
+- [x] Regole: un membro normale non scrive più sulla rosa di nessuno,
+      nemmeno la propria, salvo nome squadra e svincolo di un giocatore
+      a mercato aperto con rimborso esatto. Aste: solo offerte valide.
+      Draft: solo saltare un turno già scaduto. Storico: solo admin/vice.
+      Emulatore: 85/85.
+- [x] Chiusura a mano dell'admin resa atomica (prima asta chiusa e rosa
+      aggiornata erano scritture separate).
+
+### Da sapere prima del merge
+- [ ] Il deploy crea due funzioni nuove raggiungibili dal browser. Se il
+      workflow "Deploy Cloud Functions" fallisce con un errore su
+      `run.services.setIamPolicy`, alla service account manca il ruolo
+      Cloud Run Admin (comando in REVIEW.md, E7).
+- [ ] Finché le funzioni nuove non sono pubblicate, le pick del draft
+      falliscono (con messaggio) e le aste si chiudono solo col job ogni
+      minuto. Il deploy delle funzioni parte insieme agli altri.
+- [x] Una scelta unica per lega (decisione tua, 11/10): lo stesso
+      giocatore, squadra o coach sta in una sola rosa. Draft: il server
+      rifiuta e la lista nasconde chi è già preso. Aste: niente asta per
+      chi è già in rosa o ha già un'asta aperta.
+
+## Tema (10/10, stesso branch)
+- [x] Solo scuro: tolta la palette chiara mai attivabile, `color-scheme:
+      dark` (scrollbar e campi nativi scuri) e barra del browser mobile
+      del colore dello sfondo.
+- [x] **Logo**: confermato così com'è (11/10).
+
 ## Ricalcolo automatico e bug aperti (9/10, branch fix/auto-recalc-open-bugs)
 
 Dettaglio in `REVIEW.md` (E4).
@@ -22,7 +79,7 @@ Dettaglio in `REVIEW.md` (E4).
       massima e budget). Emulatore: 74/74.
 
 ### Da fare tu perché le funzioni partano (una volta sola)
-- [ ] Alla service account del secret `FIREBASE_SERVICE_ACCOUNT` (Google
+- [x] Alla service account del secret `FIREBASE_SERVICE_ACCOUNT` (Google
       Cloud Console → IAM) aggiungere i ruoli: **Cloud Functions Admin**,
       **Service Account User**, **Cloud Scheduler Admin**, **Secret
       Manager Admin**, **Artifact Registry Administrator**. Senza, il
@@ -386,8 +443,9 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
 - [ ] **Step 5 — Doppia fase**: dipende da Step 2 e 4. Step 4 è pronto;
       step 2 ha solo la fase singola (nessuna logica di
       girone→eliminazione ancora).
-- [ ] **Step 6 — Statistiche extra (MVP/CS/obiettivi)**: da verificare se
-      Leaguepedia le ha davvero, non scontato.
+- [x] **Step 6 — Statistiche extra (CS/obiettivi)**: fatto il 10/10, vedi
+      "Obiettivi di squadra nel punteggio" in cima. MVP resta fuori:
+      Leaguepedia non lo registra per partita.
 
 ## Fatto in questo giro (asta live)
 
@@ -562,7 +620,7 @@ passare al successivo — vedi la chat per tutte le decisioni di design prese.
 - [ ] **Logo**: è una proposta (REVIEW.md E3). Se la direzione non
       convince, la geometria sta in `components/Logo.tsx` più
       `app/icon.svg`, `app/apple-icon.tsx`, `app/opengraph-image.tsx`.
-- [ ] **Tema chiaro**: o un selettore, o si toglie la palette chiara
+- [x] **Tema chiaro**: tolta la palette chiara, app solo scura (10/10). Era: o un selettore, o si toglie la palette chiara
       (oggi in `app/globals.css` ma irraggiungibile).
 - [ ] **Secret GitHub `FIREBASE_SERVICE_ACCOUNT`**: serve perché i workflow
       di deploy funzionino (JSON di una service account, ruolo "Firebase
