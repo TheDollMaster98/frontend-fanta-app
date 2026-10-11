@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { useFanta } from "@/contexts/FantaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildPickBanRounds } from "@/lib/pickBanRounds";
+import { PLAYOFF_CIRCUITS } from "@/lib/constants";
 import {
   CHAMPION_BAN_CIRCUIT_POINTS,
   CHAMPION_BAN_TEAM_POINTS,
@@ -173,6 +174,12 @@ export default function ChampionPickPage() {
             basta che lo banni chiunque nel circuito (succede se non hai
             una squadra in rosa o se la tua non gioca quella settimana).
           </li>
+          {PLAYOFF_CIRCUITS.includes(currentFanta?.settings.circuitType || "") && (
+            <li className="text-foreground">
+              Mondiali: i punti di ogni turno si sommano ai tuoi punti dello
+              stesso turno nella lega (gironi e tabellone).
+            </li>
+          )}
         </ul>
       </div>
 

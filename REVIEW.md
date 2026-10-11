@@ -529,3 +529,23 @@ la fine dei gironi, nel pannello e nei log delle funzioni.
 
 **Aperto, decisione tua:** Pick'em e Pick/Ban non contano per vincere la
 lega. Ora è scritto chiaramente; se devono contare va deciso come.
+
+### E10 — Bonus Mondiali e demo per developer (11/10, `feat/worlds-bonus-demo`)
+
+| Cosa | Come | Dove |
+| --- | --- | --- |
+| Pick'em e Pick/Ban non servivano per vincere la lega (decisione: si sommano) | Nelle leghe WORLDS/MSI i punti del turno Pick/Ban corrispondente e dei pronostici Pick'em giusti sui match veri decisi nei giorni del turno (`PickemMatch.decidedAt`, scritto quando l'admin inserisce il vincitore) si aggiungono ai punti fantasy del turno, nei gironi e nel tabellone. La parte bonus è salvata a parte (`homeBonus`/`awayBonus`) e mostrata come "71, bonus 2" | `lib/worldsBonus.ts`, `lib/recalc.ts`, `types/calendar.types.ts`, `types/pickem.types.ts`, `standings/page.tsx` |
+| Il verdetto di un turno a eliminazione arrivava prima dei punti Pick/Ban (che si chiudono 6 ore dopo la fine) | Il turno si decide solo a Pick/Ban chiuso; lo stesso vale per la generazione automatica del tabellone a fine gironi. Il job chiude prima i Pick/Ban e poi ricalcola | `lib/recalc.ts`, `functions/src/jobs.ts` |
+| Testi che dicevano "classifiche a parte" | Aggiornati: Come si vince (sezione Bonus), Guida, Pick'em, Pick/Ban | vari |
+| Nessun modo di vedere la parte Mondiali in tutte le fasi senza una lega vera | Pagina "Demo Mondiali", aperta a tutti da Impostazioni (card blu "DEMO"), con popup iniziale e etichetta fissa "MODALITÀ DEMO"; si parte da membro a gironi in corso. Prima versione solo developer: le pagine vere di Classifica, Pick'em e Pick/Ban dentro un Provider con una lega finta (gironi in corso, semifinali, finale conclusa; vista admin o membro). Nessuna scrittura: pronostici, Pick/Ban e Pick'em cambiano solo la demo, il resto mostra un avviso | `app/dashboard/demo-mondiali/page.tsx`, `lib/demoWorlds.ts`, `FantaContext` (export del contesto) |
+
+**Verifiche:** bonus con dati finti 7/7 (Pick/Ban chiuso e non, Pick'em
+dentro e fuori dal turno, tabellone automatico che aspetta, lega LEC senza
+bonus, verdetto del tabellone solo a Pick/Ban chiuso e deciso dal bonus);
+test precedenti 13/13. Demo a schermo, desktop e mobile, tre fasi e due
+viste. App: typecheck, lint, build; funzioni: typecheck e bundle.
+
+**Da sapere:** i risultati Pick'em inseriti prima di questo rilascio non
+hanno `decidedAt` e non danno bonus. Se un turno Pick/Ban non si chiude
+(Leaguepedia senza partite) il verdetto del turno del tabellone aspetta,
+al massimo 3 giorni, poi il Pick/Ban si chiude a 0.

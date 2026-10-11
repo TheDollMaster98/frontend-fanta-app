@@ -89,9 +89,11 @@ const SECTIONS: GuideSection[] = [
         </ol>
         <p>
           In Classifica la scheda &quot;Come si vince&quot; dice a che
-          punto è il torneo e qual è la tua situazione. Pick&apos;em e
-          Pick/Ban hanno classifiche a parte e non cambiano chi vince la
-          lega. Per l&apos;admin: Classifica → Genera Gironi (dopo Avvia
+          punto è il torneo e qual è la tua situazione. Bonus: i punti del
+          Pick/Ban del turno e del Pick&apos;em (pronostici giusti sui match
+          veri decisi nei giorni del turno) si sommano ai tuoi punti di
+          quel turno, nei gironi e nel tabellone. Un turno del tabellone si
+          decide quando anche il suo Pick/Ban è chiuso. Per l&apos;admin: Classifica → Genera Gironi (dopo Avvia
           Stagione, scegliendo anche quanti passano per gruppo). Il
           tabellone si genera da solo a gironi finiti e avanza da solo;
           &quot;Genera Fase Eliminazione&quot; serve solo per farlo prima o

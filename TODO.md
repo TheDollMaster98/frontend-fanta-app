@@ -38,9 +38,17 @@ proprio durante i Mondiali. Dettaglio in `REVIEW.md` (E9).
       (tabella MatchSchedule). Rimandato: da qui Leaguepedia rispondeva
       col limite di richieste e non ho potuto verificare come registra il
       tabellone dei Mondiali.
-- [ ] **Decisione tua**: Pick'em e Pick/Ban oggi sono classifiche a
-      parte e non contano per vincere la lega. Se devono contare, va
-      deciso come (bonus nei turni? spareggio?).
+- [x] **Bonus Mondiali** (decisione tua, 11/10: opzione A): nelle leghe
+      WORLDS/MSI i punti del Pick/Ban del turno e dei pronostici Pick'em
+      decisi nei giorni del turno si sommano ai punti del turno, nei
+      gironi e nel tabellone (scelta mia: anche nei gironi, altrimenti lì
+      il Pick/Ban non servirebbe). Un turno del tabellone si decide a
+      Pick/Ban chiuso. Leghe normali invariate.
+- [x] **Demo Mondiali per tutti**: Impostazioni → "Inizia una demo di
+      fanta per i Mondiali/MSI" (card blu con etichetta DEMO). Pagine vere
+      con una lega finta, tre fasi, vista membro o admin, popup iniziale
+      che spiega come usarla, etichetta "MODALITÀ DEMO" sempre visibile.
+      Niente scritto su Firestore.
 
 ### Deploy della release 11/10 (master 355849c)
 - [ ] **Da fare tu**: Cloud Functions fallite su `closeAuction` e
