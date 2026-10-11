@@ -11,7 +11,7 @@ import {
   type ChampionPickDoc,
   type WriteOp,
 } from "@/lib/recalc";
-import type { BracketRound, CalendarRound, Fanta, FantaMember } from "@/types";
+import type { BracketRound, CalendarRound, Fanta, FantaGroup, FantaMember } from "@/types";
 import { closeAuctionIfExpired } from "./roster";
 
 // Logica dei job pianificati (9/10), separata da index.ts per poterla
@@ -55,10 +55,11 @@ export async function applyWritesAdmin(db: Firestore, writes: WriteOp[]): Promis
 
 async function loadLeague(db: Firestore, fantaDoc: QueryDocumentSnapshot) {
   const base = fantaDoc.ref;
-  const [members, calendar, bracket] = await Promise.all([
+  const [members, calendar, bracket, groups] = await Promise.all([
     base.collection("members").get(),
     base.collection("calendar").get(),
     base.collection("bracket").get(),
+    base.collection("groups").get(),
   ]);
   const fanta = { id: fantaDoc.id, ...revive<DocumentData>(fantaDoc.data()) } as Fanta;
   return {
@@ -73,6 +74,7 @@ async function loadLeague(db: Firestore, fantaDoc: QueryDocumentSnapshot) {
     bracketRounds: bracket.docs.map(
       (d) => ({ id: d.id, ...revive<DocumentData>(d.data()) }) as BracketRound,
     ),
+    groups: groups.docs.map((d) => ({ id: d.id, ...d.data() }) as FantaGroup),
   };
 }
 

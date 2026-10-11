@@ -92,8 +92,11 @@ const SECTIONS: GuideSection[] = [
           punto è il torneo e qual è la tua situazione. Pick&apos;em e
           Pick/Ban hanno classifiche a parte e non cambiano chi vince la
           lega. Per l&apos;admin: Classifica → Genera Gironi (dopo Avvia
-          Stagione), poi Genera Fase Eliminazione a gironi finiti; il
-          tabellone poi avanza da solo col ricalcolo automatico.
+          Stagione, scegliendo anche quanti passano per gruppo). Il
+          tabellone si genera da solo a gironi finiti e avanza da solo;
+          &quot;Genera Fase Eliminazione&quot; serve solo per farlo prima o
+          rifarlo. Il pannello Percorso Mondiali in Classifica dice cosa
+          manca e quando si sono aggiornati i punti.
         </p>
       </>
     ),
@@ -115,15 +118,18 @@ const SECTIONS: GuideSection[] = [
     body: (
       <>
         <p>
-          Pronostico sul bracket <strong>vero</strong> del torneo
-          (squadre pro, non i membri della lega). L&apos;admin crea il
-          bracket (round + scontri + punti per round), ogni membro
-          pronostica il vincitore di ogni scontro. I pronostici si
-          bloccano tutti insieme quando l&apos;admin preme &quot;Blocca
-          Pronostici&quot; — prima di allora si possono ancora modificare,
-          dopo no. L&apos;admin inserisce il vincitore reale di ogni
-          match dopo che è stato giocato (a mano, nessuna fonte
-          automatica): punti crescenti per round, decisi dall&apos;admin.
+          Pronostico sulla fase a eliminazione <strong>vera</strong> del
+          torneo (squadre pro, non i membri della lega). Scegli chi vince
+          ogni quarto; le semifinali si formano coi tuoi vincenti, e così
+          la finale. Ogni pronostico giusto vale i punti del suo turno
+          (di base 1 i quarti, 2 le semifinali, 3 la finale).
+        </p>
+        <p>
+          Admin: &quot;Struttura Mondiali&quot; crea quarti, semifinali e
+          finale; si scrivono solo le 8 squadre dei quarti. Poi si blocca
+          prima del primo match e si inseriscono i vincitori veri man mano
+          (solo a pronostici bloccati, così nessuno pronostica conoscendo
+          i risultati).
         </p>
       </>
     ),

@@ -1,5 +1,10 @@
 import { DEFAULT_TEAM_SCORING_WEIGHTS } from "@/lib/constants";
-import { isRoundComplete, nextRoundFromWinners } from "@/lib/bracket";
+import {
+  isRoundComplete,
+  nextRoundFromWinners,
+  seedFirstRound,
+  seedsFromGroups,
+} from "@/lib/bracket";
 import {
   getChampionGamesInRange,
   getFantasyPlayerStats,
@@ -12,6 +17,7 @@ import type {
   BracketRound,
   CalendarRound,
   Fanta,
+  FantaGroup,
   FantaMember,
 } from "@/types";
 
@@ -54,6 +60,9 @@ export interface ScoreRecalcInput {
   members: FantaMember[];
   calendar: CalendarRound[];
   bracketRounds: BracketRound[];
+  // Gironi di WORLDS/MSI: servono per generare da soli il tabellone a
+  // fine gironi. Assenti = nessuna generazione automatica.
+  groups?: FantaGroup[];
   now?: number;
 }
 
@@ -63,11 +72,14 @@ export interface ScoreRecalcInput {
 // scoringWeights della lega — uno per ruolo — più un set separato
 // (teamScoringWeights) per team/coach. Poi i punti di ogni turno di
 // calendario (confronto diretto) e del tabellone a eliminazione, con
-// avanzamento automatico al turno successivo.
+// avanzamento automatico al turno successivo. Nelle leghe WORLDS/MSI, a
+// gironi finiti, genera anche il primo turno del tabellone (11/10: prima
+// serviva che un admin se ne ricordasse e premesse il bottone).
 // Se Leaguepedia non risponde lancia LEAGUEPEDIA_UNAVAILABLE prima di
 // produrre qualunque scrittura (vedi cargoQuery strict).
 export async function computeScoreWrites(input: ScoreRecalcInput): Promise<WriteOp[]> {
   const { fanta, members, calendar, bracketRounds } = input;
+  const groups = input.groups || [];
   const now = input.now ?? Date.now();
   const writes: WriteOp[] = [];
   const circuitType = fanta.settings.circuitType;
@@ -90,6 +102,8 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
     getFantasyTeamStats(allNames.teams, circuitType, undefined, teamOptions),
   ]);
 
+  // Rose coi punti appena ricalcolati: servono agli spareggi più sotto.
+  const updatedTeams = new Map<string, FantaMember["team"]>();
   members.forEach((m) => {
     let changed = false;
     const updatedTeam = m.team.map((pick) => {
@@ -100,6 +114,7 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
       if (rounded !== pick.points || autoGames !== pick.autoGames) changed = true;
       return { ...pick, points: rounded, autoGames };
     });
+    updatedTeams.set(m.userId, updatedTeam);
     if (changed) {
       writes.push({
         type: "update",
@@ -135,7 +150,15 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
     };
   };
 
+  // Punti totali in stagione dalla rosa aggiornata (stessa somma della
+  // Classifica, totalPickPoints): spareggio di gironi e tabellone.
+  const memberSeasonPoints = (userId: string): number => {
+    const team = updatedTeams.get(userId) || [];
+    return team.reduce((sum, pick) => sum + totalPickPoints(pick, roleWeights, teamWeights), 0);
+  };
+
   // 2. Calendario a girone: punti di ogni fixture nella finestra del turno.
+  const updatedCalendar: CalendarRound[] = [];
   for (const round of calendar) {
     const involvedUserIds = Array.from(
       new Set(
@@ -166,6 +189,7 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
       };
     });
 
+    updatedCalendar.push({ ...round, fixtures: updatedFixtures });
     if (roundChanged) {
       writes.push({
         type: "update",
@@ -175,20 +199,49 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
     }
   }
 
+  // 2b. Fine gironi (WORLDS/MSI): se tutti i turni dei gironi sono finiti e
+  // il tabellone non esiste ancora, lo genera coi qualificati (stessi
+  // criteri e seeding del bottone "Genera Fase Eliminazione"). Id fisso
+  // "auto-r0": due ricalcoli insieme (bottone e job) scrivono lo stesso
+  // documento invece di creare due tabelloni.
+  const groupRounds = updatedCalendar.filter((r) => r.groupId);
+  if (
+    groups.length > 0 &&
+    bracketRounds.length === 0 &&
+    groupRounds.length > 0 &&
+    groupRounds.every((r) => now >= r.endDate.getTime())
+  ) {
+    const seasonPoints = new Map(members.map((m) => [m.userId, memberSeasonPoints(m.userId)]));
+    const seeds = seedsFromGroups(
+      groups,
+      updatedCalendar,
+      seasonPoints,
+      fanta.settings.qualifiersPerGroup || 2,
+    );
+    if (seeds.length >= 2) {
+      const start = new Date(Math.max(...groupRounds.map((r) => r.endDate.getTime())));
+      const last = groupRounds[groupRounds.length - 1];
+      const groupRoundDays = Math.round(
+        (last.endDate.getTime() - last.startDate.getTime()) / 86400000,
+      );
+      const lengthDays = fanta.settings.bracketRoundLengthDays || groupRoundDays || 7;
+      writes.push({
+        type: "set",
+        path: ["fantas", fanta.id, "bracket", "auto-r0"],
+        data: {
+          roundIndex: 0,
+          matches: seedFirstRound(seeds),
+          startDate: start,
+          endDate: new Date(start.getTime() + lengthDays * 86400000),
+        },
+      });
+    }
+  }
+
   // 3. Tabellone a eliminazione (fase 2, solo WORLDS/MSI). Quando un turno
   // è completamente deciso e il successivo non esiste ancora, lo genera
   // accoppiando i vincitori (vedi lib/bracket.ts).
   if (bracketRounds.length > 0) {
-    // Spareggio dei pareggi: punti totali in stagione dalla rosa (stessa
-    // somma mostrata in Classifica, totalPickPoints).
-    const memberSeasonPoints = (userId: string): number => {
-      const member = members.find((m) => m.userId === userId);
-      if (!member) return 0;
-      return member.team.reduce(
-        (sum, pick) => sum + totalPickPoints(pick, roleWeights, teamWeights),
-        0,
-      );
-    };
     const sortedRounds = [...bracketRounds].sort((a, b) => a.roundIndex - b.roundIndex);
 
     for (const round of sortedRounds) {
@@ -271,6 +324,14 @@ export async function computeScoreWrites(input: ScoreRecalcInput): Promise<Write
       }
     }
   }
+
+  // Ora dell'ultimo ricalcolo, mostrata ad admin e membri ("punti
+  // aggiornati alle ..."): così si vede subito se il ricalcolo gira.
+  writes.push({
+    type: "update",
+    path: ["fantas", fanta.id],
+    data: { lastRecalculatedAt: new Date(now) },
+  });
 
   return writes;
 }

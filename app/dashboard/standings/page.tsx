@@ -41,6 +41,8 @@ import { computeManualBonus, manualBonusApplies, totalPickPoints } from "@/lib/s
 import { bracketRoundName, rankGroupMembers } from "@/lib/bracket";
 import { useAuth } from "@/contexts/AuthContext";
 import { PlayoffHowToWin } from "@/components/PlayoffHowToWin";
+import { WorldsAdminPanel } from "@/components/WorldsAdminPanel";
+import { buildPickBanRounds } from "@/lib/pickBanRounds";
 import type { TeamPick, TeamPickType, CalendarRound } from "@/types";
 import { DEFAULT_TEAM_SCORING_WEIGHTS, PLAYOFF_CIRCUITS, toLolRole } from "@/lib/constants";
 import { toast } from "sonner";
@@ -177,6 +179,9 @@ export default function StandingsPage() {
     bracketRounds,
     generateGroups,
     generateBracket,
+    championPicks,
+    pickemBracket,
+    pickemPredictions,
   } = useFanta();
   const { user } = useAuth();
   const [selectedMember, setSelectedMember] = useState<FantaMemberProfile | null>(
@@ -364,6 +369,33 @@ export default function StandingsPage() {
   );
   // Chi è davvero nel tabellone, una volta generato: il badge dei gironi
   // segue quello, non più una stima.
+  // "Da fare ora" del membro (11/10): Pick/Ban del turno aperto non ancora
+  // scelto, Pick'em non ancora inviato.
+  const playoffTodos: { label: string; href: string }[] = [];
+  if (isPlayoffCircuit && user) {
+    const nowMs = Date.now();
+    const openPickBan = buildPickBanRounds(calendar, bracketRounds).find(
+      (r) => r.startDate.getTime() <= nowMs && nowMs < r.endDate.getTime(),
+    );
+    if (
+      openPickBan &&
+      !championPicks.some((p) => p.userId === user.id && p.roundId === openPickBan.id)
+    ) {
+      playoffTodos.push({
+        label: `Scegli il campione del Pick/Ban (${openPickBan.label}, entro il ${openPickBan.endDate.toLocaleDateString("it-IT")}).`,
+        href: "/dashboard/championpick",
+      });
+    }
+    const pickemMatches = pickemBracket?.rounds.flatMap((r) => r.matches) || [];
+    const myPickem = pickemPredictions.find((p) => p.userId === user.id);
+    const missing = pickemMatches.filter((m) => !myPickem?.picks[m.id]).length;
+    if (pickemBracket && !pickemBracket.locked && missing > 0) {
+      playoffTodos.push({
+        label: `Completa il Pick'em: ${missing} pronostici mancanti, prima che l'admin lo blocchi.`,
+        href: "/dashboard/pickem",
+      });
+    }
+  }
   const firstBracketRound = [...bracketRounds].sort((a, b) => a.roundIndex - b.roundIndex)[0];
   const bracketUserIds = new Set(
     (firstBracketRound?.matches || []).flatMap((m) =>
@@ -669,8 +701,12 @@ export default function StandingsPage() {
       {/* Mondiali/MSI (11/10): "Come si vince" prima di tutto. Sotto, la
           classifica a punti non decide chi vince (lo decide il
           tabellone), e messa per prima sembrava la classifica finale. */}
+      {isPlayoffCircuit && isFantaViceOrAdmin && <WorldsAdminPanel />}
+
       {isPlayoffCircuit && (
         <PlayoffHowToWin
+          todos={playoffTodos}
+          lastRecalculatedAt={currentFanta.lastRecalculatedAt}
           userId={user?.id}
           groups={groups}
           calendar={calendar}

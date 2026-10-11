@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { bracketRoundName, rankGroupMembers } from "@/lib/bracket";
 import type { BracketRound, CalendarRound, FantaGroup } from "@/types";
@@ -12,6 +13,10 @@ import type { BracketRound, CalendarRound, FantaGroup } from "@/types";
 
 interface Props {
   userId?: string;
+  // Azioni del membro ancora da fare (Pick/Ban, Pick'em), calcolate dalla
+  // pagina: qui solo mostrate.
+  todos?: { label: string; href: string }[];
+  lastRecalculatedAt?: Date;
   groups: FantaGroup[];
   calendar: CalendarRound[];
   bracketRounds: BracketRound[];
@@ -102,6 +107,7 @@ function phaseAndStatus({
 
 export function PlayoffHowToWin(props: Props) {
   const { phase, mine } = phaseAndStatus(props);
+  const todos = props.todos || [];
   return (
     <Card>
       <CardHeader>
@@ -110,6 +116,23 @@ export function PlayoffHowToWin(props: Props) {
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
         {mine && <p className="font-medium text-foreground">{mine}</p>}
+        {todos.length > 0 && (
+          <div className="space-y-1 rounded-md border border-primary/40 bg-primary/5 p-3">
+            <p className="font-medium text-foreground">Da fare ora</p>
+            <ul className="space-y-1">
+              {todos.map((todo) => (
+                <li key={todo.href}>
+                  <Link
+                    href={todo.href}
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {todo.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <ol className="space-y-3">
           <li>
             <p className="font-medium text-foreground">1. Gironi</p>
@@ -139,6 +162,18 @@ export function PlayoffHowToWin(props: Props) {
         <p className="text-muted-foreground">
           Pick&apos;em e Pick/Ban hanno classifiche a parte: non cambiano chi
           vince la lega.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Punti aggiornati:{" "}
+          {props.lastRecalculatedAt
+            ? props.lastRecalculatedAt.toLocaleString("it-IT", {
+                day: "2-digit",
+                month: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "non ancora"}
+          . Si aggiornano da soli due volte al giorno (6:10 e 18:10).
         </p>
       </CardContent>
     </Card>

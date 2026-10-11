@@ -24,6 +24,9 @@ export interface Fanta {
   // quel bootstrap è già avvenuto per loro sotto le regole precedenti, non
   // va ripetuto.
   createdBy?: string;
+  // Ora dell'ultimo ricalcolo punti (bottone o job automatico, 11/10):
+  // mostrata in Classifica per capire se i punti sono aggiornati.
+  lastRecalculatedAt?: Date;
 }
 
 export interface ScoringWeights {

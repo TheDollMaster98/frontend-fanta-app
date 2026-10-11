@@ -505,5 +505,27 @@ campioni serve durante i Mondiali".
 - Regole: 87/87 (aggiunte scelta a turno di tabellone in corso e finito).
 - App: typecheck, lint, build. Funzioni: typecheck e bundle.
 
+#### Secondo giro (11/10): fare, usare, aggiornare, seguire
+
+| Problema | Correzione | Dove |
+| --- | --- | --- |
+| Il tabellone partiva solo se l'admin si ricordava "Genera Fase Eliminazione" a gironi finiti | Il ricalcolo (bottone o job) lo genera da solo quando tutti i turni dei gironi sono finiti: stessi qualificati e seeding del bottone, inizio a fine gironi, turni lunghi come quelli dei gironi. Id fisso, quindi due ricalcoli insieme non ne creano due | `lib/recalc.ts`, `lib/bracket.ts` (`seedsFromGroups`), `functions/src/jobs.ts` (carica i gironi) |
+| Nessun posto per sapere cosa manca o se tutto gira | Pannello "Percorso Mondiali" per admin/vice: sei passi con stato e link, ora dell'ultimo ricalcolo (nuovo campo `lastRecalculatedAt` scritto da ogni ricalcolo), turni Pick/Ban finiti e non chiusi | `components/WorldsAdminPanel.tsx` |
+| Un membro non sapeva cosa doveva fare | "Da fare ora" nella scheda Come si vince: Pick/Ban del turno aperto non scelto, Pick'em incompleto | `standings/page.tsx`, `PlayoffHowToWin.tsx` |
+| Pick'em: l'admin doveva scrivere le squadre di tutti i turni, ma semifinali e finale non si conoscono prima: si pronosticava solo il primo turno | Scontri senza squadre nei turni dopo il primo: le squadre sono i vincenti dei due scontri che li alimentano (i tuoi pronostici per te, i vincitori veri per i risultati). Cambiare un quarto toglie le scelte che ne dipendevano. "Struttura Mondiali" crea quarti/semifinali/finale (1/2/3 punti) | `lib/pickem.ts`, `app/dashboard/pickem/page.tsx` |
+| L'admin poteva inserire i vincitori veri a pronostici aperti, e sbloccare dopo i risultati: chi pronosticava tardi vedeva gli esiti | Vincitori veri solo a pronostici bloccati; "Sblocca" disattivato se c'è già un risultato | `pickem/page.tsx` |
+| Editor Pick'em su mobile: nomi squadra schiacciati a una lettera | Squadre su una riga, vincitore ed elimina sotto | idem |
+
+**Verifiche:** logica con dati finti 13/13 (Pick'em: struttura, cascata,
+pulizia delle scelte, risultati veri; tabellone automatico: creato a
+gironi finiti con inizio e durata giusti, non creato a gironi in corso né
+se esiste già; ora del ricalcolo; turni Pick/Ban). A schermo negli
+emulatori, desktop e mobile, da admin e da membro. App: typecheck, lint,
+build; funzioni: typecheck e bundle.
+
+**Non verificato:** il tabellone automatico sui dati veri di produzione
+(nessuna lega Mondiali a fine gironi); lo vedrai al primo ricalcolo dopo
+la fine dei gironi, nel pannello e nei log delle funzioni.
+
 **Aperto, decisione tua:** Pick'em e Pick/Ban non contano per vincere la
 lega. Ora è scritto chiaramente; se devono contare va deciso come.

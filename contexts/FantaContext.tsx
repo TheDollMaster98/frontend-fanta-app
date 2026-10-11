@@ -50,7 +50,7 @@ import {
 import { generateRoundRobin } from "@/lib/roundRobin";
 import {
   seedFirstRound,
-  rankGroupMembers,
+  seedsFromGroups,
 } from "@/lib/bracket";
 import { totalPickPoints } from "@/lib/scoring";
 import { findPickOwner, pickKey } from "@/lib/uniquePicks";
@@ -341,6 +341,11 @@ function mapFantaDoc(id: string, data: Record<string, unknown>): Fanta {
     // esplicito — meglio ometterlo del tutto quando manca, come già si fa
     // per photoURL in AuthContext.tsx.
     ...(data.createdBy ? { createdBy: data.createdBy as string } : {}),
+    // Stesso motivo: omesso se manca, altrimenti updateFanta (setDoc
+    // dell'intero documento) lo cancellerebbe.
+    ...(data.lastRecalculatedAt
+      ? { lastRecalculatedAt: toDate(data.lastRecalculatedAt as Timestamp | Date) }
+      : {}),
   } as Fanta;
 }
 
@@ -1446,16 +1451,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
     if (!currentFanta || groups.length === 0) return;
 
     const standingsByUserId = new Map(standings.map((s) => [s.userId, s.totalPoints]));
-    const qualifiersByGroup = groups.map((group) =>
-      rankGroupMembers(group, calendar, standingsByUserId).slice(0, qualifiersPerGroup),
-    );
-
-    const seeds: string[] = [];
-    for (let rank = 0; rank < qualifiersPerGroup; rank++) {
-      qualifiersByGroup.forEach((qualifiers) => {
-        if (qualifiers[rank]) seeds.push(qualifiers[rank]);
-      });
-    }
+    const seeds = seedsFromGroups(groups, calendar, standingsByUserId, qualifiersPerGroup);
     if (seeds.length < 2) return;
 
     const bracketCollection = collection(db, "fantas", currentFanta.id, "bracket");
@@ -1699,6 +1695,7 @@ export function FantaProvider({ children }: { children: ReactNode }) {
       members: fantaMembers,
       calendar,
       bracketRounds,
+      groups,
     });
     await applyWrites(writes);
   };

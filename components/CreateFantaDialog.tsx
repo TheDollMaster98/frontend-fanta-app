@@ -29,6 +29,7 @@ import { RoleScoringWeightsEditor } from "@/components/RoleScoringWeightsEditor"
 import {
   DEFAULT_FANTA_SETTINGS,
   CIRCUIT_TYPES,
+  PLAYOFF_CIRCUITS,
   LOL_ROLES,
   DEFAULT_ROLE_SCORING_WEIGHTS,
   DEFAULT_TEAM_SCORING_WEIGHTS,
@@ -316,10 +317,21 @@ export function CreateFantaDialog() {
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  Worlds e MSI sono a eliminazione: più avanti attiveranno la
-                  doppia fase gironi/finale
-                </p>
+                {PLAYOFF_CIRCUITS.includes(formData.circuitType) ? (
+                  <p className="text-xs text-muted-foreground">
+                    Torneo: rose con le aste (solo giocatori di questo
+                    torneo), poi Avvia Stagione, poi in Classifica Genera
+                    Gironi. Il tabellone a eliminazione parte da solo a fine
+                    gironi. Ci sono anche Pick&apos;em e Pick/Ban. In
+                    Classifica il pannello Percorso Mondiali ti guida passo
+                    per passo.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Campionato: rose, poi Avvia Stagione, che genera il
+                    calendario a girone tra i membri.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

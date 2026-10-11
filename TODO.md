@@ -20,6 +20,24 @@ proprio durante i Mondiali. Dettaglio in `REVIEW.md` (E9).
       Gironi": prima il badge "Qualificato" segnava i primi 2 a tutti,
       qualunque numero avesse scelto l'admin.
 - [x] Guida aggiornata.
+- [x] **Tabellone automatico**: a gironi finiti il ricalcolo genera da
+      solo il primo turno coi qualificati (prima serviva l'admin).
+- [x] **Percorso Mondiali** (admin/vice, in Classifica): membri, rose,
+      mercato, gironi, tabellone, Pick'em con stato e prossima azione;
+      ora dell'ultimo ricalcolo; turni Pick/Ban da chiudere.
+- [x] **Da fare ora** per ogni membro: Pick/Ban del turno e Pick'em
+      mancanti, con link.
+- [x] **Pick'em come vero tabellone**: struttura Mondiali in un clic, si
+      scrivono solo le 8 squadre dei quarti, semifinali e finale si
+      formano coi propri vincenti; vincitori veri solo a pronostici
+      bloccati; niente sblocco dopo i primi risultati. Prima si poteva
+      pronosticare solo il primo turno.
+- [x] Creazione lega: spiegato il percorso Mondiali quando si sceglie
+      WORLDS/MSI.
+- [ ] Pick'em: import delle squadre e dei vincitori veri da Leaguepedia
+      (tabella MatchSchedule). Rimandato: da qui Leaguepedia rispondeva
+      col limite di richieste e non ho potuto verificare come registra il
+      tabellone dei Mondiali.
 - [ ] **Decisione tua**: Pick'em e Pick/Ban oggi sono classifiche a
       parte e non contano per vincere la lega. Se devono contare, va
       deciso come (bonus nei turni? spareggio?).
