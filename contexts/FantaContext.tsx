@@ -313,7 +313,11 @@ interface FantaContextType {
   ) => void;
 }
 
-const FantaContext = createContext<FantaContextType | undefined>(undefined);
+// Esportato solo per la modalità demo dei developer
+// (app/dashboard/demo-mondiali): lì le pagine vere ricevono una lega finta
+// tramite un Provider con valori sostituiti. Il resto dell'app usa useFanta.
+export const FantaContext = createContext<FantaContextType | undefined>(undefined);
+export type { FantaContextType };
 
 function toDate(value: Timestamp | Date | undefined): Date {
   if (!value) return new Date();
